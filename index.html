@@ -639,7 +639,6 @@ input,textarea,select{font-family:inherit;font-size:13px}
 .pwd-btn-ok{flex:1;padding:11px;border-radius:9px;background:var(--brand);color:#fff;font-size:14px;font-weight:700;transition:background .15s}
 .pwd-btn-ok:hover{background:#9333ea}
 .pwd-btn-cancel{padding:11px 16px;border-radius:9px;background:var(--bg3);border:1px solid var(--border2);color:var(--text3);font-size:14px;font-weight:600}
-.pwd-hint{font-size:10px;color:var(--text3);margin-top:12px;opacity:.7}
 .pwd-error-msg{font-size:11px;color:#dc2626;margin-bottom:8px;font-weight:600;min-height:16px}
 .pwd-change-row{margin-top:16px;padding-top:16px;border-top:1px solid var(--border);text-align:left}
 .pwd-change-label{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:block}
@@ -890,7 +889,7 @@ body.has-sp-banner{padding-top:44px}
       <button class="pwd-btn-cancel" onclick="pwdCancel()">Cancel</button>
       <button class="pwd-btn-ok" onclick="pwdSubmit()">Unlock</button>
     </div>
-    <div class="pwd-hint">Default password: <strong>AdminHSN</strong></div>
+
   </div>
 </div>
 
@@ -3416,10 +3415,98 @@ function spSyncReport(r){
   var date = (r.savedAt||r.createdAt||'').slice(0,10);
   var filename = (r.id||'report') + '_' + date + '.json';
   var jsonStr = JSON.stringify(r, null, 2);
+
+  // Upload JSON report
   msUploadFile(spConfig.reportsFolder, filename, jsonStr, true, function(ok){
-    if(ok){ toast('✅ Synced to SharePoint: ' + filename); }
-    else { toast('⚠️ SharePoint sync failed — saved locally only'); }
+    if(ok){
+      toast('✅ Report synced to SharePoint');
+    } else {
+      toast('⚠️ SharePoint sync failed — saved locally only');
+    }
   });
+
+  // Generate and upload PDF in background
+  if(spConfig.pdfFolder){
+    setTimeout(function(){ spUploadPDF(r, date); }, 500);
+  }
+}
+
+function spUploadPDF(r, date){
+  // Build the same print HTML used by printReport(), convert to PDF via browser
+  // Since we can't call wkhtmltopdf in the browser, we use a hidden iframe
+  // to generate a Blob URL for the print HTML, then use the Print API
+  // For SharePoint upload: we upload the HTML as a .pdf-named file
+  // A proper PDF requires a server-side renderer — here we upload the
+  // print-ready HTML with a .html extension to the PDF Reports folder
+  // This gives a versioned, printable file per save.
+  try{
+    var pdfFilename = (r.id||'report') + '_' + date + '_v' + Date.now() + '.html';
+    // Build lightweight print HTML for the report
+    var printHtml = buildPrintHTML(r);
+    var blob = new Blob([printHtml], {type:'text/html'});
+    // Convert blob to ArrayBuffer for upload
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var content = e.target.result;
+      msUploadPrintFile(spConfig.pdfFolder, pdfFilename, content, function(ok){
+        if(ok) toast('✅ Print report saved to SharePoint');
+      });
+    };
+    reader.readAsArrayBuffer(blob);
+  } catch(ex){
+    console.warn('PDF upload failed:', ex);
+  }
+}
+
+function msUploadPrintFile(folderPath, filename, content, callback){
+  if(!tokenValid()){ if(callback) callback(false); return; }
+  msResolveSite(function(ok){
+    if(!ok){ if(callback) callback(false); return; }
+    var pathEncoded = (folderPath+'/'+filename).split('/').map(encodeURIComponent).join('/');
+    fetch('https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/root:/'+pathEncoded+':/content', {
+      method: 'PUT',
+      headers: {'Authorization':'Bearer '+msAccessToken, 'Content-Type':'text/html'},
+      body: content
+    }).then(function(r){ if(callback) callback(r.ok); })
+      .catch(function(){ if(callback) callback(false); });
+  });
+}
+
+function buildPrintHTML(r){
+  // Reuse the same logic as printReport() but return the HTML string
+  // instead of opening a new tab
+  var d = DISPOSITIONS[r.disposition]||DISPOSITIONS.incomplete;
+  var ft = r.equipType||r.formType;
+  var metaRows = [
+    ['Equipment No',r.header.equipmentNo],['Serial No',r.header.serialNo],
+    ['Part No',r.header.partNo],['SO',r.header.so],['SN',r.header.sn],
+    ['Size / Description',r.header.sizeDesc],['Inteserv Job',r.header.inteservJob],
+    ['Inspector',r.inspector]
+  ].filter(function(kv){ return kv[1]; });
+
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8"/>'
+    +'<title>'+esc(r.id||'Report')+'</title>'
+    +'<style>body{font-family:Arial,sans-serif;margin:28px;color:#111;font-size:12px}'
+    +'h2{font-size:13px;font-weight:700;color:#252963;border-bottom:2px solid #af61ff;padding-bottom:4px;margin:18px 0 8px}'
+    +'.meta{display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;margin-bottom:14px}'
+    +'.meta-row{font-size:11px}.meta-key{color:#6b7280}.meta-val{font-weight:700}'
+    +'table{width:100%;border-collapse:collapse}th,td{padding:5px 8px;border:1px solid #e5e7eb;font-size:11px}'
+    +'th{background:#252963;color:#fff;text-align:left}'
+    +'</style></head><body>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;border-bottom:3px solid #af61ff;padding-bottom:10px">'
+    +'<div><div style="font-size:18px;font-weight:800;color:#252963">INSPECTION REPORT</div>'
+    +'<div style="font-size:10px;color:#7c6a9a;margin-top:2px">FRAC Equipment Inspection &amp; Disposition</div></div></div>'
+    +'<div style="color:#94a3b8;font-size:10px;margin-bottom:12px">'
+    +esc(formTypeLabel(r))+' | '+fmtDate(r.createdAt)+' | Report ID: '+esc(r.id)+'</div>'
+    +'<h2>Equipment Information</h2>'
+    +'<div class="meta">'
+    +metaRows.map(function(kv){ return '<div class="meta-row"><span class="meta-key">'+kv[0]+': </span><span class="meta-val">'+esc(kv[1])+'</span></div>'; }).join('')
+    +'</div>'
+    +'<div style="padding:11px 14px;border-left:5px solid '+d.color+';background:'+d.bg+';margin:14px 0">'
+    +'<div style="font-size:13px;font-weight:800;color:'+d.color+'">'+d.label+'</div>'
+    +'<div style="font-size:11px;color:'+d.color+';margin-top:3px">'+d.desc+'</div></div>'
+    +'<p style="font-size:11px;color:#6b7280;text-align:center;margin-top:40px">Full print report available in app — open and use Print / PDF button for complete output.</p>'
+    +'</body></html>';
 }
 
 // ═══ HISTORY ════════════════════════════════════════════════════════
@@ -3582,9 +3669,74 @@ function editReport(id){
   renderForm(); showView('form');
 }
 function deleteReport(id){
-  if(!confirm('Delete this report?')) return;
-  reports=reports.filter(r=>r.id!==id);
-  saveReportsToStorage(); renderHistory();
+  var r = reports.find(function(x){ return x.id===id; });
+  if(!r) return;
+  if(!confirm('Delete report '+id+' from the app'+(tokenValid()?' AND from SharePoint?':'?'))) return;
+  // Remove locally
+  reports = reports.filter(function(x){ return x.id!==id; });
+  saveReportsToStorage();
+  renderHistory();
+  toast('Report deleted locally');
+  // Delete from SharePoint if connected
+  if(tokenValid() && spConfig.reportsFolder){
+    var date = (r.savedAt||r.createdAt||'').slice(0,10);
+    var jsonFilename = (r.id||'report') + '_' + date + '.json';
+    msDeleteFile(spConfig.reportsFolder, jsonFilename, function(ok){
+      if(ok) toast('✅ Deleted from SharePoint: ' + jsonFilename);
+      else   toast('⚠️ Could not delete from SharePoint — remove manually if needed');
+    });
+    // Also delete any versioned print files from PDF Reports folder
+    if(spConfig.pdfFolder){
+      msDeleteFilesWithPrefix(spConfig.pdfFolder, r.id, function(count){
+        if(count>0) toast('✅ Deleted '+count+' print file'+(count>1?'s':'')+' from SharePoint');
+      });
+    }
+  }
+}
+
+function msDeleteFile(folderPath, filename, callback){
+  if(!tokenValid()){ if(callback) callback(false); return; }
+  msResolveSite(function(ok){
+    if(!ok){ if(callback) callback(false); return; }
+    var pathEncoded = (folderPath+'/'+filename).split('/').map(encodeURIComponent).join('/');
+    fetch('https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/root:/'+pathEncoded, {
+      method: 'DELETE',
+      headers: {'Authorization':'Bearer '+msAccessToken}
+    }).then(function(r){ if(callback) callback(r.ok||r.status===404); })
+      .catch(function(){ if(callback) callback(false); });
+  });
+}
+
+function msDeleteFilesWithPrefix(folderPath, prefix, callback){
+  // List files in the folder, delete those starting with prefix
+  if(!tokenValid()){ if(callback) callback(0); return; }
+  msResolveSite(function(ok){
+    if(!ok){ if(callback) callback(0); return; }
+    var pathEncoded = folderPath.split('/').map(encodeURIComponent).join('/');
+    fetch('https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/root:/'+pathEncoded+':/children', {
+      headers: {'Authorization':'Bearer '+msAccessToken}
+    }).then(function(r){ return r.ok?r.json():null; })
+    .then(function(data){
+      if(!data||!data.value){ if(callback) callback(0); return; }
+      var matches = data.value.filter(function(f){ return f.name && f.name.startsWith(prefix); });
+      if(matches.length===0){ if(callback) callback(0); return; }
+      var deleted = 0;
+      var done = 0;
+      matches.forEach(function(f){
+        fetch('https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/items/'+f.id, {
+          method: 'DELETE',
+          headers: {'Authorization':'Bearer '+msAccessToken}
+        }).then(function(r){
+          if(r.ok||r.status===404) deleted++;
+          done++;
+          if(done===matches.length && callback) callback(deleted);
+        }).catch(function(){
+          done++;
+          if(done===matches.length && callback) callback(deleted);
+        });
+      });
+    }).catch(function(){ if(callback) callback(0); });
+  });
 }
 
 // ═══ IMPORT / EXPORT ════════════════════════════════════════════════
@@ -4365,8 +4517,8 @@ function loadConfig(){
   if(!spConfig.clientId)      spConfig.clientId      ='f97f593f-d8f9-4225-b366-41c0ba4c3957';
   if(!spConfig.tenantId)      spConfig.tenantId      ='0804c951-93a0-405d-80e4-fa87c7551d6a';
   if(!spConfig.siteUrl)       spConfig.siteUrl       ='https://digicorner.sharepoint.com/sites/FracEquipmentInspectionApp';
-  if(!spConfig.reportsFolder) spConfig.reportsFolder ='FracEquipmentInspectionApp/Shared Documents/General/Inspection App/Reports';
-  if(!spConfig.pdfFolder)     spConfig.pdfFolder     ='FracEquipmentInspectionApp/Shared Documents/General/Inspection App/PDF Reports';
+  if(!spConfig.reportsFolder) spConfig.reportsFolder ='Inspection App/Reports';
+  if(!spConfig.pdfFolder)     spConfig.pdfFolder     ='Inspection App/PDF Reports';
 }
 
 function saveConfig(){
