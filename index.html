@@ -38,11 +38,11 @@
   --btn-idle-color: #512d6d;
   --btn-idle-border: #e2d9f3;
   --btn-idle-hover: #f5f3ff;
-  --home-bg:   #252963;
-  --home-panel:#1a1a4e;
-  --home-panel-border:#3d3a80;
-  --home-hist: #312f70;
-  --home-hist-hover:#3d3a80;
+  --home-bg:   #f0f0f0;
+  --home-panel:#ffffff;
+  --home-panel-border:#e2d9f3;
+  --home-hist: #f5f3ff;
+  --home-hist-hover:#e2d9f3;
 }
 [data-theme="dark"] {
   --bg:        #0e0b1f;
@@ -119,6 +119,28 @@ input,textarea,select{font-family:inherit;font-size:13px}
 .home-actions{display:flex;gap:8px;margin-top:8px}
 .home-actions button{flex:1;padding:10px 12px;border-radius:10px;background:var(--home-hist);color:#94a3b8;font-weight:600;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s}
 .home-actions button:hover{background:var(--home-hist-hover);color:#f1f5f9}
+
+/* ══ LIGHT-MODE HOME PAGE — page now uses the light form background, ══
+   so darken text/elements that were tuned for the old dark navy panel. ══ */
+html:not([data-theme="dark"]) .home-title{color:var(--text)}
+html:not([data-theme="dark"]) .home-sub{color:var(--text3)}
+html:not([data-theme="dark"]) .home-panel{box-shadow:var(--card-sh)}
+html:not([data-theme="dark"]) .home-panel-label{color:var(--text3)}
+html:not([data-theme="dark"]) .equip-row-btn{color:var(--text2)}
+html:not([data-theme="dark"]) .equip-row-btn:hover{color:var(--text)}
+html:not([data-theme="dark"]) .gv-toggle-btn{color:var(--text2)}
+html:not([data-theme="dark"]) .gv-toggle-btn.open{color:var(--text)}
+html:not([data-theme="dark"]) .size-row-btn{color:var(--text2)}
+html:not([data-theme="dark"]) .size-row-btn:hover,
+html:not([data-theme="dark"]) .size-row-btn.open{color:var(--text)}
+html:not([data-theme="dark"]) .scen-normal{color:#00756a}
+html:not([data-theme="dark"]) .scen-normal:hover{color:#004f47}
+html:not([data-theme="dark"]) .scen-os{color:#b45309}
+html:not([data-theme="dark"]) .scen-os:hover{color:#7c3d00}
+html:not([data-theme="dark"]) .history-btn{background:#008c7f;border-color:#008c7f;color:#fff}
+html:not([data-theme="dark"]) .history-btn:hover{background:#00756a;border-color:#00756a;color:#fff}
+html:not([data-theme="dark"]) .home-actions button{border:1px solid var(--border);color:var(--text2)}
+html:not([data-theme="dark"]) .home-actions button:hover{color:var(--text)}
 
 /* ══ TOPBAR ══════════════════════════════════════════════════════ */
 .topbar{background:var(--topbar-bg);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:100;transition:background .2s}
