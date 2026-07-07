@@ -3402,8 +3402,24 @@ function saveReport(){
   const idx=reports.findIndex(r=>r.id===current.id);
   if(idx>=0){ reports[idx]=current; } else { reports.unshift(current); }
   saveReportsToStorage();
-  toast('✓ Report saved');
+  // Sync to SharePoint if connected
+  if(tokenValid() && spConfig.reportsFolder){
+    spSyncReport(JSON.parse(JSON.stringify(current)));
+    toast('✓ Report saved — syncing to SharePoint…');
+  } else {
+    toast('✓ Report saved locally');
+  }
   showView('history');
+}
+
+function spSyncReport(r){
+  var date = (r.savedAt||r.createdAt||'').slice(0,10);
+  var filename = (r.id||'report') + '_' + date + '.json';
+  var jsonStr = JSON.stringify(r, null, 2);
+  msUploadFile(spConfig.reportsFolder, filename, jsonStr, true, function(ok){
+    if(ok){ toast('✅ Synced to SharePoint: ' + filename); }
+    else { toast('⚠️ SharePoint sync failed — saved locally only'); }
+  });
 }
 
 // ═══ HISTORY ════════════════════════════════════════════════════════
