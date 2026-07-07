@@ -4441,12 +4441,10 @@ function connectSharePoint(){
 }
 
 function msSignIn(){
-  // Use Microsoft's native client redirect URI — a blank page Microsoft hosts.
-  // The popup lands on this page with the token in the URL fragment.
-  // Our polling code reads it before the page fully loads.
-  // IT must register this EXACT URI in Azure App Registration → Authentication → SPA:
-  // https://login.microsoftonline.com/common/oauth2/nativeclient
-  var redirectUri = 'https://login.microsoftonline.com/common/oauth2/nativeclient';
+  // The redirect URI points to redirect.html on SharePoint.
+  // That page posts the token back via postMessage then closes itself.
+  // IT must register this EXACT URI as a SPA redirect URI in Azure:
+  var redirectUri = 'https://hsnelect-a11y.github.io/frac-inspection-App/redirect.html';
 
   var scope = 'https://graph.microsoft.com/Files.ReadWrite https://graph.microsoft.com/Sites.ReadWrite.All https://graph.microsoft.com/User.Read openid profile';
   var authUrl = 'https://login.microsoftonline.com/' + spConfig.tenantId + '/oauth2/v2.0/authorize'
@@ -4464,48 +4462,52 @@ function msSignIn(){
     return;
   }
 
-  // Poll the popup URL for the token fragment
-  // After login, Microsoft redirects to redirectUri#access_token=...
-  // We read it from the popup URL before it fully loads the page
-  var poll = setInterval(function(){
+  // Listen for the token posted back from redirect.html
+  function onToken(event){
+    if(!event.data || event.data.type !== 'ms_auth_token') return;
+    window.removeEventListener('message', onToken);
+    clearTimeout(popupTimeout);
+    if(event.data.error){
+      setConnStatus('offline', 'Sign-in error: ' + event.data.error);
+      return;
+    }
+    if(event.data.access_token){
+      msAccessToken  = event.data.access_token;
+      msTokenExpiry  = Date.now() + (event.data.expires_in - 60) * 1000;
+      try{
+        sessionStorage.setItem('ms_at', msAccessToken);
+        sessionStorage.setItem('ms_at_exp', String(msTokenExpiry));
+      }catch(e){}
+      msVerifyConnection();
+    }
+  }
+  window.addEventListener('message', onToken);
+
+  // Safety timeout — if no message in 3 min, clean up
+  var popupTimeout = setTimeout(function(){
+    window.removeEventListener('message', onToken);
+    if(!msAccessToken){
+      setConnStatus('offline', 'Sign-in timed out. Please try again.');
+      try{ popup.close(); }catch(e){}
+    }
+  }, 180000);
+
+  // Also watch for user closing popup manually
+  var closePoll = setInterval(function(){
     try{
       if(popup.closed){
-        clearInterval(poll);
-        if(!msAccessToken) setConnStatus('offline','Sign-in cancelled.');
-        return;
-      }
-      var href='';
-      try{ href=popup.location.href; }catch(e){ return; } // cross-origin — keep waiting
-      if(href && href.indexOf('access_token=')!==-1){
-        clearInterval(poll);
-        popup.close();
-        // Token is in the URL fragment
-        var hash=href.indexOf('#')!==-1 ? href.split('#')[1] : href.split('?')[1]||'';
-        var params={};
-        hash.split('&').forEach(function(p){
-          var kv=p.split('=');
-          params[decodeURIComponent(kv[0])]=decodeURIComponent((kv[1]||'').replace(/\+/g,' '));
-        });
-        if(params.access_token){
-          msAccessToken=params.access_token;
-          msTokenExpiry=Date.now()+(parseInt(params.expires_in||3600)-60)*1000;
-          try{
-            sessionStorage.setItem('ms_at', params.access_token);
-            sessionStorage.setItem('ms_at_exp', String(msTokenExpiry));
-          }catch(e){}
-          msVerifyConnection();
-        }
-      } else if(href && href.indexOf('error=')!==-1){
-        clearInterval(poll);
-        popup.close();
-        var qs=href.indexOf('#')!==-1?href.split('#')[1]:href.split('?')[1]||'';
-        var ep={}; qs.split('&').forEach(function(p){ var kv=p.split('='); ep[kv[0]]=decodeURIComponent(kv[1]||''); });
-        setConnStatus('offline','Sign-in error: '+(ep.error_description||ep.error||'unknown'));
+        clearInterval(closePoll);
+        setTimeout(function(){
+          if(!msAccessToken){
+            window.removeEventListener('message', onToken);
+            clearTimeout(popupTimeout);
+            setConnStatus('offline','Sign-in cancelled.');
+          }
+        }, 1000);
       }
     }catch(e){}
   }, 500);
 }
-
 function msVerifyConnection(){
   setConnStatus('connecting','Verifying…');
   msFetch('https://graph.microsoft.com/v1.0/me','GET',null,function(user){
