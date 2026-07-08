@@ -778,6 +778,25 @@ body.has-sp-banner{padding-top:44px}
 .db-table td{padding:7px 10px;border-bottom:1px solid var(--border)}
 .db-table tr:last-child td{border-bottom:none}
 </style>
+<!-- ===== PWA / installable app setup ===== -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#17133a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="FRAC Inspect" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" type="image/png" href="icons/favicon-64.png" />
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("service-worker.js").catch(function (e) {
+        console.warn("SW registration failed:", e);
+      });
+    });
+  }
+</script>
+<!-- ===== end PWA setup ===== -->
 </head>
 <body>
 
