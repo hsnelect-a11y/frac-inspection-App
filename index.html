@@ -1183,7 +1183,7 @@ body.has-sp-banner{padding-top:44px}
       </button>
     </div>
     <div class="search-row">
-      <input class="search-input" id="search-input" placeholder="Search by Report ID, part no, serial, inspector…" oninput="renderHistory()"/>
+      <input class="search-input" id="search-input" placeholder="Search by Report ID, part no, serial, inspector…" oninput="histSearchDebounced()"/>
       <select class="sort-select" id="sort-select" onchange="renderHistory()">
         <option value="date_desc">Newest first</option>
         <option value="date_asc">Oldest first</option>
@@ -1409,13 +1409,11 @@ function addBFRWPhotos(id,input){
   if(!input.files||!input.files.length) return;
   if(!bfState().reworkPhotos[id]) bfState().reworkPhotos[id]=[];
   Array.from(input.files).forEach(function(file){
-    var reader=new FileReader();
-    reader.onload=function(e){
+    compressImage(file, function(e){
       bfState().reworkPhotos[id].push({src:e.target.result,name:file.name});
       var el=document.getElementById('bf-rw-thumbs-'+id);
       if(el) el.innerHTML=bfRWThumbsHtml(id);
-    };
-    reader.readAsDataURL(file);
+    });
   });
   input.value='';
 }
@@ -1512,13 +1510,11 @@ function addWecoRWPhotos(id,input){
   if(!input.files||!input.files.length) return;
   if(!wecoState().reworkPhotos[id]) wecoState().reworkPhotos[id]=[];
   Array.from(input.files).forEach(function(file){
-    var reader=new FileReader();
-    reader.onload=function(e){
+    compressImage(file, function(e){
       wecoState().reworkPhotos[id].push({src:e.target.result,name:file.name});
       var el=document.getElementById('weco-rw-thumbs-'+id);
       if(el) el.innerHTML=wecoRWThumbsHtml(id);
-    };
-    reader.readAsDataURL(file);
+    });
   });
   input.value='';
 }
@@ -1730,6 +1726,45 @@ let previewReport = null;
 let theme = 'dark';
 
 // ═══ STORAGE ════════════════════════════════════════════════════════
+// ═══ IMAGE COMPRESSION ═══════════════════════════════════════════════
+// Downscales + JPEG-compresses a captured photo before it is stored, so a
+// ~3 MB phone photo becomes ~150 KB. Calls onload({target:{result:dataURL}})
+// to match the original FileReader signature. Falls back to a raw read for
+// non-images or on any failure, so behaviour is never worse than before.
+function compressImage(file, onload){
+  try{
+    if(!file || !/^image\//.test(file.type||'')){
+      var fr0=new FileReader(); fr0.onload=onload; fr0.readAsDataURL(file); return;
+    }
+    var MAX=1280, Q=0.7;
+    var url=URL.createObjectURL(file);
+    var img=new Image();
+    img.onload=function(){
+      try{
+        var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+        if(w>=h && w>MAX){ h=Math.round(h*MAX/w); w=MAX; }
+        else if(h>w && h>MAX){ w=Math.round(w*MAX/h); h=MAX; }
+        var c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        var out=c.toDataURL('image/jpeg',Q);
+        URL.revokeObjectURL(url);
+        if(out && out.length>24){ onload({target:{result:out}}); }
+        else { var fr=new FileReader(); fr.onload=onload; fr.readAsDataURL(file); }
+      }catch(err){
+        URL.revokeObjectURL(url);
+        var fr2=new FileReader(); fr2.onload=onload; fr2.readAsDataURL(file);
+      }
+    };
+    img.onerror=function(){
+      URL.revokeObjectURL(url);
+      var fr3=new FileReader(); fr3.onload=onload; fr3.readAsDataURL(file);
+    };
+    img.src=url;
+  }catch(e){
+    var fr4=new FileReader(); fr4.onload=onload; fr4.readAsDataURL(file);
+  }
+}
+
 function loadReports(){
   try{ const d=localStorage.getItem('valve_insp_v2'); if(d) reports=JSON.parse(d); }catch(e){}
   try{ const t=localStorage.getItem('valve_insp_theme'); if(t) theme=t; }catch(e){}
@@ -2291,16 +2326,14 @@ function rgAddRWPhotos(ft,id,input){
   if(!st.reworkPhotos) st.reworkPhotos={};
   if(!st.reworkPhotos[id]) st.reworkPhotos[id]=[];
   Array.from(input.files).forEach(function(file){
-    var reader=new FileReader();
-    reader.onload=function(e){
+    compressImage(file, function(e){
       st.reworkPhotos[id].push({src:e.target.result,name:file.name});
       var el=document.getElementById('rg-rw-thumbs-'+id);
       if(el) el.innerHTML=flowRWP(st,id).map(function(p,i){
         return '<div class="photo-thumb"><img src="'+p.src+'"/>'
           +'<button class="photo-thumb-del" data-bid="'+id+'" data-idx="'+i+'" data-rgft="'+ft+'" onclick="rgRemoveRWPhoto(this.dataset.rgft,this.dataset.bid,parseInt(this.dataset.idx))">&#x2715;</button></div>';
       }).join('');
-    };
-    reader.readAsDataURL(file);
+    });
   });
   input.value='';
 }
@@ -3166,12 +3199,10 @@ function addReworkPhotos(itemId, input){
   if(!current.reworkPhotos) current.reworkPhotos={};
   if(!current.reworkPhotos[itemId]) current.reworkPhotos[itemId]=[];
   Array.from(input.files).forEach(file=>{
-    const reader=new FileReader();
-    reader.onload=e=>{
+    compressImage(file, e=>{
       current.reworkPhotos[itemId].push({src:e.target.result,name:file.name});
       renderReworkThumbs(itemId);
-    };
-    reader.readAsDataURL(file);
+    });
   });
   input.value='';
 }
@@ -3225,13 +3256,11 @@ function addPhotos(itemId, input){
   const files = Array.from(input.files);
   let loaded = 0;
   files.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
+    compressImage(file, e => {
       current.photos[itemId].push({ src: e.target.result, name: file.name });
       loaded++;
       if(loaded === files.length) renderPhotoThumbs(itemId);
-    };
-    reader.readAsDataURL(file);
+    });
   });
   input.value = ''; // reset so same file can be re-added
 }
@@ -4085,6 +4114,11 @@ function setFilter(type){
   renderHistory();
 }
 
+// History pagination + debounced search (keeps typing instant at any size).
+var HIST_PAGE=60, histLimit=60, histSig='', _histSearchT=null;
+function histSearchDebounced(){ clearTimeout(_histSearchT); _histSearchT=setTimeout(renderHistory,180); }
+function histMore(){ histLimit+=HIST_PAGE; renderHistory(); }
+
 function renderHistory(){
   const q=(document.getElementById('search-input').value||'').toLowerCase();
   const sortBy=document.getElementById('sort-select').value;
@@ -4121,6 +4155,13 @@ function renderHistory(){
     if(sortBy==='type') return (a.formType||'').localeCompare(b.formType||'');
     return 0;
   });
+  // Only render the first histLimit rows; reset the page when the search/filter changes.
+  var _sig=q+'|'+activeFilter+'|'+statusFilter+'|'+sortBy;
+  if(_sig!==histSig){ histSig=_sig; histLimit=HIST_PAGE; }
+  var shown=list.slice(0,histLimit);
+  var moreBtn = list.length>histLimit
+    ? '<div style="padding:14px;text-align:center"><button class="btn-edit" style="width:auto;padding:10px 22px" onclick="histMore()">Show more ('+(list.length-histLimit)+' more)</button></div>'
+    : '';
   var viewMode = localStorage.getItem('hist_view')||'card';
   updateHistViewToggle(viewMode);
   updateLastSyncLabel();
@@ -4132,7 +4173,7 @@ function renderHistory(){
     return;
   }
   if(viewMode==='list'){
-    el.innerHTML='<div class="reports-list-view">'+list.map(r=>{
+    el.innerHTML='<div class="reports-list-view">'+shown.map(r=>{
       const d=DISPOSITIONS[r.disposition]||DISPOSITIONS.incomplete;
       const chipLabel=r.disposition==='all_pass'?'Pass':r.disposition==='rework_complete'?'Rework OK':r.disposition==='has_fails'?'Rework Req':'Draft';
       return `<div class="report-list-row" onclick="showPreview('${r.id}')">
@@ -4152,10 +4193,10 @@ function renderHistory(){
           <button onclick="event.stopPropagation();deleteReport('${r.id}')" class="rli-btn rli-btn-del">✕</button>
         </div>
       </div>`;
-    }).join('')+'</div>';
+    }).join('')+'</div>'+moreBtn;
     return;
   }
-  el.innerHTML='<div class="reports-list">'+list.map(r=>{
+  el.innerHTML='<div class="reports-list">'+shown.map(r=>{
     const d=DISPOSITIONS[r.disposition]||DISPOSITIONS.incomplete;
     const chipLabel=r.disposition==='all_pass'?'✓ Pass':r.disposition==='rework_complete'?'✓ Rework Complete':r.disposition==='has_fails'?'⚠ Rework Required':'Draft';
     return `<div class="report-card">
@@ -4186,7 +4227,7 @@ function renderHistory(){
         <button class="btn-del"  onclick="deleteReport('${r.id}')">✕</button>
       </div>
     </div>`;
-  }).join('')+'</div>';
+  }).join('')+'</div>'+moreBtn;
 }
 
 function editReport(id){
