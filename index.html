@@ -5285,18 +5285,9 @@ function msSignIn(){
     + '&prompt=select_account'
     + '&nonce=frac_'   + Date.now();
 
-  // A popup on a mobile browser tab has no window.opener, so the token can
-  // never post back (endless loading). Use a full-page redirect there; keep
-  // the smoother popup for desktop and the installed app, where it works.
-  var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
-  var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-  if(mobile && !standalone){
-    setConnStatus('connecting','Redirecting to Microsoft sign-in…');
-    window.location.href = authUrl;
-    return;
-  }
-
-  // ---- Popup flow (desktop / installed app) ----
+  // Popup sign-in (opens in a separate window and returns to the app via
+  // redirect.html -> postMessage). The service worker is set to NOT intercept
+  // redirect.html, so the token comes back cleanly.
   var popup = window.open(authUrl, 'ms_login', 'width=520,height=680,left=200,top=80');
   if(!popup){
     // Popup blocked — fall back to a full-page redirect so sign-in still works.
@@ -5304,6 +5295,7 @@ function msSignIn(){
     window.location.href = authUrl;
     return;
   }
+  setConnStatus('connecting','Complete sign-in in the pop-up window…');
 
   function onToken(event){
     if(!event.data || event.data.type !== 'ms_auth_token') return;
@@ -5320,6 +5312,7 @@ function msSignIn(){
         sessionStorage.setItem('ms_at', msAccessToken);
         sessionStorage.setItem('ms_at_exp', String(msTokenExpiry));
       }catch(e){}
+      try{ popup.close(); }catch(e){}
       msVerifyConnection();
     }
   }
