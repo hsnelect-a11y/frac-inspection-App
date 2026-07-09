@@ -4493,7 +4493,7 @@ function previewBFRows(r){
     var photoHtml=photos.length?'<div class="preview-photo-row">'+
       photos.map(function(p,pi){
         return '<div class="preview-photo-thumb preview-photo-expandable">'
-          +'<img src="'+p.src+'" alt="Photo '+(pi+1)+'" style="cursor:zoom-in" onclick="this.closest(&quot;.preview-photo-thumb&quot;).classList.toggle(&quot;expanded&quot;)"/>'
+          +'<img src="'+p.src+'" alt="Photo '+(pi+1)+'" style="cursor:zoom-in" />'
           +'<div class="preview-photo-num">Photo '+(pi+1)+'</div></div>';
       }).join('')+'</div>':'';
     // Engineering disposition
@@ -4506,7 +4506,7 @@ function previewBFRows(r){
     var rwPhotoHtml=rwphotos.length?'<div class="preview-photo-row">'+
       rwphotos.map(function(p,pi){
         return '<div class="preview-photo-thumb preview-photo-expandable">'
-          +'<img src="'+p.src+'" alt="Rework '+(pi+1)+'" style="cursor:zoom-in" onclick="this.closest(&quot;.preview-photo-thumb&quot;).classList.toggle(&quot;expanded&quot;)"/>'
+          +'<img src="'+p.src+'" alt="Rework '+(pi+1)+'" style="cursor:zoom-in" />'
           +'<div class="preview-photo-num">Rework '+(pi+1)+'</div></div>';
       }).join('')+'</div>':'';
     var rwBadge=rwv?'<span class="result-badge '+(rwv==='pass'?'badge-pass':'badge-fail')+'" style="font-size:9px">'+rwv.toUpperCase()+'</span>':'';
@@ -4648,7 +4648,7 @@ function previewItemRow(r,item){
   const photos=(r.photos&&r.photos[item.id])||[];
   const photoHtml=photos.length?`<div class="preview-photo-row">${
     photos.map((p,i)=>`<div class="preview-photo-thumb">
-      <img src="${p.src}" alt="Photo ${i+1}" onclick="this.closest('.preview-photo-thumb').classList.toggle('expanded')"/>
+      <img src="${p.src}" alt="Photo ${i+1}" />
       <div class="preview-photo-num">Photo ${i+1}</div>
     </div>`).join('')
   }</div>`:'';
@@ -4664,7 +4664,7 @@ function previewItemRow(r,item){
   const rwBadge=rwv?`<span class="result-badge ${rwv==='pass'?'badge-pass':'badge-fail'}" style="font-size:9px">${rwv.toUpperCase()}</span>`:'';
   const rwPhotoHtml=rwphotos.length?`<div class="preview-photo-row">${
     rwphotos.map((p,i)=>`<div class="preview-photo-thumb">
-      <img src="${p.src}" alt="Rework Photo ${i+1}" onclick="this.closest('.preview-photo-thumb').classList.toggle('expanded')"/>
+      <img src="${p.src}" alt="Rework Photo ${i+1}" />
       <div class="preview-photo-num">Rework ${i+1}</div>
     </div>`).join('')
   }</div>`:'';
@@ -5730,7 +5730,7 @@ if(isConfigured()){
   function closeLB(){ lb.classList.remove('open'); im.src=''; }
   document.addEventListener('click', function(e){
     var t=e.target;
-    if(t && t.tagName==='IMG' && t.closest && t.closest('.photo-thumb')){ openLB(t.src); return; }
+    if(t && t.tagName==='IMG' && t.closest && (t.closest('.photo-thumb') || t.closest('.preview-photo-thumb'))){ openLB(t.src); return; }
     if(t===im){ im.classList.toggle('zoom'); return; }
     if(t.classList && t.classList.contains('fx-lb-x')){ closeLB(); return; }
     if(t===lb){ closeLB(); }
