@@ -5273,11 +5273,9 @@ function connectSharePoint(){
 }
 
 function msSignIn(){
-  // The redirect URI points to redirect.html on SharePoint.
-  // That page posts the token back via postMessage then closes itself.
-  // IT must register this EXACT URI as a SPA redirect URI in Azure:
+  // IT/Azure: this EXACT URI must be a registered redirect URI (SPA platform)
+  // with implicit "Access tokens" enabled.
   var redirectUri = 'https://hsnelect-a11y.github.io/frac-inspection-App/redirect.html';
-
   var scope = 'https://graph.microsoft.com/Files.ReadWrite https://graph.microsoft.com/Sites.ReadWrite.All https://graph.microsoft.com/User.Read openid profile';
   var authUrl = 'https://login.microsoftonline.com/' + spConfig.tenantId + '/oauth2/v2.0/authorize'
     + '?client_id='    + encodeURIComponent(spConfig.clientId)
@@ -5287,14 +5285,26 @@ function msSignIn(){
     + '&prompt=select_account'
     + '&nonce=frac_'   + Date.now();
 
-  var popup = window.open(authUrl, 'ms_login', 'width=520,height=680,left=200,top=80');
-  if(!popup){
-    toast('Popup blocked — please allow popups and try again');
-    setConnStatus('offline','Popup blocked. Allow popups and try again.');
+  // A popup on a mobile browser tab has no window.opener, so the token can
+  // never post back (endless loading). Use a full-page redirect there; keep
+  // the smoother popup for desktop and the installed app, where it works.
+  var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  var mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  if(mobile && !standalone){
+    setConnStatus('connecting','Redirecting to Microsoft sign-in…');
+    window.location.href = authUrl;
     return;
   }
 
-  // Listen for the token posted back from redirect.html
+  // ---- Popup flow (desktop / installed app) ----
+  var popup = window.open(authUrl, 'ms_login', 'width=520,height=680,left=200,top=80');
+  if(!popup){
+    // Popup blocked — fall back to a full-page redirect so sign-in still works.
+    setConnStatus('connecting','Popup blocked — redirecting to Microsoft sign-in…');
+    window.location.href = authUrl;
+    return;
+  }
+
   function onToken(event){
     if(!event.data || event.data.type !== 'ms_auth_token') return;
     window.removeEventListener('message', onToken);
@@ -5315,7 +5325,6 @@ function msSignIn(){
   }
   window.addEventListener('message', onToken);
 
-  // Safety timeout — if no message in 3 min, clean up
   var popupTimeout = setTimeout(function(){
     window.removeEventListener('message', onToken);
     if(!msAccessToken){
@@ -5324,7 +5333,6 @@ function msSignIn(){
     }
   }, 180000);
 
-  // Also watch for user closing popup manually
   var closePoll = setInterval(function(){
     try{
       if(popup.closed){
@@ -5741,6 +5749,78 @@ if(isConfigured()){
     if(t===lb){ closeLB(); }
   }, false);
   document.addEventListener('keydown', function(e){ if(e.key==='Escape' && lb.classList.contains('open')) closeLB(); });
+})();
+</script>
+<script>
+/* In-app updater: floating Refresh button + "update available" indicator. */
+(function(){
+  var css='#fx-refresh{position:fixed;left:calc(env(safe-area-inset-left,0px) + 12px);'
+    +'top:calc(env(safe-area-inset-top,0px) + 12px);z-index:99998;width:44px;height:44px;'
+    +'border-radius:50%;border:none;background:rgba(23,19,58,.85);color:#fff;'
+    +'box-shadow:0 2px 10px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;'
+    +'cursor:pointer;font-size:22px;line-height:1;padding:0}'
+    +'#fx-refresh .fx-dot{position:absolute;top:5px;right:5px;width:10px;height:10px;border-radius:50%;'
+    +'background:#b90096;display:none;border:2px solid #17133a}'
+    +'#fx-refresh.fx-upd{background:#af61ff;animation:fxpulse 1.4s infinite}'
+    +'#fx-refresh.fx-upd .fx-dot{display:block}'
+    +'@keyframes fxpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.09)}}';
+  var s=document.createElement('style');s.textContent=css;document.head.appendChild(s);
+  var btn=document.createElement('button');btn.id='fx-refresh';
+  btn.title='Refresh / check for updates';
+  btn.innerHTML='&#x21bb;<span class="fx-dot"></span>';
+  document.body.appendChild(btn);
+
+  // Only show on the home (front) page.
+  function fxVisible(name){ btn.style.display = (name==='home') ? 'flex' : 'none'; }
+  if(typeof window.showView==='function'){
+    var _fxShowView=window.showView;
+    window.showView=function(n){ var r=_fxShowView.apply(this,arguments); try{ fxVisible(n); }catch(e){} return r; };
+  }
+  (function(){
+    var h=document.getElementById('view-home');
+    fxVisible(h && !h.classList.contains('hidden') ? 'home' : 'other');
+  })();
+
+  function appRefresh(){
+    btn.style.opacity='0.5';
+    var done=function(){ location.reload(); };
+    var p=Promise.resolve();
+    if('serviceWorker' in navigator){
+      p=navigator.serviceWorker.getRegistration().then(function(reg){
+        if(!reg) return;
+        return Promise.resolve(reg.update()).catch(function(){}).then(function(){
+          if(reg.waiting){ reg.waiting.postMessage({type:'SKIP_WAITING'}); }
+        });
+      }).catch(function(){});
+    }
+    p.then(function(){
+      if(window.caches){
+        return caches.keys().then(function(ks){
+          return Promise.all(ks.map(function(k){return caches.delete(k);}));
+        }).catch(function(){});
+      }
+    }).then(done, done);
+  }
+  btn.addEventListener('click', appRefresh);
+
+  if('serviceWorker' in navigator){
+    var reloaded=false;
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if(reloaded) return; reloaded=true; location.reload();
+    });
+    navigator.serviceWorker.getRegistration().then(function(reg){
+      if(!reg) return;
+      try{ reg.update(); }catch(e){}
+      function markUpd(){ btn.classList.add('fx-upd'); btn.title='New version ready — tap to update'; }
+      if(reg.waiting && navigator.serviceWorker.controller) markUpd();
+      reg.addEventListener('updatefound', function(){
+        var nw=reg.installing;
+        if(nw) nw.addEventListener('statechange', function(){
+          if(nw.state==='installed' && navigator.serviceWorker.controller) markUpd();
+        });
+      });
+    }).catch(function(){});
+  }
 })();
 </script>
 </body>

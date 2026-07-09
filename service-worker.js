@@ -1,12 +1,10 @@
 /* FRAC Equipment Inspection — Service Worker
- * Offline support + instant loads, WITHOUT ever serving a stale app.
- * Bump CACHE_VERSION on every deploy so devices refresh.
+ * Offline support + instant loads, without ever serving a stale app.
+ * Bump CACHE_VERSION on every deploy.
  */
-const CACHE_VERSION = "frac-2026-07-09";
+const CACHE_VERSION = "frac-2026-07-09b";
 const APP_SHELL = "./";
 
-// Always pull the shell straight from the network (never the HTTP cache) so
-// a new deploy is picked up immediately; fall back to cache only when offline.
 function freshFetch(url) {
   return fetch(url, { cache: "no-store", credentials: "same-origin" });
 }
@@ -14,12 +12,11 @@ function freshFetch(url) {
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION).then((cache) =>
-      freshFetch(APP_SHELL)
-        .then((res) => cache.put(APP_SHELL, res.clone()))
-        .catch(() => {})
+      freshFetch(APP_SHELL).then((res) => cache.put(APP_SHELL, res.clone())).catch(() => {})
     )
   );
-  self.skipWaiting();
+  // NOTE: no skipWaiting here — a new version waits so it can't reload you
+  // mid-report. The in-app Refresh button (or closing all tabs) activates it.
 });
 
 self.addEventListener("activate", (event) => {
@@ -31,11 +28,15 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// Let the page tell a waiting worker to activate immediately (Refresh button).
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+});
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
 
-  // Page loads: fresh-from-network first, cached shell only if offline.
   if (req.mode === "navigate") {
     event.respondWith(
       freshFetch(req.url)
@@ -49,7 +50,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Other assets: stale-while-revalidate.
   event.respondWith(
     caches.match(req).then((cached) => {
       const network = fetch(req)
