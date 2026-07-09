@@ -1,8 +1,9 @@
 /* FRAC Equipment Inspection — Service Worker
- * Offline support + instant loads, without ever serving a stale app.
+ * Offline support + instant loads, without ever serving a stale app,
+ * and WITHOUT interfering with Microsoft sign-in.
  * Bump CACHE_VERSION on every deploy.
  */
-const CACHE_VERSION = "frac-2026-07-09b";
+const CACHE_VERSION = "frac-2026-07-09c";
 const APP_SHELL = "./";
 
 function freshFetch(url) {
@@ -15,8 +16,6 @@ self.addEventListener("install", (event) => {
       freshFetch(APP_SHELL).then((res) => cache.put(APP_SHELL, res.clone())).catch(() => {})
     )
   );
-  // NOTE: no skipWaiting here — a new version waits so it can't reload you
-  // mid-report. The in-app Refresh button (or closing all tabs) activates it.
 });
 
 self.addEventListener("activate", (event) => {
@@ -28,7 +27,6 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Let the page tell a waiting worker to activate immediately (Refresh button).
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
 });
@@ -36,6 +34,16 @@ self.addEventListener("message", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
+
+  // CRITICAL: never intercept the OAuth return page. Microsoft redirects back
+  // to redirect.html with the token in the URL fragment; the service worker
+  // must stay out of the way so the browser handles it natively (this is why
+  // sign-in works in Incognito). Also skip anything carrying an auth token.
+  if (req.url.indexOf("redirect.html") !== -1 ||
+      req.url.indexOf("access_token") !== -1 ||
+      req.url.indexOf("code=") !== -1) {
+    return; // let the browser handle it directly
+  }
 
   if (req.mode === "navigate") {
     event.respondWith(
