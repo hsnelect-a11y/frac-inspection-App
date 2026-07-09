@@ -1,54 +1,76 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<title>Signing in...</title>
-<style>
-  body{font-family:-apple-system,sans-serif;display:flex;align-items:center;
-       justify-content:center;height:100vh;margin:0;background:#0e0b1f;color:#c4b5e8}
-  .msg{text-align:center;padding:20px}
-  .spinner{width:32px;height:32px;border:3px solid rgba(175,97,255,.3);
-           border-top-color:#af61ff;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
-  @keyframes spin{to{transform:rotate(360deg)}}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Signing in…</title>
+  <style>
+    html,body{height:100%;margin:0}
+    body{display:flex;align-items:center;justify-content:center;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      background:#0e0b1f;color:#f4f2ff}
+    .box{text-align:center}
+    .spin{width:34px;height:34px;margin:0 auto 14px;border:3px solid rgba(175,97,255,.3);
+      border-top-color:#af61ff;border-radius:50%;animation:s 1s linear infinite}
+    @keyframes s{to{transform:rotate(360deg)}}
+  </style>
 </head>
 <body>
-<div class="msg">
-  <div class="spinner"></div>
-  <div>Completing sign-in...</div>
-</div>
-<script>
-(function(){
-  // Parse the URL fragment for token or error
-  var hash = window.location.hash.substring(1) || window.location.search.substring(1);
-  var params = {};
-  hash.split('&').forEach(function(p){
-    var kv = p.split('=');
-    if(kv[0]) params[decodeURIComponent(kv[0])] = decodeURIComponent((kv[1]||'').replace(/\+/g,' '));
-  });
+  <div class="box">
+    <div class="spin"></div>
+    <div id="msg">Completing sign-in…</div>
+  </div>
+  <script>
+    (function () {
+      var APP_ORIGIN = 'https://hsnelect-a11y.github.io';
+      var APP_URL    = 'https://hsnelect-a11y.github.io/frac-inspection-App/';
 
-  var msg = { type: 'ms_auth_token' };
+      // Parse the #access_token=...&expires_in=...&error=... fragment from Azure.
+      function parseHash(h) {
+        var o = {};
+        (h || '').replace(/^#/, '').split('&').forEach(function (kv) {
+          if (!kv) return;
+          var i = kv.indexOf('=');
+          var k = decodeURIComponent(kv.slice(0, i));
+          var v = decodeURIComponent(kv.slice(i + 1));
+          o[k] = v;
+        });
+        return o;
+      }
 
-  if(params.access_token){
-    msg.access_token = params.access_token;
-    msg.expires_in   = parseInt(params.expires_in || '3600');
-    msg.token_type   = params.token_type || 'Bearer';
-  } else if(params.error){
-    msg.error             = params.error;
-    msg.error_description = params.error_description || params.error;
-  } else {
-    msg.error = 'no_token';
-    msg.error_description = 'No token received in redirect';
-  }
+      var p = parseHash(window.location.hash);
+      var msg = { type: 'ms_auth_token' };
+      if (p.access_token) {
+        msg.access_token = p.access_token;
+        msg.expires_in = parseInt(p.expires_in || '3600', 10);
+      }
+      if (p.error) {
+        msg.error = p.error_description || p.error;
+        document.getElementById('msg').textContent = 'Sign-in error: ' + msg.error;
+      }
 
-  // Post to opener (the inspection app)
-  if(window.opener){
-    window.opener.postMessage(msg, '*');
-  }
+      // Preferred path (desktop popup): hand the token back to the app window.
+      try {
+        if (window.opener) { window.opener.postMessage(msg, APP_ORIGIN); }
+      } catch (e) {}
 
-  // Close this popup after a short delay
-  setTimeout(function(){ window.close(); }, 300);
-})();
-</script>
+      // Close the popup, or — on mobile where there is no opener — stash the
+      // token for this tab and return to the app so it isn't left hanging.
+      setTimeout(function () {
+        var hadOpener = !!window.opener;
+        try { window.close(); } catch (e) {}
+        if (!hadOpener) {
+          try {
+            if (msg.access_token) {
+              sessionStorage.setItem('ms_at', msg.access_token);
+              sessionStorage.setItem('ms_at_exp',
+                String(Date.now() + (msg.expires_in - 60) * 1000));
+            }
+          } catch (e) {}
+          window.location.replace(APP_URL);
+        }
+      }, 500);
+    })();
+  </script>
 </body>
 </html>

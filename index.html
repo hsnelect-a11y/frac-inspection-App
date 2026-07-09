@@ -2038,7 +2038,7 @@ function startGV(sizeKey, scenario){
     formType:'GATE_VALVE',
     createdAt:new Date().toISOString(),
     header:{sizeDesc:(GV_SIZES[sizeKey]||'') + ' - ' + (GV_SCENARIOS[scenario]||'')},
-    findings:{}, comments:{}, photos:{}, itemDispositions:{}, reworkFindings:{}, reworkComments:{}, reworkPhotos:{}, bfState:null, wecoState:null, crossState:null, adapterFlowState:null, spares:[], engineeringNotes:'', inspector:'', engineerName:'', disposition:'incomplete'
+    findings:{}, comments:{}, photos:{}, itemDispositions:{}, reworkFindings:{}, reworkComments:{}, reworkPhotos:{}, bfState:null, wecoState:null, crossState:null, adapterFlowState:null, spares:[], engineeringNotes:'', inspector:(spConfig.userName||''), engineerName:'', disposition:'incomplete'
   };
   renderForm();
   showView('form');
@@ -2049,7 +2049,7 @@ function startFormForEquip(type){
     id:genId(), equipType:type,
     formType: type==='ACTUATOR' ? 'ACTUATOR' : type,
     createdAt:new Date().toISOString(),
-    header:{}, findings:{}, comments:{}, photos:{}, itemDispositions:{}, reworkFindings:{}, reworkComments:{}, reworkPhotos:{}, bfState:null, wecoState:null, crossState:null, adapterFlowState:null, spares:[], engineeringNotes:'', inspector:'', engineerName:'', disposition:'incomplete'
+    header:{}, findings:{}, comments:{}, photos:{}, itemDispositions:{}, reworkFindings:{}, reworkComments:{}, reworkPhotos:{}, bfState:null, wecoState:null, crossState:null, adapterFlowState:null, spares:[], engineeringNotes:'', inspector:(spConfig.userName||''), engineerName:'', disposition:'incomplete'
   };
   renderForm();
   showView('form');
@@ -5713,6 +5713,35 @@ showView('home');
 if(isConfigured()){
   setTimeout(msAutoConnect, 600);
 }
+</script>
+<script>
+/* Photo lightbox: tap any inspection photo to view full-size; tap image to zoom; X or backdrop to close. */
+(function(){
+  var css='.fx-lb{position:fixed;inset:0;z-index:100000;background:rgba(8,6,20,.93);display:none;'
+    +'align-items:center;justify-content:center;overflow:auto;-webkit-overflow-scrolling:touch;padding:12px}'
+    +'.fx-lb.open{display:flex}'
+    +'.fx-lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;'
+    +'transition:transform .2s ease;cursor:zoom-in;user-select:none;-webkit-user-select:none}'
+    +'.fx-lb img.zoom{transform:scale(2.3);cursor:zoom-out;max-width:none;max-height:none}'
+    +'.fx-lb-x{position:fixed;top:14px;right:14px;width:46px;height:46px;border:none;border-radius:50%;'
+    +'background:rgba(255,255,255,.16);color:#fff;font-size:22px;line-height:1;cursor:pointer;'
+    +'display:flex;align-items:center;justify-content:center;z-index:2}';
+  var s=document.createElement('style'); s.textContent=css; document.head.appendChild(s);
+  var lb=document.createElement('div'); lb.className='fx-lb';
+  lb.innerHTML='<button class="fx-lb-x" aria-label="Close">\u2715</button><img alt="Inspection photo">';
+  document.body.appendChild(lb);
+  var im=lb.querySelector('img');
+  function openLB(src){ im.classList.remove('zoom'); im.src=src; lb.classList.add('open'); }
+  function closeLB(){ lb.classList.remove('open'); im.src=''; }
+  document.addEventListener('click', function(e){
+    var t=e.target;
+    if(t && t.tagName==='IMG' && t.closest && t.closest('.photo-thumb')){ openLB(t.src); return; }
+    if(t===im){ im.classList.toggle('zoom'); return; }
+    if(t.classList && t.classList.contains('fx-lb-x')){ closeLB(); return; }
+    if(t===lb){ closeLB(); }
+  }, false);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape' && lb.classList.contains('open')) closeLB(); });
+})();
 </script>
 </body>
 </html>
