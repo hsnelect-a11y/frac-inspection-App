@@ -1,19 +1,27 @@
 /* FRAC Equipment Inspection — Service Worker
- * Gives the installed app offline support and instant loads.
- * Bump CACHE_VERSION whenever you deploy changes so devices refresh.
+ * Offline support + instant loads, WITHOUT ever serving a stale app.
+ * Bump CACHE_VERSION on every deploy so devices refresh.
  */
-const CACHE_VERSION = "frac-v1";
+const CACHE_VERSION = "frac-2026-07-09";
 const APP_SHELL = "./";
 
-// Pre-cache the entry point so the app opens even with no signal.
+// Always pull the shell straight from the network (never the HTTP cache) so
+// a new deploy is picked up immediately; fall back to cache only when offline.
+function freshFetch(url) {
+  return fetch(url, { cache: "no-store", credentials: "same-origin" });
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_VERSION).then((cache) => cache.addAll([APP_SHELL]))
+    caches.open(CACHE_VERSION).then((cache) =>
+      freshFetch(APP_SHELL)
+        .then((res) => cache.put(APP_SHELL, res.clone()))
+        .catch(() => {})
+    )
   );
   self.skipWaiting();
 });
 
-// Remove old caches on activation.
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -25,14 +33,12 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-
-  // Only handle GET; let the browser deal with POST/PUT (e.g. SharePoint sync).
   if (req.method !== "GET") return;
 
-  // Page navigations: network-first, fall back to cached shell when offline.
+  // Page loads: fresh-from-network first, cached shell only if offline.
   if (req.mode === "navigate") {
     event.respondWith(
-      fetch(req)
+      freshFetch(req.url)
         .then((res) => {
           const copy = res.clone();
           caches.open(CACHE_VERSION).then((c) => c.put(APP_SHELL, copy));
