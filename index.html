@@ -216,6 +216,52 @@ html:not([data-theme="dark"]) .home-actions button:hover{color:var(--text)}
 .del-btn:hover{color:#b91c1c}
 .add-spare-btn{margin-top:8px;color:#af61ff;font-size:12px;font-weight:600;background:none;padding:0}
 .add-spare-btn:hover{color:#9333ea;text-decoration:underline}
+/* ══ SPARE PARTS AUTO (linked) ══════════════════════════════════ */
+.spare-summary{font-size:12.5px;font-weight:800;color:var(--brand2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin:2px 0 8px}
+.spare-note{font-size:12.5px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin:4px 0 10px}
+.spare-sub{margin-top:14px}
+.spare-sub-h{font-size:12px;font-weight:800;color:var(--text);text-transform:uppercase;letter-spacing:.03em;margin:0 0 6px}
+.spare-sub-h .sub-hint{font-weight:600;text-transform:none;letter-spacing:0;color:var(--text3)}
+.sp-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.sp-tbl th{background:var(--brand-dk);color:#fff;font-size:10px;font-weight:800;text-transform:uppercase;padding:6px 8px;border:1px solid var(--brand-dk);text-align:left}
+.sp-tbl th.c,.sp-tbl td.c{text-align:center}
+.sp-tbl td{border:1px solid var(--border);padding:6px 8px;color:var(--text);vertical-align:top}
+/* yellow only for consumables */
+.cons-block .sp-tbl th{background:#fff3b0;color:#7a5c00;border-color:#f0e2a8}
+.cons-block .sp-tbl tbody tr{background:rgba(255,243,176,.28)}
+[data-theme="dark"] .cons-block .sp-tbl th{background:#4a4020;color:#ffe488;border-color:#5c5030}
+[data-theme="dark"] .cons-block .sp-tbl tbody tr{background:rgba(255,220,90,.06)}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;white-space:nowrap}
+.rep-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none}
+.rep-badge{font-size:10px;font-weight:800;letter-spacing:.03em;color:#7c3aed;background:rgba(124,58,237,.12);padding:2px 7px;border-radius:20px}
+.rep-badge.off{color:var(--text3);background:rgba(120,120,120,.15)}
+/* condition table result buttons */
+.cond-tbl td{vertical-align:middle}
+.rf-btns{display:inline-flex;gap:4px}
+.rf-btn{font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--btn-idle-bg);color:var(--btn-idle-color);cursor:pointer}
+.rf-btn.active-pass{background:#16a34a;border-color:#16a34a;color:#fff}
+.rf-btn.active-fail{background:#dc2626;border-color:#dc2626;color:#fff}
+.cond-tr.pass-row{background:rgba(16,163,74,.06)}
+.cond-tr.fail-row{background:rgba(220,38,38,.06)}
+.disp-cell{min-width:150px}
+.disp-none{color:var(--text3)}
+.use-asis{font-size:12px;font-weight:700;color:#15803d}
+[data-theme="dark"] .use-asis{color:#4ade80}
+.cond-sel{width:100%;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--input-bg);color:var(--text);font-size:12px}
+.cond-disp-text{font-size:11.5px;color:var(--text2);line-height:1.5;margin-top:5px;white-space:pre-wrap}
+.cond-disp-text.is-replace{color:var(--brand2);font-weight:700}
+.cond-detail>td{border:1px solid var(--border);border-top:none;padding:10px 12px;background:rgba(220,38,38,.05)}
+[data-theme="dark"] .cond-detail>td{background:rgba(220,38,38,.10)}
+.cond-detail-inner{display:flex;flex-direction:column;gap:7px}
+.cond-detail-lbl{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--text3)}
+.cond-tr.fail-row td{border-bottom:none}
+/* PN banner */
+.pn-banner{font-size:12.5px;padding:9px 12px;border-radius:8px;margin:2px 0 6px;border:1px solid}
+.pn-empty{background:var(--bg3);border-color:var(--border);color:var(--text2)}
+.pn-ok{background:rgba(16,163,74,.10);border-color:rgba(16,163,74,.35);color:#15803d}
+.pn-warn{background:rgba(234,88,12,.10);border-color:rgba(234,88,12,.4);color:#c2410c}
+[data-theme="dark"] .pn-ok{color:#4ade80}
+[data-theme="dark"] .pn-warn{color:#fdba74}
 .save-full-btn{width:100%;background:#af61ff;color:#fff;padding:14px;border-radius:12px;font-size:14px;font-weight:700;transition:background .15s}
 .save-full-btn:hover{background:#9333ea}
 
@@ -885,7 +931,7 @@ body.has-sp-banner{padding-top:44px}
   <line x1="22" y1="15" x2="22" y2="13.5" stroke="currentColor" stroke-width="1" opacity=".5"/>
   <line x1="22" y1="21" x2="22" y2="22.5" stroke="currentColor" stroke-width="1" opacity=".5"/>
 </svg></span><span class="equip-btn-label">Adapter</span><span class="equip-arrow">›</span></button>
-        <button class="equip-row-btn" onclick="selectEquip('CROSS')"><span class="equip-icon-wrap"><svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <div class="gv-accordion"><button class="equip-row-btn gv-toggle-btn" id="cross-toggle" onclick="toggleCross()"><span class="equip-icon-wrap"><svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!-- Horizontal body -->
   <rect x="2" y="14" width="32" height="8" rx="2" stroke="currentColor" stroke-width="1.7" fill="currentColor" opacity=".1"/>
   <!-- Vertical body -->
@@ -903,7 +949,7 @@ body.has-sp-banner{padding-top:44px}
   <rect x="14" y="2" width="8" height="3" fill="currentColor" opacity=".2" rx="1"/>
   <!-- End flanges - bottom -->
   <rect x="14" y="31" width="8" height="3" fill="currentColor" opacity=".2" rx="1"/>
-</svg></span><span class="equip-btn-label">Cross</span><span class="equip-arrow">›</span></button>
+</svg></span><span class="equip-btn-label">Cross</span><span class="equip-arrow" id="cross-arrow">›</span></button><div id="cross-sub" class="gv-sub hidden"><button class="scen-btn scen-normal" onclick="startCross('3WAY')">3-Way T Block</button><button class="scen-btn scen-normal" onclick="startCross('4WAY')">4-Way Block</button><button class="scen-btn scen-normal" onclick="startCross('5WAY')">5-Way Block</button><button class="scen-btn scen-normal" onclick="startCross('6WAY')">6-Way Block</button></div></div>
         <button class="equip-row-btn" onclick="selectEquip('ACTUATOR')"><span class="equip-icon-wrap"><svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!-- Cylinder body -->
   <rect x="5" y="8" width="22" height="20" rx="3" stroke="currentColor" stroke-width="1.8" fill="currentColor" opacity=".1"/>
@@ -1268,6 +1314,2464 @@ const GV_SCENARIOS = {
   OS_060: 'Oversized .060"'
 };
 
+/* ══ SPARE PARTS AUTO-POPULATE (linked from iComplete_Spare_parts workbook) ══
+   Populated by equipment identity (equipType + gvSize + gvScenario), NOT by the
+   typed Part No. — the typed PN is used only for the verification banner.
+   All equipment PNs confirmed (one PN per equipment).                     ═══ */
+const SPARE_PARTS_CATALOG = {
+ "GATE_VALVE|3_1_16_15K|NORMAL": {
+  "label": "GV 3 1/16\" 15K",
+  "pns": [
+   "P150013"
+  ],
+  "consumables": [
+   {
+    "pn": "90-139-067",
+    "description": "U CUP SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P408153",
+    "description": "NON-METALLIC SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "90-139-319",
+    "description": "UV PACKING ASSY",
+    "qty": "1"
+   },
+   {
+    "pn": "48-082-085",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P1000027417",
+    "description": "Bonnet Seal",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-022",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "48-086-033",
+    "description": "NON METALLIC SEAL",
+    "qty": "1"
+   },
+   {
+    "pn": "48-081-821",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "73-050-151",
+    "description": "API RING GASKET, BX-151",
+    "qty": "1"
+   },
+   {
+    "pn": "P2000037406",
+    "description": "PROTECTOR CAP",
+    "qty": "2"
+   },
+   {
+    "pn": "48-104-075",
+    "description": "Shear Pin",
+    "qty": "1"
+   }
+  ],
+  "condition": [
+   {
+    "pn": "48-108-118",
+    "description": "BELLEVILLE SPRING",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Hit marks, deformation that cause changing the body dimension",
+      "disp": "Replace with new 48-108-118 BELLEVILLE SPRING x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-120-028",
+    "description": "BLEEDER PLUG ASSY",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new 48-120-028 BLEEDER PLUG ASSY x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "90-139-101",
+    "description": "Packing Nut",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     }
+    ]
+   },
+   {
+    "pn": "P169046",
+    "description": "THRUST BEARING, ASSY",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Defect appreas on bearing Rollers",
+      "disp": "replace with new. P169046 THRUST BEARING x QTY required.",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "90-139-119",
+    "description": "Bonnet CAP Body",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "ACME Threads:  Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "SET SCREW threads and Grease fitting threads: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "ACME Threads deformation",
+      "disp": "Replace with new. 90-139-119 Bonnet CAP x 1ea",
+      "replace": true
+     },
+     {
+      "label": "SET SCREW and Grease fitting threads deformation",
+      "disp": "Replace with new. 90-139-119 Bonnet CAP Body x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P169275",
+    "description": "Stem Retainer",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new.",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "79-040-125",
+    "description": "Set Screw",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. 79-040-125 Set Screw x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-085-114",
+    "description": "Packing Nut Follower",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new. 48-085-114 Packing Nut Follower x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P152678",
+    "description": "PAD Stud",
+    "qty": "8",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P152678 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P121763-0000",
+    "description": "Gate Guide",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "Big Deformation",
+      "disp": "Replace with new. P121763-0000 Gate Guide x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P165236",
+    "description": "Lift Nut",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P165236 Lift Nut x 1ea",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "GATE_VALVE|3_1_16_15K|OS_030": {
+  "label": "GV 3 1/16\" 15K",
+  "pns": [
+   "P1000162344"
+  ],
+  "consumables": [
+   {
+    "pn": "P1000156619",
+    "description": "U CUP SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000156545",
+    "description": "NON-METALLIC SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "90-139-319",
+    "description": "UV PACKING ASSY",
+    "qty": "1"
+   },
+   {
+    "pn": "P169046",
+    "description": "THRUST BEARING, ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "48-082-085",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P1000027417",
+    "description": "Bonnet Seal",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-022",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "48-086-033",
+    "description": "NON METALLIC SEAL",
+    "qty": "1"
+   },
+   {
+    "pn": "48-081-821",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "73-050-151",
+    "description": "API RING GASKET, BX-151",
+    "qty": "1"
+   },
+   {
+    "pn": "P2000037406",
+    "description": "PROTECTOR CAP",
+    "qty": "2"
+   },
+   {
+    "pn": "48-104-075",
+    "description": "Shear Pin",
+    "qty": "1"
+   },
+   {
+    "pn": "GV 3 1/16\" 15K | Part No.: P1000162344 - Based on condition parts -  OS30",
+    "description": "",
+    "qty": ""
+   }
+  ],
+  "condition": [
+   {
+    "pn": "P1000159943",
+    "description": "BELLEVILLE SPRING",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Hit marks, deformation that cause changing the body dimension",
+      "disp": "Replace with new P1000159943 BELLEVILLE SPRING x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-120-028",
+    "description": "BLEEDER PLUG ASSY",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new 48-120-028 BLEEDER PLUG ASSY x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "90-139-101",
+    "description": "Packing Nut",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     }
+    ]
+   },
+   {
+    "pn": "P169046",
+    "description": "THRUST BEARING, ASSY",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Defect appreas on bearing Rollers",
+      "disp": "replace with new. P169046 THRUST BEARING x QTY required.",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "90-139-119",
+    "description": "Bonnet CAP Body",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "ACME Threads:  Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "SET SCREW threads and Grease fitting threads: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "ACME Threads deformation",
+      "disp": "Replace with new. 90-139-119 Bonnet CAP x 1ea",
+      "replace": true
+     },
+     {
+      "label": "SET SCREW and Grease fitting threads deformation",
+      "disp": "Replace with new. 90-139-119 Bonnet CAP Body x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P169275",
+    "description": "Stem Retainer",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new.",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "79-040-125",
+    "description": "Set Screw",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. 79-040-125 Set Screw x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-085-114",
+    "description": "Packing Nut Follower",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new. 48-085-114 Packing Nut Follower x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P152678",
+    "description": "PAD Stud",
+    "qty": "8",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P152678 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P121763-0000",
+    "description": "Gate Guide",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "Deformation",
+      "disp": "Replace with new. P121763-0000 Gate Guide x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P165236",
+    "description": "Lift Nut",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P165236 Lift Nut x 1ea",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "GATE_VALVE|3_1_16_15K|OS_060": {
+  "label": "GV 3 1/16\" 15K",
+  "pns": [
+   "P1000162346"
+  ],
+  "consumables": [
+   {
+    "pn": "P1000156620",
+    "description": "U CUP SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000156545",
+    "description": "NON-METALLIC SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "90-139-319",
+    "description": "UV PACKING ASSY",
+    "qty": "1"
+   },
+   {
+    "pn": "P169046",
+    "description": "THRUST BEARING, ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "48-082-085",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P1000027417",
+    "description": "Bonnet Seal",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-022",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "48-086-033",
+    "description": "NON METALLIC SEAL",
+    "qty": "1"
+   },
+   {
+    "pn": "48-081-821",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "73-050-151",
+    "description": "API RING GASKET, BX-151",
+    "qty": "1"
+   },
+   {
+    "pn": "P2000037406",
+    "description": "PROTECTOR CAP",
+    "qty": "2"
+   },
+   {
+    "pn": "48-104-075",
+    "description": "Shear Pin",
+    "qty": "1"
+   },
+   {
+    "pn": "GV 3 1/16\" 15K | Part No.: P1000162344 - Based on condition parts -  OS60",
+    "description": "",
+    "qty": ""
+   }
+  ],
+  "condition": [
+   {
+    "pn": "P1000159943",
+    "description": "BELLEVILLE SPRING -",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Hit marks, deformation that cause changing the body dimension",
+      "disp": "Replace with new P1000159943 BELLEVILLE SPRING x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-120-028",
+    "description": "BLEEDER PLUG ASSY",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new 48-120-028 BLEEDER PLUG ASSY x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "90-139-101",
+    "description": "Packing Nut",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     }
+    ]
+   },
+   {
+    "pn": "P169046",
+    "description": "THRUST BEARING, ASSY",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Defect appreas on bearing Rollers",
+      "disp": "replace with new. P169046 THRUST BEARING x QTY required.",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "90-139-119",
+    "description": "Bonnet CAP",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "ACME Threads:  Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "SET SCREW threads and Grease fitting threads: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "ACME Threads deformation",
+      "disp": "Replace with new. 90-139-119 Bonnet CAP x 1ea",
+      "replace": true
+     },
+     {
+      "label": "SET SCREW and Grease fitting threads deformation",
+      "disp": "Replace with new. 90-139-119 Bonnet CAP x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P169275",
+    "description": "Stem Retainer",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new.",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "79-040-125",
+    "description": "Set Screw",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. 79-040-125 Set Screw x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-085-114",
+    "description": "Packing Nut Follower",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Big Deformation",
+      "disp": "Replace with new. 48-085-114 Packing Nut Follower x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P152678",
+    "description": "PAD Stud",
+    "qty": "8",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P152678 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P121763-0000",
+    "description": "Gate Guide",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "Big Deformation",
+      "disp": "Replace with new. P121763-0000 Gate Guide x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P165236",
+    "description": "Lift Nut",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P165236 Lift Nut x 1ea",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "GATE_VALVE|5_1_8_15K|NORMAL": {
+  "label": "GV 5 1/8\" 15K",
+  "pns": [
+   "P1000103330"
+  ],
+  "consumables": [
+   {
+    "pn": "P131335-0003",
+    "description": "U-CUP SEAL ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000160672",
+    "description": "NON METALLIC SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000136109",
+    "description": "FACE SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P148347",
+    "description": "BONNET SEAL",
+    "qty": "1"
+   },
+   {
+    "pn": "90-139-335",
+    "description": "UV PACKING ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "73-050-153",
+    "description": "API RING GASKET, BX-153",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-083",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P109433-0003",
+    "description": "O-RING DASH #361",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-020",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P166129",
+    "description": "WIPER SEAL",
+    "qty": "1"
+   },
+   {
+    "pn": "GV 5 1/8\" 15K | Part No.: P1000103330 - Based on condition parts -  Standard",
+    "description": "",
+    "qty": ""
+   }
+  ],
+  "condition": [
+   {
+    "pn": "P112918-0000",
+    "description": "BELLEVILLE SPRING",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Hit marks, deformation that cause changing the body dimension",
+      "disp": "Replace with new P112918-0000 BELLEVILLE SPRING x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000034628",
+    "description": "KNURLED PIN",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new. P1000034628 KNURLED PIN x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P150918",
+    "description": "BUSHING",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new.P150918 BUSHING x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P157585",
+    "description": "PAD STUD W/ NUT",
+    "qty": "12",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P157585 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000073222",
+    "description": "BUSHING",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Deformation",
+      "disp": "Replace with new.P1000073222 BUSHING x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P152600",
+    "description": "PAD STUD W/ NUT",
+    "qty": "8",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P152600 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-120-028",
+    "description": "BLEEDER PLUG ASSY",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new 48-120-028 BLEEDER PLUG ASSY x 1ea",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "GATE_VALVE|5_1_8_15K|OS_030": {
+  "label": "GV 5 1/8\" 15K",
+  "pns": [
+   "P1000149343"
+  ],
+  "consumables": [
+   {
+    "pn": "P1000161133",
+    "description": "U-CUP SEAL ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000160672",
+    "description": "NON METALLIC SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000136109",
+    "description": "FACE SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P148347",
+    "description": "BONNET SEAL",
+    "qty": "1"
+   },
+   {
+    "pn": "90-139-335",
+    "description": "UV PACKING ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "73-050-153",
+    "description": "API RING GASKET, BX-153",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-083",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P109433-0003",
+    "description": "O-RING DASH #361",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-020",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P166129",
+    "description": "WIPER SEAL",
+    "qty": "1"
+   }
+  ],
+  "condition": [
+   {
+    "pn": "P1000137941",
+    "description": "BELLEVILLE SPRING",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Hit marks, deformation that cause changing the body dimension",
+      "disp": "Replace with new P1000137941 BELLEVILLE SPRING x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000034628",
+    "description": "KNURLED PIN",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Deformation",
+      "disp": "Replace with new. P1000034628 KNURLED PIN x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P150918",
+    "description": "BUSHING",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Deformation",
+      "disp": "Replace with new.P150918 BUSHING x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P157585",
+    "description": "PAD STUD W/ NUT",
+    "qty": "12",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P157585 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000073222",
+    "description": "BUSHING",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Deformation",
+      "disp": "Replace with new.P1000073222 BUSHING x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P152600",
+    "description": "PAD STUD W/ NUT",
+    "qty": "8",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P152600 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-120-028",
+    "description": "BLEEDER PLUG ASSY",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new 48-120-028 BLEEDER PLUG ASSY x 1ea",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "GATE_VALVE|5_1_8_15K|OS_060": {
+  "label": "GV 5 1/8\" 15K",
+  "pns": [
+   "P1000149344"
+  ],
+  "consumables": [
+   {
+    "pn": "P1000161134",
+    "description": "U-CUP SEAL ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000160672",
+    "description": "NON METALLIC SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000136109",
+    "description": "FACE SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P148347",
+    "description": "BONNET SEAL",
+    "qty": "1"
+   },
+   {
+    "pn": "90-139-335",
+    "description": "UV PACKING ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "73-050-153",
+    "description": "API RING GASKET, BX-153",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-083",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P109433-0003",
+    "description": "O-RING DASH #361",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-020",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P166129",
+    "description": "WIPER SEAL",
+    "qty": "1"
+   }
+  ],
+  "condition": [
+   {
+    "pn": "P1000137941",
+    "description": "BELLEVILLE SPRING",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Hit marks, deformation that cause changing the body dimension",
+      "disp": "Replace with new P1000137941 BELLEVILLE SPRING x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000034628",
+    "description": "KNURLED PIN",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Deformation",
+      "disp": "Replace with new. P1000034628 KNURLED PIN x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P150918",
+    "description": "BUSHING",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new.P150918 BUSHING x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P157585",
+    "description": "PAD STUD W/ NUT",
+    "qty": "12",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P157585 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000073222",
+    "description": "BUSHING",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new.P1000073222 BUSHING x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P152600",
+    "description": "PAD STUD W/ NUT",
+    "qty": "8",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P152600 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-120-028",
+    "description": "BLEEDER PLUG ASSY",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new 48-120-028 BLEEDER PLUG ASSY x 1ea",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "GATE_VALVE|7_1_16_15K|NORMAL": {
+  "label": "GV 7 1/16\" 15K",
+  "pns": [
+   "P1000023400"
+  ],
+  "consumables": [
+   {
+    "pn": "P1000158935",
+    "description": "U-CUP SEAL ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000170052",
+    "description": "NON-METALLIC SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000105295",
+    "description": "FACE SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000023405",
+    "description": "METAL SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "90-139-335",
+    "description": "UV PACKING ASSY",
+    "qty": "1"
+   },
+   {
+    "pn": "73-050-153",
+    "description": "API RING GASKET, BX-153",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-083",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-020",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "48-083-021",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P166129",
+    "description": "NON-METALLIC SEAL",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-034",
+    "description": "O-RING PE CONNECTION",
+    "qty": "1"
+   },
+   {
+    "pn": "P1000024023",
+    "description": "BASE PLATE O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P1000024013",
+    "description": "NON-EXTRUSION RING",
+    "qty": "1"
+   },
+   {
+    "pn": "GV 7 1/16\" 15K | Part No.: P1000023400 - Based on condition parts -  Standard",
+    "description": "",
+    "qty": ""
+   }
+  ],
+  "condition": [
+   {
+    "pn": "P150918",
+    "description": "BUSHING SEAL FOLLOWER",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new. P150918 BUSHING SEAL FOLLOWER",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000131049",
+    "description": "BELLEVILLE SPRING",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Hit marks, deformation that cause changing the body dimension",
+      "disp": "Replace with new P1000131049 BELLEVILLE SPRING x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000023412",
+    "description": "PACKING NUT",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     }
+    ]
+   },
+   {
+    "pn": "P1000023540",
+    "description": "PAD STUD W/ NUT",
+    "qty": "12",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P1000023540 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000023413",
+    "description": "BUSHING",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new.P1000023413 BUSHING x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P152600",
+    "description": "PAD STUD W/ NUT",
+    "qty": "8",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P152600 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000141841",
+    "description": "PAD STUD W/ NUT",
+    "qty": "32",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P1000141841 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-120-028",
+    "description": "BLEEDER PLUG ASSY",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new 48-120-028 BLEEDER PLUG ASSY x 1ea",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "GATE_VALVE|7_1_16_15K|OS_030": {
+  "label": "GV 7 1/16\" 15K",
+  "pns": [
+   "P1000138374"
+  ],
+  "consumables": [
+   {
+    "pn": "P1000158936",
+    "description": "U-CUP SEAL ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000170052",
+    "description": "NON-METALLIC SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000105295",
+    "description": "FACE SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000023405",
+    "description": "METAL SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "90-139-335",
+    "description": "UV PACKING ASSY",
+    "qty": "1"
+   },
+   {
+    "pn": "73-050-153",
+    "description": "API RING GASKET, BX-153",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-083",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-020",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "48-083-021",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P166129",
+    "description": "NON-METALLIC SEAL",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-034",
+    "description": "O-RING PE CONNECTION",
+    "qty": "1"
+   },
+   {
+    "pn": "P1000024023",
+    "description": "BASE PLATE O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P1000024013",
+    "description": "NON-EXTRUSION RING",
+    "qty": "1"
+   },
+   {
+    "pn": "GV 7 1/16\" 15K | Part No.: P1000023400 - Based on condition parts -  OS30",
+    "description": "",
+    "qty": ""
+   }
+  ],
+  "condition": [
+   {
+    "pn": "P150918",
+    "description": "BUSHING SEAL FOLLOWER",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new. P150918 BUSHING SEAL FOLLOWER",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000131049",
+    "description": "BELLEVILLE SPRING",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Hit marks, deformation that cause changing the body dimension",
+      "disp": "Replace with new P1000131049 BELLEVILLE SPRING x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000023412",
+    "description": "PACKING NUT",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     }
+    ]
+   },
+   {
+    "pn": "P1000023540",
+    "description": "PAD STUD W/ NUT",
+    "qty": "12",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P1000023540 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000023413",
+    "description": "BUSHING",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new.P1000023413 BUSHING x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P152600",
+    "description": "PAD STUD W/ NUT",
+    "qty": "8",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P152600 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000141841",
+    "description": "PAD STUD W/ NUT",
+    "qty": "32",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P1000141841 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-120-028",
+    "description": "BLEEDER PLUG ASSY",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new 48-120-028 BLEEDER PLUG ASSY x 1ea",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "GATE_VALVE|7_1_16_15K|OS_060": {
+  "label": "GV 7 1/16\" 15K",
+  "pns": [
+   "P1000138395"
+  ],
+  "consumables": [
+   {
+    "pn": "P1000158937",
+    "description": "U-CUP SEAL ASSY",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000170052",
+    "description": "NON-METALLIC SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000105295",
+    "description": "FACE SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "P1000023405",
+    "description": "METAL SEAL",
+    "qty": "2"
+   },
+   {
+    "pn": "90-139-335",
+    "description": "UV PACKING ASSY",
+    "qty": "1"
+   },
+   {
+    "pn": "73-050-153",
+    "description": "API RING GASKET, BX-153",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-083",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-020",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "48-083-021",
+    "description": "O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P166129",
+    "description": "NON-METALLIC SEAL",
+    "qty": "1"
+   },
+   {
+    "pn": "48-080-034",
+    "description": "O-RING PE CONNECTION",
+    "qty": "1"
+   },
+   {
+    "pn": "P1000024023",
+    "description": "BASE PLATE O-RING",
+    "qty": "1"
+   },
+   {
+    "pn": "P1000024013",
+    "description": "NON-EXTRUSION RING",
+    "qty": "1"
+   },
+   {
+    "pn": "GV 7 1/16\" 15K | Part No.: P1000023400 - Based on condition parts -  OS60",
+    "description": "",
+    "qty": ""
+   }
+  ],
+  "condition": [
+   {
+    "pn": "P150918",
+    "description": "BUSHING SEAL FOLLOWER",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new. P150918 BUSHING SEAL FOLLOWER",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000131049",
+    "description": "BELLEVILLE SPRING",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Hit marks, deformation that cause changing the body dimension",
+      "disp": "Replace with new P1000131049 BELLEVILLE SPRING x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000023412",
+    "description": "PACKING NUT",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Body: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. Make sure no high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread: Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     }
+    ]
+   },
+   {
+    "pn": "P1000023540",
+    "description": "PAD STUD W/ NUT",
+    "qty": "12",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P1000023540 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000023413",
+    "description": "BUSHING",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new.P1000023413 BUSHING x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P152600",
+    "description": "PAD STUD W/ NUT",
+    "qty": "8",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P152600 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000141841",
+    "description": "PAD STUD W/ NUT",
+    "qty": "32",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P1000141841 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "48-120-028",
+    "description": "BLEEDER PLUG ASSY",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new 48-120-028 BLEEDER PLUG ASSY x 1ea",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "CROSS": {
+  "label": "CROSS, 5 1/8\", C-600 (STDD), 5 1/8\" 15K API STDD RUN X 3 1/16\" 15K",
+  "pns": [
+   "P1000194238"
+  ],
+  "consumables": [
+   {
+    "pn": "73-061-154",
+    "description": "API RING GASKET, BX-155, 316 SS UNS S31600",
+    "qty": "2"
+   },
+   {
+    "pn": "73-061-169",
+    "description": "API RING GASKET, BX-169, 316 SS UNS S31600",
+    "qty": "2"
+   }
+  ],
+  "condition": [
+   {
+    "pn": "P152602",
+    "description": "PAD STUD W/ NUT, 1.125-8UN-2A X 5.50 IN LG, A 320 GR L7, NON-EXP, PTFE",
+    "qty": "16",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P152602 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000048289",
+    "description": "PAD STUD W/ NUT, 1.500-8UN-2A X 7.63 IN LG, A 320 GR",
+    "qty": "24",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P1000048289 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "WECO_FLANGE": {
+  "label": "WECO FLANGE ASSEMBLY  3 1/16\" 15K",
+  "pns": [
+   "P536012-M"
+  ],
+  "consumables": [
+   {
+    "pn": "3231023",
+    "description": "SEAL RING UNION",
+    "qty": "1"
+   }
+  ],
+  "condition": [
+   {
+    "pn": "P565680",
+    "description": "NUT UNION",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion/etc.:  Buff",
+      "disp": "Polish to remove or minimize the defect. No high points/sharp edges after rework. Gauge test to be applied. Acceptable to use if gauge passes.",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new.",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "3208067",
+    "description": "MALE PLUG UNION",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion/etc.: Buff",
+      "disp": "Polish to remove or minimize the defect. No high points/sharp edges after rework.",
+      "replace": false
+     },
+     {
+      "label": "Unfamiliar / severe damage →",
+      "disp": "Replace with new. 3208067 MALE PLUG UNION x QTY required.",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P513840",
+    "description": "BUCKLE",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new.P513840 BUCKLE x 1e",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P513730",
+    "description": "BANDING",
+    "qty": "21",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new.P513730 BANDING x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P533643",
+    "description": "CE LABEL",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new.P533643 CE LABEL",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ },
+ "ADAPTER": {
+  "label": "Adapter ASSEMBLY  7 1/16\"-10K BTM x 5 1/8-15K TOP",
+  "pns": [
+   "P4000113620"
+  ],
+  "consumables": [
+   {
+    "pn": "P181622",
+    "description": "S-SEAL",
+    "qty": "1"
+   }
+  ],
+  "condition": [
+   {
+    "pn": "48-120-028",
+    "description": "BLEEDER PLUG ASSY",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new 48-120-028 BLEEDER PLUG ASSY x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "78-121-742",
+    "description": "PAD STUD W/ NUT, 1.500-8UN-2A X 7.75 IN",
+    "qty": "12",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. 78-121-742 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "P1000048289",
+    "description": "PAD STUD W/ NUT, 1.500-8UN-2A X 7.63 IN",
+    "qty": "12",
+    "options": [
+     {
+      "label": "Minor scoring/pitting/corrosion",
+      "disp": "Polish with Scotch-Brite. No high points/sharp edges after rework",
+      "replace": false
+     },
+     {
+      "label": "Thread deformation",
+      "disp": "Replace with new. P1000048289 PAD Stud x QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "PI-1318",
+    "description": "CAVITY TEST TAG",
+    "qty": "2",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new PI-1318 CAVITY TEST TAG QTY required",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "PI-1316",
+    "description": "SBMS MONITOR TAG",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new PI-1316  SBMS MONITOR TAG x 1ea",
+      "replace": true
+     }
+    ]
+   },
+   {
+    "pn": "SP-48-8044",
+    "description": "NAME PLATE FOR HEAD",
+    "qty": "1",
+    "options": [
+     {
+      "label": "Fits for function",
+      "disp": "Accept — use as-is",
+      "replace": false
+     },
+     {
+      "label": "Not fit for function",
+      "disp": "Replace with new SP-48-8044 NAME PLATE FOR HEAD x 1ea",
+      "replace": true
+     }
+    ]
+   }
+  ]
+ }
+};
+
+function normPN(s){ return (s||'').toString().toUpperCase().replace(/\s+/g,''); }
+function spareCatalogKey(r){
+  const ft=r.equipType||r.formType;
+  if(ft==='GATE_VALVE') return 'GATE_VALVE|'+(r.gvSize||'')+'|'+(r.gvScenario||'');
+  return ft||'';
+}
+function findSpareEntry(r){ return SPARE_PARTS_CATALOG[spareCatalogKey(r)]||null; }
+function sparePNStatus(r,entry){
+  if(!entry) return {state:'none'};
+  const typed=normPN(r.header&&r.header.partNo);
+  if(!typed) return {state:'empty',pns:entry.pns};
+  return {state: entry.pns.some(p=>normPN(p)===typed)?'match':'mismatch', pns:entry.pns, typed:(r.header.partNo||'')};
+}
+function ensureSpareState(){
+  if(!current.spConsumables) current.spConsumables={};
+  if(!current.spConditions)  current.spConditions={};
+}
+
+/* ---- summary ---- */
+function computeSpareSummary(r){
+  const e=findSpareEntry(r); if(!e) return null;
+  let consRep=0;
+  e.consumables.forEach((c,i)=>{ if(!(r.spConsumables&&r.spConsumables[i]===false)) consRep++; });
+  let failed=0, condRep=0;
+  e.condition.forEach((c,i)=>{ const s=(r.spConditions&&r.spConditions[i])||{};
+    if(s.r==='fail'){ failed++; if(s.opt!=null && s.opt>=0 && c.options[s.opt] && c.options[s.opt].replace) condRep++; } });
+  return {toReplace:consRep+condRep, failed:failed, consRep:consRep, condRep:condRep};
+}
+function spareSummaryText(r){ r=r||current; const s=computeSpareSummary(r); if(!s) return '';
+  return 'Spares: '+s.toReplace+' to replace, '+s.failed+' failed disposition'; }
+function refreshSpareSummary(){ const el=document.getElementById('spare-summary'); if(el) el.textContent=spareSummaryText(current); }
+
+/* ---- setters ---- */
+function setConsumableConfirm(i,on){ ensureSpareState(); current.spConsumables[i]=on;
+  const b=document.getElementById('cons-badge-'+i); if(b){ b.textContent=on?'REPLACE':'SKIP'; b.classList.toggle('off',!on); }
+  refreshSpareSummary(); }
+function setConditionResult(i,val){
+  ensureSpareState();
+  const c=current.spConditions[i]||{}; c.r=val; if(val!=='fail'){ c.opt=-1; c.disp=''; } current.spConditions[i]=c;
+  const row=document.getElementById('cond-row-'+i);
+  if(row){ row.classList.toggle('pass-row',val==='pass'); row.classList.toggle('fail-row',val==='fail'); }
+  const pb=document.getElementById('cond-pass-'+i), fb=document.getElementById('cond-fbtn-'+i);
+  if(pb) pb.classList.toggle('active-pass',val==='pass');
+  if(fb) fb.classList.toggle('active-fail',val==='fail');
+  const td=document.getElementById('cond-detail-td-'+i);
+  if(td) td.innerHTML=condDetailInner(findSpareEntry(current),i);
+  const det=document.getElementById('cond-detail-'+i);
+  if(det) det.style.display=(val==='fail')?'':'none';
+  refreshSpareSummary();
+}
+function setConditionOption(i,optIdx){
+  ensureSpareState();
+  optIdx=parseInt(optIdx,10);
+  const e=findSpareEntry(current); const part=e&&e.condition[i];
+  const c=current.spConditions[i]||{}; c.opt=optIdx;
+  c.disp=(part && optIdx>=0 && part.options[optIdx])?part.options[optIdx].disp:'';
+  current.spConditions[i]=c;
+  const t=document.getElementById('cond-disp-text-'+i);
+  if(t){ const rep=part && optIdx>=0 && part.options[optIdx] && part.options[optIdx].replace;
+    t.innerHTML=esc(c.disp); t.classList.toggle('is-replace',!!rep); }
+  refreshSpareSummary();
+}
+
+/* ---- validation banner ---- */
+function sparePNBannerHTML(entry){
+  const s=sparePNStatus(current,entry); const pns=entry.pns.map(esc).join(' / ');
+  if(s.state==='empty')    return '<div class="pn-banner pn-empty">Enter the <b>Part No.</b> above to verify it. Expected: <span class="mono">'+pns+'</span></div>';
+  if(s.state==='match')    return '<div class="pn-banner pn-ok">&#10003; Part No. matches this equipment (<span class="mono">'+pns+'</span>)</div>';
+  if(s.state==='mismatch') return '<div class="pn-banner pn-warn">&#9888; Entered Part No. <span class="mono">'+esc(s.typed)+'</span> doesn&#39;t match the expected <span class="mono">'+pns+'</span> &mdash; verify the part number.</div>';
+  return '';
+}
+function refreshSpareValidation(){ const el=document.getElementById('spare-pn-banner'); if(!el) return;
+  const entry=findSpareEntry(current); if(entry) el.innerHTML=sparePNBannerHTML(entry); }
+
+/* ---- condition detail row (shown below the part when Fail) ---- */
+function condDetailInner(entry,i){
+  const part=entry.condition[i]; const st=(current.spConditions&&current.spConditions[i])||{};
+  let h='<div class="cond-detail-inner"><label class="cond-detail-lbl">Finding for <span class="mono">'+esc(part.pn)+'</span> &mdash; '+esc(part.description)+'</label>';
+  h+='<select class="cond-sel" onchange="setConditionOption('+i+',this.value)"><option value="-1">Select defect / finding&hellip;</option>';
+  part.options.forEach((o,oi)=>{ h+='<option value="'+oi+'" '+((st.opt===oi)?'selected':'')+'>'+esc(o.label)+'</option>'; });
+  h+='</select>';
+  const rep=(st.opt!=null&&st.opt>=0&&part.options[st.opt]&&part.options[st.opt].replace);
+  h+='<div class="cond-disp-text'+(rep?' is-replace':'')+'" id="cond-disp-text-'+i+'">'+(st.disp?esc(st.disp):'')+'</div>';
+  h+='</div>';
+  return h;
+}
+
+/* ---- main card ---- */
+function renderSparesCard(){
+  ensureSpareState();
+  const entry=findSpareEntry(current);
+  let html='<div class="card"><div class="section-title">Spare Parts</div>';
+  if(!entry){
+    html+='<div class="spare-note">&#9432; No spare parts list on file for this equipment. Add any required parts manually below.</div>';
+    html+='<div class="spare-sub-h">Additional Parts</div>'+renderSparesTable();
+    return html+'</div>';
+  }
+  html+='<div class="spare-summary" id="spare-summary">'+spareSummaryText(current)+'</div>';
+  html+='<div id="spare-pn-banner">'+sparePNBannerHTML(entry)+'</div>';
+
+  // Consumables (yellow) — always replaced
+  html+='<div class="spare-sub cons-block"><div class="spare-sub-h">Consumables <span class="sub-hint">&mdash; always replaced</span></div>';
+  html+='<table class="sp-tbl"><thead><tr><th>Description</th><th>Part No.</th><th class="c">Qty</th><th class="c">Action</th></tr></thead><tbody>';
+  entry.consumables.forEach((c,i)=>{ const on=current.spConsumables[i]!==false;
+    html+='<tr><td>'+esc(c.description)+'</td><td class="mono">'+esc(c.pn)+'</td><td class="c">'+esc(c.qty)+'</td>'
+      +'<td class="c"><label class="rep-toggle"><input type="checkbox" '+(on?'checked':'')+' onchange="setConsumableConfirm('+i+',this.checked)"/>'
+      +'<span class="rep-badge'+(on?'':' off')+'" id="cons-badge-'+i+'">'+(on?'REPLACE':'SKIP')+'</span></label></td></tr>';
+  });
+  html+='</tbody></table></div>';
+
+  // Based-on-condition — table like spares, Pass/Fail + defect selection
+  html+='<div class="spare-sub"><div class="spare-sub-h">Based-on-Condition <span class="sub-hint">&mdash; confirm each; on Fail, pick the finding</span></div>';
+  html+='<table class="sp-tbl cond-tbl"><thead><tr><th>Description</th><th>Part No.</th><th class="c">Qty</th><th class="c">Result</th></tr></thead><tbody>';
+  entry.condition.forEach((c,i)=>{ const st=current.spConditions[i]||{}; const v=st.r||'';
+    html+='<tr class="cond-tr '+(v==='pass'?'pass-row':v==='fail'?'fail-row':'')+'" id="cond-row-'+i+'">'
+      +'<td>'+esc(c.description)+'</td><td class="mono">'+esc(c.pn)+'</td><td class="c">'+esc(c.qty)+'</td>'
+      +'<td class="c"><div class="rf-btns">'
+        +'<button class="rf-btn '+(v==='pass'?'active-pass':'')+'" id="cond-pass-'+i+'" onclick="setConditionResult('+i+',\'pass\')">Pass</button>'
+        +'<button class="rf-btn '+(v==='fail'?'active-fail':'')+'" id="cond-fbtn-'+i+'" onclick="setConditionResult('+i+',\'fail\')">Fail</button>'
+      +'</div></td></tr>';
+    html+='<tr class="cond-detail" id="cond-detail-'+i+'" style="display:'+(v==='fail'?'':'none')+'"><td colspan="4" id="cond-detail-td-'+i+'">'+condDetailInner(entry,i)+'</td></tr>';
+  });
+  html+='</tbody></table></div>';
+
+  html+='<div class="spare-sub"><div class="spare-sub-h">Additional Parts <span class="sub-hint">&mdash; manual</span></div>'+renderSparesTable()+'</div>';
+  return html+'</div>';
+}
+
+/* ---- print / preview builders ---- */
+function buildSparesPrintHTML(r){
+  const entry=SPARE_PARTS_CATALOG[spareCatalogKey(r)]||null;
+  const manual=(r.spares||[]).filter(s=>s.description);
+  if(!entry && !manual.length) return '';
+  const th='background:#252963;color:#fff;padding:5px 8px;text-align:left;font-size:11px';
+  const thy='background:#fff3b0;color:#7a5c00;padding:5px 8px;text-align:left;font-size:11px';
+  const td='padding:5px 8px;border:1px solid #e5e7eb;font-size:11px';
+  let out='<h2>Spare Parts</h2>';
+  const sm=spareSummaryText(r); if(sm) out+='<div style="font-size:12px;font-weight:700;color:#252963;margin:0 0 8px">'+sm+'</div>';
+  if(entry){
+    out+='<div style="font-weight:700;color:#7a5c00;font-size:11px;margin:8px 0 3px">CONSUMABLES &mdash; replaced</div>'
+      +'<table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+thy+'">Description</th><th style="'+thy+'">Part No.</th><th style="'+thy+'">Qty</th><th style="'+thy+'">Action</th></tr></thead><tbody>'
+      +entry.consumables.map((c,i)=>{const on=!(r.spConsumables&&r.spConsumables[i]===false);
+        return '<tr><td style="'+td+'">'+(c.description||'')+'</td><td style="'+td+'">'+(c.pn||'')+'</td><td style="'+td+';text-align:center">'+(c.qty||'')+'</td><td style="'+td+';text-align:center">'+(on?'Replace':'&mdash;')+'</td></tr>';}).join('')
+      +'</tbody></table>';
+    out+='<div style="font-weight:700;color:#252963;font-size:11px;margin:11px 0 3px">BASED-ON-CONDITION</div>'
+      +'<table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">Description</th><th style="'+th+'">Part No.</th><th style="'+th+'">Qty</th><th style="'+th+'">Result</th><th style="'+th+'">Disposition</th></tr></thead><tbody>'
+      +entry.condition.map((c,i)=>{const st=(r.spConditions&&r.spConditions[i])||{};const v=st.r||'';
+        const res=v==='pass'?'PASS &mdash; use as-is':v==='fail'?'FAIL':'&mdash;';
+        const col=v==='fail'?'#b91c1c':v==='pass'?'#15803d':'#6b7280';
+        const disp=v==='fail'?String(st.disp||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'):'';
+        return '<tr><td style="'+td+'">'+(c.description||'')+'</td><td style="'+td+'">'+(c.pn||'')+'</td><td style="'+td+';text-align:center">'+(c.qty||'')+'</td><td style="'+td+';text-align:center;font-weight:700;color:'+col+'">'+res+'</td><td style="'+td+'">'+disp+'</td></tr>';}).join('')
+      +'</tbody></table>';
+  }
+  if(manual.length){
+    out+='<div style="font-weight:700;color:#252963;font-size:11px;margin:11px 0 3px">ADDITIONAL PARTS</div>'
+      +'<table style="width:100%;border-collapse:collapse"><thead><tr><th style="'+th+'">Description</th><th style="'+th+'">Part No.</th><th style="'+th+'">Qty</th><th style="'+th+'">Comment</th></tr></thead><tbody>'
+      +manual.map(s=>'<tr><td style="'+td+'">'+(s.description||'')+'</td><td style="'+td+'">'+(s.pn||'')+'</td><td style="'+td+';text-align:center">'+(s.qty||'')+'</td><td style="'+td+'">'+(s.comment||'')+'</td></tr>').join('')
+      +'</tbody></table>';
+  }
+  return out;
+}
+function buildSparesPreviewHTML(r){
+  const entry=SPARE_PARTS_CATALOG[spareCatalogKey(r)]||null;
+  const manual=(r.spares||[]).filter(s=>s.description);
+  if(!entry && !manual.length) return '';
+  let html='<div class="card"><div class="section-title">Spare Parts</div>';
+  const sm=spareSummaryText(r); if(sm) html+='<div class="spare-summary">'+esc(sm)+'</div>';
+  if(entry){
+    html+='<div style="font-weight:700;color:var(--text2);font-size:12px;margin:6px 0 4px">Consumables &mdash; replaced</div>';
+    html+=entry.consumables.map((c,i)=>{const on=!(r.spConsumables&&r.spConsumables[i]===false);
+      return '<div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:baseline"><span style="font-weight:600;flex:1;color:var(--text)">'+esc(c.description)+'</span><span style="color:var(--text3)">PN: '+esc(c.pn)+' &middot; Qty: '+esc(c.qty)+'</span><span style="font-weight:700;color:'+(on?'#7c3aed':'var(--text3)')+'">'+(on?'REPLACE':'&mdash;')+'</span></div>';}).join('');
+    html+='<div style="font-weight:700;color:var(--text2);font-size:12px;margin:10px 0 4px">Based-on-Condition</div>';
+    html+=entry.condition.map((c,i)=>{const st=(r.spConditions&&r.spConditions[i])||{};const v=st.r||'';
+      const res=v==='pass'?'PASS':v==='fail'?'FAIL':'&mdash;';const col=v==='fail'?'#dc2626':v==='pass'?'#16a34a':'var(--text3)';
+      return '<div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)"><div style="display:flex;gap:8px;align-items:baseline"><span style="font-weight:600;flex:1;color:var(--text)">'+esc(c.description)+'</span><span style="color:var(--text3)">PN: '+esc(c.pn)+' &middot; Qty: '+esc(c.qty)+'</span><span style="font-weight:700;color:'+col+'">'+res+'</span></div>'+((v==='fail'&&st.disp)?'<div style="color:var(--text2);margin-top:3px;white-space:pre-wrap">'+esc(st.disp)+'</div>':'')+'</div>';}).join('');
+  }
+  if(manual.length){
+    html+='<div style="font-weight:700;color:var(--text2);font-size:12px;margin:10px 0 4px">Additional Parts</div>';
+    html+=manual.map(s=>'<div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:baseline"><span style="font-weight:600;flex:1;color:var(--text)">'+esc(s.description)+'</span><span style="color:var(--text3)">PN: '+esc(s.pn)+' &middot; Qty: '+esc(s.qty)+'</span>'+(s.comment?'<span style="color:var(--text2)">&middot; '+esc(s.comment)+'</span>':'')+'</div>').join('');
+  }
+  return html+'</div>';
+}
+
+
 // Full form type label builder
 function formTypeLabel(r){
   const base = EQUIP_LABELS[r.equipType] || r.equipType || '';
@@ -1275,6 +3779,10 @@ function formTypeLabel(r){
     const sz = GV_SIZES[r.gvSize]||r.gvSize||'';
     const sc = GV_SCENARIOS[r.gvScenario]||r.gvScenario||'';
     return base + (sz?' · '+sz:'') + (sc?' · '+sc:'');
+  }
+  if(r.equipType==='CROSS'){
+    const ct = CROSS_TYPES[r.crossType||'4WAY'];
+    return base + (ct?' · '+ct.label:'');
   }
   return base;
 }
@@ -1577,18 +4085,30 @@ function wecoS3Complete(){
 }
 
 // ══ CROSS FLOW DATA ══════════════════════════════════════════════════
-const CROSS_STEPS = [
-  { id:'cr_s1',  label:'Full Visual Inspection',                sub:'Check all surfaces for cracks, dents, corrosion, deformation',            ref:'Q02500 | RRP10065610', type:'pf' },
-  { id:'cr_s2t', label:'Ring Groove — TOP — Any Damage?',       sub:'Critical sealing area: scoring, pitting, corrosion, deformation',         ref:'RRP10065610', type:'yn',    side:'TOP' },
-  { id:'cr_s3t', label:'Measure Defect Depth — TOP',            sub:'Record maximum defect depth in inches',                                   ref:'DU100089093', type:'depth', side:'TOP' },
-  { id:'cr_s2b', label:'Ring Groove — BOTTOM — Any Damage?',    sub:'Critical sealing area: scoring, pitting, corrosion, deformation',         ref:'RRP10065610', type:'yn',    side:'BOTTOM' },
-  { id:'cr_s3b', label:'Measure Defect Depth — BOTTOM',         sub:'Record maximum defect depth in inches',                                   ref:'DU100089093', type:'depth', side:'BOTTOM' },
-  { id:'cr_s2r', label:'Ring Groove — RIGHT — Any Damage?',     sub:'Critical sealing area: scoring, pitting, corrosion, deformation',         ref:'RRP10065610', type:'yn',    side:'RIGHT' },
-  { id:'cr_s3r', label:'Measure Defect Depth — RIGHT',          sub:'Record maximum defect depth in inches',                                   ref:'DU100089093', type:'depth', side:'RIGHT' },
-  { id:'cr_s2l', label:'Ring Groove — LEFT — Any Damage?',      sub:'Critical sealing area: scoring, pitting, corrosion, deformation',         ref:'RRP10065610', type:'yn',    side:'LEFT' },
-  { id:'cr_s3l', label:'Measure Defect Depth — LEFT',           sub:'Record maximum defect depth in inches',                                   ref:'DU100089093', type:'depth', side:'LEFT' },
-  { id:'cr_s8',  label:'Paint / Coating Condition',             sub:'Full body coverage — no bare metal or coating damage',                    ref:'Q02500', type:'pf' }
-];
+const CROSS_TYPES = {
+  '3WAY': { label:'3-Way T Block', sides:[['LEFT','l'],['RIGHT','r'],['BOTTOM','b']] },
+  '4WAY': { label:'4-Way Block',   sides:[['TOP','t'],['BOTTOM','b'],['RIGHT','r'],['LEFT','l']] },
+  '5WAY': { label:'5-Way Block',   sides:[['TOP','t'],['BOTTOM','b'],['RIGHT','r'],['LEFT','l'],['FRONT','f']] },
+  '6WAY': { label:'6-Way Block',   sides:[['TOP','t'],['BOTTOM','b'],['RIGHT','r'],['LEFT','l'],['FRONT','f'],['BACK','k']] }
+};
+// Build the Cross ring-groove flow for a given block type. 4WAY reproduces the
+// original fixed step IDs (cr_s2t/cr_s3t/...) so existing saved reports render unchanged.
+function buildCrossSteps(type){
+  var cfg = CROSS_TYPES[type] || CROSS_TYPES['4WAY'];
+  var steps=[{ id:'cr_s1', label:'Full Visual Inspection', sub:'Check all surfaces for cracks, dents, corrosion, deformation', ref:'Q02500 | RRP10065610', type:'pf' }];
+  cfg.sides.forEach(function(s){
+    var name=s[0], sfx=s[1];
+    steps.push({ id:'cr_s2'+sfx, label:'Ring Groove \u2014 '+name+' \u2014 Any Damage?', sub:'Critical sealing area: scoring, pitting, corrosion, deformation', ref:'RRP10065610', type:'yn', side:name });
+    steps.push({ id:'cr_s3'+sfx, label:'Measure Defect Depth \u2014 '+name, sub:'Record maximum defect depth in inches', ref:'DU100089093', type:'depth', side:name });
+  });
+  steps.push({ id:'cr_s8', label:'Paint / Coating Condition', sub:'Full body coverage \u2014 no bare metal or coating damage', ref:'Q02500', type:'pf' });
+  return steps;
+}
+const CROSS_STEPS = buildCrossSteps('4WAY');
+function crossStepsFor(x){
+  var t = (x && typeof x==='object') ? (x.crossType||'4WAY') : '4WAY';
+  return buildCrossSteps(t);
+}
 
 // ══ ADAPTER FLOW DATA ═════════════════════════════════════════════════
 const ADAPTER_STEPS = [
@@ -1619,10 +4139,10 @@ function flowRWP(st,id){ return st.reworkPhotos[id]||[]; }
 
 // ── Cross disposition ─────────────────────────────────────────────────
 function crossCalcDisposition(){
-  return rgFlowCalcDisposition(crossState(), CROSS_STEPS);
+  return rgFlowCalcDisposition(crossState(), crossStepsFor(current));
 }
 function crossGetVisibleSteps(){
-  return rgFlowGetVisibleSteps(crossState(), CROSS_STEPS);
+  return rgFlowGetVisibleSteps(crossState(), crossStepsFor(current));
 }
 
 // ── Adapter disposition ───────────────────────────────────────────────
@@ -1846,7 +4366,7 @@ function allItems(r){
   if(ft==='GATE_VALVE')   return GV_SECTIONS.flatMap(s=>s.items);
   if(ft==='BLIND_FLANGE') return BF_STEPS;
   if(ft==='WECO_FLANGE')  return WECO_STEPS;
-  if(ft==='CROSS')        return CROSS_STEPS;
+  if(ft==='CROSS')        return crossStepsFor(typeof r==='object'?r:null);
   if(ft==='ADAPTER')      return ADAPTER_STEPS;
   return GENERIC_ITEMS;
 }
@@ -1992,6 +4512,25 @@ function resetHomeAccordion(){
   });
 }
 
+let _crossOpen=false;
+function toggleCross(){
+  _crossOpen=!_crossOpen;
+  const sub=document.getElementById('cross-sub');
+  const tb=document.getElementById('cross-toggle');
+  const ar=document.getElementById('cross-arrow');
+  if(sub) sub.classList.toggle('hidden', !_crossOpen);
+  if(tb) tb.classList.toggle('open', _crossOpen);
+  if(ar) ar.style.transform=_crossOpen?'rotate(90deg)':'';
+}
+function startCross(type){
+  current={ id:genId(), equipType:'CROSS', formType:'CROSS', crossType:type,
+    createdAt:new Date().toISOString(),
+    header:{ sizeDesc:(CROSS_TYPES[type]?CROSS_TYPES[type].label:'') },
+    findings:{},comments:{},photos:{},itemDispositions:{},reworkFindings:{},reworkComments:{},reworkPhotos:{},
+    bfState:null,wecoState:null,crossState:null,adapterFlowState:null,spares:[],engineeringNotes:'',
+    inspector:(spConfig.userName||''),engineerName:'',disposition:'incomplete' };
+  renderForm(); showView('form');
+}
 function toggleGV(){
   _gvOpen = !_gvOpen;
   const gvSizes  = document.getElementById('gv-sizes');
@@ -2070,7 +4609,7 @@ function setComment(itemId,val){ current.comments[itemId]=val; }
 // ══ CROSS / ADAPTER RING GROOVE FLOW RENDERER ════════════════════════
 function renderRGFlow(ft){
   var st   = ft==='CROSS' ? crossState() : adapterState();
-  var steps= ft==='CROSS' ? CROSS_STEPS  : ADAPTER_STEPS;
+  var steps= ft==='CROSS' ? crossStepsFor(current)  : ADAPTER_STEPS;
   var visible = rgFlowGetVisibleSteps(st, steps);
   var f = st.findings;
   var out = '<div class="bf-flow">';
@@ -2293,7 +4832,7 @@ function rgUpdateDepthResult(ft,id){
 }
 function rgUpdateStepVisibility(ft){
   var st=rgGetState(ft);
-  var steps=ft==='CROSS'?CROSS_STEPS:ADAPTER_STEPS;
+  var steps=ft==='CROSS'?crossStepsFor(current):ADAPTER_STEPS;
   var visible=rgFlowGetVisibleSteps(st,steps);
   steps.forEach(function(step){
     var el=document.getElementById('bfs-'+step.id); if(!el) return;
@@ -2353,7 +4892,7 @@ function rgRefresh(ft){
 // ── previewRGRows ─────────────────────────────────────────────────────
 function previewRGRows(r,ft){
   var st=ft==='CROSS'?(r.crossState||{}):(r.adapterFlowState||{});
-  var steps=ft==='CROSS'?CROSS_STEPS:ADAPTER_STEPS;
+  var steps=ft==='CROSS'?crossStepsFor(r):ADAPTER_STEPS;
   var stF=st.findings||{}; var stC=st.comments||{}; var stED=st.engDisp||{};
   var stRW=st.reworkFindings||{}; var stRWC=st.reworkComments||{}; var stRWP=st.reworkPhotos||{};
   var stSD=st.smartData||{};
@@ -3280,7 +5819,7 @@ function renderPhotoThumbs(itemId){
     </div>`).join('');
   if(countEl) countEl.textContent = photos.length ? photos.length + ' photo' + (photos.length > 1 ? 's' : '') + ' attached' : '';
 }
-function setHeader(key,val){ current.header[key]=val; }
+function setHeader(key,val){ current.header[key]=val; if(key==='partNo') refreshSpareValidation(); }
 function setInspector(val){ current.inspector=val; }
 function setEngineerName(val){ current.engineerName=val; }
 function setNotes(val){ current.engineeringNotes=val; }
@@ -3302,7 +5841,7 @@ function updateProgress(){
     failed=visible.filter(id=>f[id]==='fail'||f[id]==='yes').length;
   } else if(ft==='CROSS'||ft==='ADAPTER'){
     const st2=ft==='CROSS'?crossState():adapterState();
-    const steps2=ft==='CROSS'?CROSS_STEPS:ADAPTER_STEPS;
+    const steps2=ft==='CROSS'?crossStepsFor(current):ADAPTER_STEPS;
     const visible=rgFlowGetVisibleSteps(st2,steps2);
     const f=st2.findings;
     total=visible.length;
@@ -3370,6 +5909,9 @@ function renderForm(){
     const sizeLabel = GV_SIZES[current.gvSize]||'';
     const scLabel   = GV_SCENARIOS[current.gvScenario]||'';
     html+=`<div class="form-breadcrumb">Gate Valve &nbsp;›&nbsp; ${esc(sizeLabel)} &nbsp;›&nbsp; ${esc(scLabel)}</div>`;
+  } else if(current.equipType==='CROSS'){
+    const ct=CROSS_TYPES[current.crossType||'4WAY'];
+    html+=`<div class="form-breadcrumb">Cross &nbsp;›&nbsp; ${esc(ct?ct.label:'4-Way Block')}</div>`;
   } else if(current.equipType){
     html+=`<div class="form-breadcrumb">${esc(EQUIP_LABELS[current.equipType]||current.equipType)}</div>`;
   }
@@ -3425,7 +5967,7 @@ function renderForm(){
   }
 
   // Spares
-  html+='<div class="card"><div class="section-title">Spare Parts Required</div>'+renderSparesTable()+'</div>';
+  html+=renderSparesCard();
 
   // Notes
   html+=`<div class="card"><div class="section-title">Engineering Disposition / Notes</div>
@@ -3802,7 +6344,7 @@ function buildPrintHTML(r){
   } else if(ft==='CROSS'||ft==='ADAPTER'){
     var rgSt=ft==='CROSS'?current.crossState:current.adapterFlowState;
     if(!rgSt) rgSt={findings:{},comments:{},engDisp:{},smartData:{},reworkFindings:{},reworkComments:{}};
-    var rgSteps=ft==='CROSS'?CROSS_STEPS:ADAPTER_STEPS;
+    var rgSteps=ft==='CROSS'?crossStepsFor(current):ADAPTER_STEPS;
     // Re-read from saved report
     var rgSt2=ft==='CROSS'?(r.crossState||{}):(r.adapterFlowState||{});
     var rgF2=rgSt2.findings||{}; var rgSD2=rgSt2.smartData||{};
@@ -3901,7 +6443,7 @@ function buildPrintHTML(r){
     if(rft2==='GATE_VALVE') return GV_SECTIONS.flatMap(s=>s.items);
     if(rft2==='BLIND_FLANGE') return BF_STEPS;
     if(rft2==='WECO_FLANGE') return WECO_STEPS;
-    if(rft2==='CROSS')       return CROSS_STEPS;
+    if(rft2==='CROSS')       return crossStepsFor(r);
     if(rft2==='ADAPTER')     return ADAPTER_STEPS;
     return GENERIC_ITEMS;
   })();
@@ -3996,29 +6538,13 @@ function buildPrintHTML(r){
     </div>` : '';
   const engDispOnlyHtml = ''; // merged into photoSectionHtml above
 
-  const spares=(r.spares||[]).filter(s=>s.description);
-  const sparesHtml=spares.length?`
-    <h2>Spare Parts Required</h2>
-    <table style="width:100%;border-collapse:collapse">
-      <thead><tr>
-        <th style="background:#252963;color:#fff;padding:5px 8px;text-align:left;font-size:11px">Description</th>
-        <th style="background:#252963;color:#fff;padding:5px 8px;text-align:left;font-size:11px">Part No.</th>
-        <th style="background:#252963;color:#fff;padding:5px 8px;text-align:left;font-size:11px">Qty</th>
-        <th style="background:#252963;color:#fff;padding:5px 8px;text-align:left;font-size:11px">Comment</th>
-      </tr></thead>
-      <tbody>${spares.map(s=>`<tr>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px">${s.description||''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px">${s.pn||''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px;text-align:center">${s.qty||''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px">${s.comment||''}</td>
-      </tr>`).join('')}</tbody>
-    </table>`:''
+  const sparesHtml = buildSparesPrintHTML(r);
 
   const metaRows=[
     ['Equipment No',r.header.equipmentNo],['Serial No',r.header.serialNo],
     ['Part No',r.header.partNo],['SO',r.header.so],['SN',r.header.sn],
     ['Size / Description',r.header.sizeDesc],['Inteserv Job',r.header.inteservJob],
-    ['Inspector',r.inspector]
+    ['Inspector',r.inspector],['Spares',spareSummaryText(r)]
   ].filter(([k,v])=>v);
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Inspection Report</title>
@@ -4624,16 +7150,7 @@ function renderPreview(r){
   }
   html+=`<div class="preview-items">${rows}</div>`;
 
-  const spares=(r.spares||[]).filter(s=>s.description);
-  if(spares.length){
-    html+='<div class="card"><div class="section-title">Spare Parts Required</div>';
-    html+=spares.map(s=>`<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:baseline">
-      <span style="font-weight:600;flex:1;color:var(--text)">${esc(s.description)}</span>
-      <span style="color:var(--text3)">PN: ${esc(s.pn)} · Qty: ${esc(s.qty)}</span>
-      ${s.comment?`<span style="color:var(--text2)">· ${esc(s.comment)}</span>`:''}
-    </div>`).join('');
-    html+='</div>';
-  }
+  html+=buildSparesPreviewHTML(r);
   if(r.engineeringNotes){
     html+=`<div class="card"><div class="section-title">Engineering Notes</div>
       <div style="font-size:13px;color:var(--text2);line-height:1.6">${esc(r.engineeringNotes)}</div></div>`;
@@ -4854,7 +7371,7 @@ function printReport(id){
   } else if(ft==='CROSS'||ft==='ADAPTER'){
     var rgSt=ft==='CROSS'?current.crossState:current.adapterFlowState;
     if(!rgSt) rgSt={findings:{},comments:{},engDisp:{},smartData:{},reworkFindings:{},reworkComments:{}};
-    var rgSteps=ft==='CROSS'?CROSS_STEPS:ADAPTER_STEPS;
+    var rgSteps=ft==='CROSS'?crossStepsFor(current):ADAPTER_STEPS;
     // Re-read from saved report
     var rgSt2=ft==='CROSS'?(r.crossState||{}):(r.adapterFlowState||{});
     var rgF2=rgSt2.findings||{}; var rgSD2=rgSt2.smartData||{};
@@ -4953,7 +7470,7 @@ function printReport(id){
     if(rft2==='GATE_VALVE') return GV_SECTIONS.flatMap(s=>s.items);
     if(rft2==='BLIND_FLANGE') return BF_STEPS;
     if(rft2==='WECO_FLANGE') return WECO_STEPS;
-    if(rft2==='CROSS')       return CROSS_STEPS;
+    if(rft2==='CROSS')       return crossStepsFor(r);
     if(rft2==='ADAPTER')     return ADAPTER_STEPS;
     return GENERIC_ITEMS;
   })();
@@ -5048,29 +7565,13 @@ function printReport(id){
     </div>` : '';
   const engDispOnlyHtml = ''; // merged into photoSectionHtml above
 
-  const spares=(r.spares||[]).filter(s=>s.description);
-  const sparesHtml=spares.length?`
-    <h2>Spare Parts Required</h2>
-    <table style="width:100%;border-collapse:collapse">
-      <thead><tr>
-        <th style="background:#252963;color:#fff;padding:5px 8px;text-align:left;font-size:11px">Description</th>
-        <th style="background:#252963;color:#fff;padding:5px 8px;text-align:left;font-size:11px">Part No.</th>
-        <th style="background:#252963;color:#fff;padding:5px 8px;text-align:left;font-size:11px">Qty</th>
-        <th style="background:#252963;color:#fff;padding:5px 8px;text-align:left;font-size:11px">Comment</th>
-      </tr></thead>
-      <tbody>${spares.map(s=>`<tr>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px">${s.description||''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px">${s.pn||''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px;text-align:center">${s.qty||''}</td>
-        <td style="padding:5px 8px;border:1px solid #e5e7eb;font-size:11px">${s.comment||''}</td>
-      </tr>`).join('')}</tbody>
-    </table>`:''
+  const sparesHtml = buildSparesPrintHTML(r);
 
   const metaRows=[
     ['Equipment No',r.header.equipmentNo],['Serial No',r.header.serialNo],
     ['Part No',r.header.partNo],['SO',r.header.so],['SN',r.header.sn],
     ['Size / Description',r.header.sizeDesc],['Inteserv Job',r.header.inteservJob],
-    ['Inspector',r.inspector]
+    ['Inspector',r.inspector],['Spares',spareSummaryText(r)]
   ].filter(([k,v])=>v);
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Inspection Report</title>
