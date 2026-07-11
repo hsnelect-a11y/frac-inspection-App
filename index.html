@@ -83,6 +83,15 @@ input,textarea,select{font-family:inherit;font-size:13px}
 .home-title{text-align:center;font-size:24px;font-weight:800;color:#f1f5f9;letter-spacing:-.3px;margin-bottom:2px}
 .home-sub2{text-align:center;font-size:14px;font-weight:700;color:#af61ff;margin-bottom:4px;letter-spacing:.02em}
 .home-sub{text-align:center;color:#64748b;margin-top:2px;font-size:12px}
+.home-conn{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:12px auto 0;padding:8px 14px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);width:fit-content;max-width:100%}
+.home-conn-dot{width:8px;height:8px;border-radius:50%;background:#9ca3af;flex-shrink:0}
+.home-conn-dot.online{background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.18)}
+.home-conn-dot.offline{background:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.18)}
+.home-conn-text{font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.home-conn-btn{font-size:11.5px;font-weight:800;padding:4px 12px;border-radius:999px;border:1px solid var(--brand2);background:var(--brand2);color:#fff;cursor:pointer;flex-shrink:0}
+.home-conn-btn:hover{opacity:.88}
+.home-conn-btn.signout{background:transparent;color:var(--text3);border-color:var(--border2)}
+.home-conn-btn.signout:hover{color:#dc2626;border-color:rgba(220,38,38,.4);background:rgba(220,38,38,.06)}
 .home-panel{background:var(--home-panel);border-radius:16px;padding:20px;border:1px solid var(--home-panel-border);margin-top:24px}
 .home-panel-label{font-size:10px;font-weight:700;color:#8b88c0;text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px}
 
@@ -857,6 +866,11 @@ body.has-sp-banner{padding-top:44px}
     <div class="home-title">FRAC Equipment Inspection</div>
     <div class="home-sub2">Disposition Forms</div>
     <div class="home-sub">Digitalised QC inspection and Engineering disposition forms</div>
+    <div class="home-conn" id="home-conn">
+      <span class="home-conn-dot" id="home-conn-dot"></span>
+      <span class="home-conn-text" id="home-conn-text">Checking connection&hellip;</span>
+      <button class="home-conn-btn" id="home-conn-btn" onclick="homeConnAction()">Sign In</button>
+    </div>
     <div class="home-panel">
 
       <div class="home-panel-label">Select Equipment Type</div>
@@ -7706,6 +7720,25 @@ function isConfigured(){
   return !!(spConfig.clientId && spConfig.tenantId && spConfig.siteUrl);
 }
 
+function updateHomeConn(live){
+  var d=document.getElementById('home-conn-dot');
+  var t=document.getElementById('home-conn-text');
+  var b=document.getElementById('home-conn-btn');
+  if(!d||!t||!b) return;
+  if(live){
+    d.className='home-conn-dot online';
+    t.textContent='Signed in as '+(spConfig.userName||'user');
+    b.textContent='Sign Out'; b.classList.add('signout');
+  } else {
+    d.className='home-conn-dot offline';
+    t.textContent='Not signed in \u2014 reports saved locally only';
+    b.textContent='Sign In'; b.classList.remove('signout');
+  }
+}
+function homeConnAction(){
+  if(tokenValid()) disconnectSharePoint();
+  else msSignIn();
+}
 function updateConnStatus(){
   var dot         = document.getElementById('conn-dot');
   var label       = document.getElementById('conn-label');
@@ -7715,6 +7748,7 @@ function updateConnStatus(){
   var infoMode    = document.getElementById('info-mode');
   var syncBtn     = document.getElementById('btn-sp-sync');
   var live        = tokenValid();
+  updateHomeConn(live);
 
   if(live){
     if(dot)        dot.className = 'conn-dot online';
@@ -7864,6 +7898,15 @@ function setConnStatus(state,text){
   var lbl=document.getElementById('conn-label');
   if(dot) dot.className='conn-dot'+(state==='online'?' online':state==='connecting'?' connecting':state==='error'?' error':' offline');
   if(lbl) lbl.textContent=text;
+  // keep the home pill in sync for transient states (connecting / error / cancelled)
+  if(state==='connecting'||state==='error'){
+    var hd=document.getElementById('home-conn-dot');
+    var ht=document.getElementById('home-conn-text');
+    if(hd) hd.className='home-conn-dot'+(state==='error'?' offline':'');
+    if(ht) ht.textContent=text;
+  } else {
+    updateHomeConn(tokenValid());
+  }
 }
 
 function tokenValid(){ return !!(msAccessToken && Date.now()<msTokenExpiry); }
@@ -8029,6 +8072,10 @@ function updateHomeCount(){
 
 // ── Sign-in banner (fixed top bar) ───────────────────────────────────
 function showSignInBanner(){
+  // Top banner replaced by the inline connection pill on the home screen.
+  updateConnStatus();
+  return;
+  /* legacy banner (disabled)
   if(document.getElementById('sp-signin-banner')) return;
   var banner=document.createElement('div');
   banner.id='sp-signin-banner'; banner.className='sp-signin-banner';
@@ -8040,6 +8087,7 @@ function showSignInBanner(){
   banner.appendChild(msg); banner.appendChild(btnIn); banner.appendChild(btnX);
   document.body.insertBefore(banner,document.body.firstChild);
   document.body.classList.add('has-sp-banner');
+  */
 }
 
 function msSignInFromBanner(){
