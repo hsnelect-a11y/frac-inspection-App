@@ -266,11 +266,20 @@ html:not([data-theme="dark"]) .home-actions button:hover{color:var(--text)}
 .cond-detail-inner{display:flex;flex-direction:column;gap:7px}
 .cond-detail-lbl{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--text3)}
 .cond-tr.fail-row td{border-bottom:none}
+.rw-stamp:empty{display:none}
+.rw-stamp{font-size:11px;font-weight:700;color:#0f766e;background:rgba(0,140,127,.10);border-radius:6px;padding:4px 8px;margin-bottom:8px;display:inline-block}
+[data-theme="dark"] .rw-stamp{color:#5eead4;background:rgba(0,140,127,.16)}
+.rw-stamp-inline{font-size:10.5px;font-weight:600;color:#0f766e;margin-left:8px;text-transform:none;letter-spacing:0}
+[data-theme="dark"] .rw-stamp-inline{color:#5eead4}
 .sp-in{width:100%;min-width:0;padding:5px 7px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--text);font-size:12px;font-family:inherit}
 .sp-in:hover{border-color:var(--border2)}
 .sp-in:focus{border-color:var(--brand2);background:var(--input-bg);outline:none}
 .sp-in.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px}
-.sp-in.qty{width:52px;text-align:center;padding:5px 4px}
+.sp-in.qty{width:40px;text-align:center;padding:5px 2px}
+.qty-step{display:inline-flex;align-items:center;gap:2px}
+.qty-btn{width:24px;height:26px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);border-radius:6px;font-size:14px;font-weight:800;line-height:1;cursor:pointer;flex-shrink:0;padding:0}
+.qty-btn:hover{border-color:var(--brand2);color:var(--brand2)}
+.qty-btn:active{background:var(--brand2);color:#fff}
 .sp-tbl th.x,.sp-tbl td.x{width:30px;padding:2px}
 .sp-tbl .del-btn{background:none;border:none;color:var(--text3);font-size:16px;line-height:1;cursor:pointer;padding:4px 6px;border-radius:5px}
 .sp-tbl .del-btn:hover{color:#dc2626;background:rgba(220,38,38,.1)}
@@ -1737,11 +1746,6 @@ const SPARE_PARTS_CATALOG = {
     "pn": "48-104-075",
     "description": "Shear Pin",
     "qty": "1"
-   },
-   {
-    "pn": "GV 3 1/16\" 15K | Part No.: P1000162344 - Based on condition parts -  OS30",
-    "description": "",
-    "qty": ""
    }
   ],
   "condition": [
@@ -2009,11 +2013,6 @@ const SPARE_PARTS_CATALOG = {
     "pn": "48-104-075",
     "description": "Shear Pin",
     "qty": "1"
-   },
-   {
-    "pn": "GV 3 1/16\" 15K | Part No.: P1000162344 - Based on condition parts -  OS60",
-    "description": "",
-    "qty": ""
    }
   ],
   "condition": [
@@ -2271,11 +2270,6 @@ const SPARE_PARTS_CATALOG = {
     "pn": "P166129",
     "description": "WIPER SEAL",
     "qty": "1"
-   },
-   {
-    "pn": "GV 5 1/8\" 15K | Part No.: P1000103330 - Based on condition parts -  Standard",
-    "description": "",
-    "qty": ""
    }
   ],
   "condition": [
@@ -2828,11 +2822,6 @@ const SPARE_PARTS_CATALOG = {
     "pn": "P1000024013",
     "description": "NON-EXTRUSION RING",
     "qty": "1"
-   },
-   {
-    "pn": "GV 7 1/16\" 15K | Part No.: P1000023400 - Based on condition parts -  Standard",
-    "description": "",
-    "qty": ""
    }
   ],
   "condition": [
@@ -3044,11 +3033,6 @@ const SPARE_PARTS_CATALOG = {
     "pn": "P1000024013",
     "description": "NON-EXTRUSION RING",
     "qty": "1"
-   },
-   {
-    "pn": "GV 7 1/16\" 15K | Part No.: P1000023400 - Based on condition parts -  OS30",
-    "description": "",
-    "qty": ""
    }
   ],
   "condition": [
@@ -3260,11 +3244,6 @@ const SPARE_PARTS_CATALOG = {
     "pn": "P1000024013",
     "description": "NON-EXTRUSION RING",
     "qty": "1"
-   },
-   {
-    "pn": "GV 7 1/16\" 15K | Part No.: P1000023400 - Based on condition parts -  OS60",
-    "description": "",
-    "qty": ""
    }
   ],
   "condition": [
@@ -3725,6 +3704,61 @@ function ensureSpareLists(){
 }
 function ensureSpareState(){ ensureSpareLists(); }
 
+/* ---- qty helpers ---- */
+function qtyNum(v){ const n=parseInt(String(v==null?'':v).replace(/[^0-9-]/g,''),10); return isNaN(n)?0:n; }
+function stepQty(kind,i,delta){
+  const L=ensureSpareLists();
+  let row=null;
+  if(kind==='cons' && L) row=L.cons[i];
+  else if(kind==='cond' && L) row=L.cond[i];
+  else if(kind==='spare') row=(current.spares||[])[i];
+  if(!row) return;
+  const next=Math.max(0, qtyNum(row.qty)+delta);
+  if(kind==='spare'){ row.qty=String(next); }
+  else { row.qty=String(next); if(kind==='cond') refreshCondDisp(i); }
+  const box=document.getElementById(kind+'-qty-'+i);
+  if(box) box.value=row.qty;
+  refreshSpareSummary();
+}
+/* ---- dynamic disposition ----------------------------------------------
+   A "replace" finding always reads back the row's LIVE part number, name and
+   qty, so editing any of them rewrites the disposition automatically.
+   Rework/polish findings keep their fixed instruction text. */
+function autoReplaceDisp(row){
+  const pn=(row.pn||'').trim()||'(part no.)';
+  const desc=(row.desc||'').trim();
+  const qty=qtyNum(row.qty);
+  return 'Replace '+pn+(desc?' ('+desc+')':'')+' with new \u2014 QTY '+qty;
+}
+function dispForRow(row){
+  if(row.r!=='fail') return '';
+  const o=(row.opt!=null && row.opt>=0 && row.options) ? row.options[row.opt] : null;
+  if(o) return o.replace ? autoReplaceDisp(row) : o.disp;
+  return row.disp||'';                       // custom / free text
+}
+function refreshCondDisp(i){
+  const L=ensureSpareLists(); if(!L||!L.cond[i]) return;
+  const c=L.cond[i];
+  const o=(c.opt!=null && c.opt>=0 && c.options) ? c.options[c.opt] : null;
+  if(o) c.disp=dispForRow(c);                // keep stored copy in step with edits
+  const t=document.getElementById('cond-disp-text-'+i);
+  if(t){ t.innerHTML=esc(c.disp||''); t.classList.toggle('is-replace', !!(o&&o.replace)); }
+}
+function qtyCellHTML(kind,i,val){
+  return '<div class="qty-step">'
+    +'<button class="qty-btn" onclick="stepQty(\''+kind+'\','+i+',-1)">&minus;</button>'
+    +'<input class="sp-in qty" id="'+kind+'-qty-'+i+'" type="text" inputmode="numeric" value="'+esc(val)+'" '
+      +'oninput="setQtyField(\''+kind+'\','+i+',this.value)"/>'
+    +'<button class="qty-btn" onclick="stepQty(\''+kind+'\','+i+',1)">+</button></div>';
+}
+function setQtyField(kind,i,v){
+  const L=ensureSpareLists();
+  if(kind==='cons' && L && L.cons[i]) L.cons[i].qty=v;
+  else if(kind==='cond' && L && L.cond[i]){ L.cond[i].qty=v; refreshCondDisp(i); }
+  else if(kind==='spare' && current.spares && current.spares[i]) current.spares[i].qty=v;
+  refreshSpareSummary();
+}
+
 /* ---- summary ---- */
 function condRowReplaces(c){
   if(c.r!=='fail') return false;
@@ -3763,7 +3797,7 @@ function delConsRow(i){
 }
 
 /* ---- condition setters ---- */
-function setCondField(i,f,v){ const L=ensureSpareLists(); if(!L||!L.cond[i]) return; L.cond[i][f]=v; }
+function setCondField(i,f,v){ const L=ensureSpareLists(); if(!L||!L.cond[i]) return; L.cond[i][f]=v; refreshCondDisp(i); }
 function setConditionResult(i,val){
   const L=ensureSpareLists(); if(!L||!L.cond[i]) return;
   const c=L.cond[i]; c.r=val;
@@ -3773,7 +3807,7 @@ function setConditionResult(i,val){
 function setConditionOption(i,optIdx){
   const L=ensureSpareLists(); if(!L||!L.cond[i]) return;
   const c=L.cond[i]; c.opt=parseInt(optIdx,10);
-  if(c.opt>=0 && c.options && c.options[c.opt]){ c.disp=c.options[c.opt].disp; c.rep=!!c.options[c.opt].replace; }
+  if(c.opt>=0 && c.options && c.options[c.opt]){ c.disp=dispForRow(c); c.rep=!!c.options[c.opt].replace; }
   else if(c.opt===-1){ c.disp=''; c.rep=false; }
   refreshSparesCard();
 }
@@ -3854,7 +3888,7 @@ function renderSparesCardInner(){
     html+='<tr>'
       +'<td><input class="sp-in" type="text" value="'+esc(c.desc)+'" placeholder="Description" oninput="setConsField('+i+',\'desc\',this.value)"/>'+(c.std?'':'<span class="added-tag">ADDED</span>')+'</td>'
       +'<td><input class="sp-in mono" type="text" value="'+esc(c.pn)+'" placeholder="PN" oninput="setConsField('+i+',\'pn\',this.value)"/></td>'
-      +'<td class="c"><input class="sp-in qty" type="text" value="'+esc(c.qty)+'" oninput="setConsField('+i+',\'qty\',this.value)"/></td>'
+      +'<td class="c">'+qtyCellHTML('cons',i,c.qty)+'</td>'
       +'<td class="c"><label class="rep-toggle"><input type="checkbox" '+(on?'checked':'')+' onchange="setConsumableConfirm('+i+',this.checked)"/>'
       +'<span class="rep-badge'+(on?'':' off')+'" id="cons-badge-'+i+'">'+(on?'REPLACE':'SKIP')+'</span></label></td>'
       +'<td class="c x"><button class="del-btn" onclick="delConsRow('+i+')">&times;</button></td></tr>';
@@ -3869,7 +3903,7 @@ function renderSparesCardInner(){
     html+='<tr class="cond-tr '+(v==='pass'?'pass-row':v==='fail'?'fail-row':'')+'" id="cond-row-'+i+'">'
       +'<td><input class="sp-in" type="text" value="'+esc(c.desc)+'" placeholder="Description" oninput="setCondField('+i+',\'desc\',this.value)"/>'+(c.std?'':'<span class="added-tag">ADDED</span>')+'</td>'
       +'<td><input class="sp-in mono" type="text" value="'+esc(c.pn)+'" placeholder="PN" oninput="setCondField('+i+',\'pn\',this.value)"/></td>'
-      +'<td class="c"><input class="sp-in qty" type="text" value="'+esc(c.qty)+'" oninput="setCondField('+i+',\'qty\',this.value)"/></td>'
+      +'<td class="c">'+qtyCellHTML('cond',i,c.qty)+'</td>'
       +'<td class="c"><div class="rf-btns">'
         +'<button class="rf-btn '+(v==='pass'?'active-pass':'')+'" onclick="setConditionResult('+i+',\'pass\')">Pass</button>'
         +'<button class="rf-btn '+(v==='fail'?'active-fail':'')+'" onclick="setConditionResult('+i+',\'fail\')">Fail</button>'
@@ -3906,7 +3940,7 @@ function buildSparesPrintHTML(r){
       +L.cond.map(function(c){ const v=c.r||'';
         const res=v==='pass'?'PASS &mdash; use as-is':v==='fail'?'FAIL':'&mdash;';
         const col=v==='fail'?'#b91c1c':v==='pass'?'#15803d':'#6b7280';
-        const disp=v==='fail'?enc(c.disp).replace(/\n/g,'<br>'):'';
+        const disp=v==='fail'?enc(dispForRow(c)).replace(/\n/g,'<br>'):'';
         return '<tr><td style="'+td+'">'+enc(c.desc)+(c.std?'':' <i>(added)</i>')+'</td><td style="'+td+'">'+enc(c.pn)+'</td><td style="'+td+';text-align:center">'+enc(c.qty)+'</td><td style="'+td+';text-align:center;font-weight:700;color:'+col+'">'+res+'</td><td style="'+td+'">'+disp+'</td></tr>'; }).join('')
       +'</tbody></table>';
   }
@@ -3931,7 +3965,7 @@ function buildSparesPreviewHTML(r){
     html+='<div style="font-weight:700;color:var(--text2);font-size:12px;margin:10px 0 4px">Based-on-Condition</div>';
     html+=L.cond.map(function(c){ const v=c.r||'';
       const res=v==='pass'?'PASS':v==='fail'?'FAIL':'&mdash;'; const col=v==='fail'?'#dc2626':v==='pass'?'#16a34a':'var(--text3)';
-      return '<div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)"><div style="display:flex;gap:8px;align-items:baseline"><span style="font-weight:600;flex:1;color:var(--text)">'+esc(c.desc)+(c.std?'':' <i style="color:var(--text3)">(added)</i>')+'</span><span style="color:var(--text3)">PN: '+esc(c.pn)+' &middot; Qty: '+esc(c.qty)+'</span><span style="font-weight:700;color:'+col+'">'+res+'</span></div>'+((v==='fail'&&c.disp)?'<div style="color:var(--text2);margin-top:3px;white-space:pre-wrap">'+esc(c.disp)+'</div>':'')+'</div>'; }).join('');
+      return '<div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)"><div style="display:flex;gap:8px;align-items:baseline"><span style="font-weight:600;flex:1;color:var(--text)">'+esc(c.desc)+(c.std?'':' <i style="color:var(--text3)">(added)</i>')+'</span><span style="color:var(--text3)">PN: '+esc(c.pn)+' &middot; Qty: '+esc(c.qty)+'</span><span style="font-weight:700;color:'+col+'">'+res+'</span></div>'+((v==='fail'&&dispForRow(c))?'<div style="color:var(--text2);margin-top:3px;white-space:pre-wrap">'+esc(dispForRow(c))+'</div>':'')+'</div>'; }).join('');
   }
   if(manual.length){
     html+='<div style="font-weight:700;color:var(--text2);font-size:12px;margin:10px 0 4px">Additional Parts</div>';
@@ -4075,8 +4109,43 @@ function setBFSD(id,k,val){ if(!bfState().smartData[id]) bfState().smartData[id]
 function bfRW(id){ return bfState().reworkFindings[id]||''; }
 function bfRWC(id){ return bfState().reworkComments[id]||''; }
 function bfRWP(id){ return bfState().reworkPhotos[id]||[]; }
+/* ══ REWORK QC TIMESTAMPS ═══════════════════════════════════════════
+   When an inspector passes/fails a post-rework QC check we stamp the
+   moment it was signed off. This is the re-inspection time — distinct
+   from the report's own created/updated date. Clearing the result
+   clears the stamp. */
+function stampRework(store,id,val){
+  if(!store.reworkTimestamps) store.reworkTimestamps={};
+  if(val) store.reworkTimestamps[id]=new Date().toISOString();
+  else delete store.reworkTimestamps[id];
+}
+function reworkStampOf(store,id){
+  return (store && store.reworkTimestamps && store.reworkTimestamps[id]) || '';
+}
+/* Item ids are unique across flows, so one lookup covers every form type. */
+function rwStampFor(r,id){
+  if(!r) return '';
+  const stores=[r, r.bfState, r.wecoState, r.crossState, r.adapterFlowState];
+  for(let i=0;i<stores.length;i++){
+    const s=stores[i];
+    if(s && s.reworkTimestamps && s.reworkTimestamps[id]) return s.reworkTimestamps[id];
+  }
+  return '';
+}
+function rwStampHTML(r,id){
+  const t=rwStampFor(r,id);
+  return '<div class="rw-stamp" id="rw-stamp-'+id+'">'+(t?'&#128337; Re-inspected '+esc(fmtStamp(t)):'')+'</div>';
+}
+function fmtStamp(iso){
+  if(!iso) return '';
+  const d=new Date(iso);
+  if(isNaN(d)) return '';
+  return d.toLocaleString([], {year:'numeric',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
 function bfSetRW(id,val){
-  bfState().reworkFindings[id] = bfState().reworkFindings[id]===val ? '' : val;
+  const s=bfState();
+  s.reworkFindings[id] = s.reworkFindings[id]===val ? '' : val;
+  stampRework(s, id, s.reworkFindings[id]);
   current.disposition = getDisposition(current.findings, current);
   bfRefresh();
 }
@@ -4177,7 +4246,9 @@ function wecoRW(id){ return wecoState().reworkFindings[id]||''; }
 function wecoRWC(id){ return wecoState().reworkComments[id]||''; }
 function wecoRWP(id){ return wecoState().reworkPhotos[id]||[]; }
 function setWecoRW(id,val){
-  wecoState().reworkFindings[id]=wecoState().reworkFindings[id]===val?'':val;
+  const s=wecoState();
+  s.reworkFindings[id]=s.reworkFindings[id]===val?'':val;
+  stampRework(s, id, s.reworkFindings[id]);
   current.disposition=getDisposition(current.findings,current);
   wecoRefresh();
 }
@@ -4926,6 +4997,7 @@ function rgReworkPanel(ft, id){
   var out='<div class="'+rwCls+'" id="rg-rw-'+id+'">';
   out+='<div class="bf-rw-header"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> QC Inspection After Rework</div>';
   out+='<div class="bf-rw-body">';
+  out+=rwStampHTML(current,id);
   out+='<div class="bf-rw-hint">Complete after rework / repair has been carried out</div>';
   out+='<div class="bf-btns" style="margin-bottom:10px">';
   out+='<button class="bf-btn bf-pass'+(rwv==='pass'?' bf-active-pass':'')+'" data-rwid="'+id+'" data-rwft="'+ft+'" data-rwval="pass" onclick="rgSetRW(this.dataset.rwft,this.dataset.rwid,this.dataset.rwval)">&#10003; Pass</button>';
@@ -5036,6 +5108,7 @@ function rgUpdateStepVisibility(ft){
 function rgSetRW(ft,id,val){
   var st=rgGetState(ft);
   st.reworkFindings[id]=st.reworkFindings[id]===val?'':val;
+  stampRework(st, id, st.reworkFindings[id]);
   current.disposition=getDisposition(current.findings,current);
   rgRefresh(ft);
 }
@@ -5104,7 +5177,7 @@ function previewRGRows(r,ft){
     var engHtml=ed?'<div class="preview-eng-disp"><div class="preview-eng-disp-label">&#9883; Engineering Disposition</div><div class="preview-eng-disp-text">'+esc(ed)+'</div></div>':'';
     var rwPhotoHtml=rwphotos.length?'<div class="preview-photo-row">'+rwphotos.map(function(p,pi){return '<div class="preview-photo-thumb"><img src="'+p.src+'"/><div class="preview-photo-num">Rework '+(pi+1)+'</div></div>';}).join('')+'</div>':'';
     var rwBadge=rwv?'<span class="result-badge '+(rwv==='pass'?'badge-pass':'badge-fail')+'" style="font-size:9px">'+rwv.toUpperCase()+'</span>':'';
-    var reworkHtml=isFail&&(rwv||rwc||rwphotos.length)?'<div class="preview-rework-section"><div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework</div>'+(rwc?'<div class="preview-item-comment">&rarr; '+esc(rwc)+'</div>':'')+rwPhotoHtml+(rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">&#9888; Rework failed</div>':'')+'</div>':'';
+    var reworkHtml=isFail&&(rwv||rwc||rwphotos.length)?'<div class="preview-rework-section"><div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework'+(rwStampFor(r,item.id)?'<span class="rw-stamp-inline">&#128337; '+esc(fmtStamp(rwStampFor(r,item.id)))+'</span>':'')+'</div>'+(rwc?'<div class="preview-item-comment">&rarr; '+esc(rwc)+'</div>':'')+rwPhotoHtml+(rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">&#9888; Rework failed</div>':'')+'</div>':'';
     rows+='<div class="preview-item-row'+(isFail?' preview-item-fail':'')+'">'
       +'<span class="result-badge '+bc+'">'+(val?vdisp:'—')+'</span>'
       +'<div style="flex:1;min-width:0"><div class="preview-item-label">'+(idx+1)+'. '+esc(step.label)+depthNote+'</div>'
@@ -5307,6 +5380,7 @@ function wecoReworkPanel(id){
   out+='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
   out+=' QC Inspection After Rework</div>';
   out+='<div class="bf-rw-body">';
+  out+=rwStampHTML(current,id);
   out+='<div class="bf-rw-hint">Complete after rework / repair has been carried out</div>';
   out+='<div class="bf-btns" style="margin-bottom:10px">';
   out+='<button class="bf-btn bf-pass'+(rwv==='pass'?' bf-active-pass':'')+'" data-rwid="'+id+'" data-rwval="pass" onclick="setWecoRW(this.dataset.rwid,this.dataset.rwval)">&#10003; Pass</button>';
@@ -5707,6 +5781,7 @@ function bfReworkPanel(id){
   out+='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
   out+=' QC Inspection After Rework</div>';
   out+='<div class="bf-rw-body">';
+  out+=rwStampHTML(current,id);
   out+='<div class="bf-rw-hint">Complete after rework / repair has been carried out</div>';
   out+='<div class="bf-btns" style="margin-bottom:10px">';
   out+='<button class="bf-btn bf-pass'+(rwv==='pass'?' bf-active-pass':'')+'" data-rwid="'+id+'" data-rwval="pass" onclick="bfSetRW(this.dataset.rwid,this.dataset.rwval)">&#10003; Pass</button>';
@@ -5903,6 +5978,7 @@ function bfRefresh(){
 function setReworkFinding(itemId, val){
   if(!current.reworkFindings) current.reworkFindings={};
   current.reworkFindings[itemId] = current.reworkFindings[itemId]===val ? '' : val;
+  stampRework(current, itemId, current.reworkFindings[itemId]);
   updateReworkRow(itemId);
   // Recalculate overall disposition — may upgrade to rework_complete
   current.disposition=getDisposition(current.findings,current);
@@ -5947,6 +6023,8 @@ function updateReworkRow(itemId){
   const rw=document.getElementById('rework-row-'+itemId); if(!rw) return;
   const v=(current.reworkFindings&&current.reworkFindings[itemId])||'';
   rw.className='rework-section'+(v==='pass'?' rework-pass':v==='fail'?' rework-fail':'');
+  const stEl=document.getElementById('rw-stamp-'+itemId);
+  if(stEl){ const t=rwStampFor(current,itemId); stEl.innerHTML = t?('&#128337; Re-inspected '+esc(fmtStamp(t))):''; }
   ['pass','fail'].forEach(bv=>{
     const b=rw.querySelector('[data-rw="'+bv+'"]'); if(!b) return;
     b.className='insp-btn rework-insp-btn'+(v===bv?' active-'+bv:'');
@@ -6232,6 +6310,7 @@ function renderItemRow(item){
               <button class="insp-btn rework-insp-btn${rwv==='pass'?' active-pass':''}" data-rw="pass" onclick="setReworkFinding('${item.id}','pass')">Pass</button>
               <button class="insp-btn rework-insp-btn${rwv==='fail'?' active-fail':''}" data-rw="fail" onclick="setReworkFinding('${item.id}','fail')">Fail</button>
             </div>
+            ${rwStampHTML(current,item.id)}
             <input type="text" class="rework-comment-input" placeholder="QC comments on condition after rework…"
               value="${rwcom}" oninput="setReworkComment('${item.id}',this.value)"/>
             <div class="photo-btn-row" style="margin-top:8px">
@@ -6272,12 +6351,23 @@ function spareRow(s){
   return `<tr id="spare-${s.id}">
     <td><input type="text" value="${esc(s.description||'')}" placeholder="Description" oninput="updateSpare('${s.id}','description',this.value)"/></td>
     <td><input type="text" value="${esc(s.pn||'')}" placeholder="PN" oninput="updateSpare('${s.id}','pn',this.value)"/></td>
-    <td><input type="number" min="1" value="${esc(s.qty||'1')}" oninput="updateSpare('${s.id}','qty',this.value)"/></td>
+    <td><div class="qty-step">
+      <button class="qty-btn" onclick="stepSpareQty('${s.id}',-1)">&minus;</button>
+      <input class="sp-in qty" id="spare-qty-${s.id}" type="text" inputmode="numeric" value="${esc(s.qty||'1')}" oninput="updateSpare('${s.id}','qty',this.value)"/>
+      <button class="qty-btn" onclick="stepSpareQty('${s.id}',1)">+</button>
+    </div></td>
     <td><input type="text" value="${esc(s.comment||'')}" placeholder="Comment" oninput="updateSpare('${s.id}','comment',this.value)"/></td>
     <td><button class="del-btn" onclick="removeSpare('${s.id}')">×</button></td>
   </tr>`;
 }
 
+function stepSpareQty(id,delta){
+  const s=(current.spares||[]).find(x=>x.id===id);
+  if(!s) return;
+  s.qty=String(Math.max(0, qtyNum(s.qty)+delta));
+  const box=document.getElementById('spare-qty-'+id);
+  if(box) box.value=s.qty;
+}
 function addSpare(){
   const s={id:genId(),description:'',pn:'',qty:'1',comment:''};
   current.spares.push(s);
@@ -6669,9 +6759,9 @@ function buildPrintHTML(r){
     }
     if(isFail){
       if(ps.length||rps.length){
-        allPhotos.push({label:label,photos:ps,comment:comment,engDisp:ed,rwPhotos:rps,rwResult:rwv,rwComment:rwc});
+        allPhotos.push({label:label,photos:ps,comment:comment,engDisp:ed,rwPhotos:rps,rwResult:rwv,rwComment:rwc,rwStamp:rwStampFor(r,item.id)});
       } else if(ed||rwv){
-        engDispOnly.push({label:label,comment:comment,engDisp:ed,rwResult:rwv,rwComment:rwc});
+        engDispOnly.push({label:label,comment:comment,engDisp:ed,rwResult:rwv,rwComment:rwc,rwStamp:rwStampFor(r,item.id)});
       }
     }
   });
@@ -6706,6 +6796,7 @@ function buildPrintHTML(r){
           <div style="border:2px solid #008c7f;border-radius:7px;overflow:hidden;margin-top:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact">
             <div style="background:#ccfbf1;color:#065f46;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:5px 10px;border-bottom:1px solid #99f6e4;-webkit-print-color-adjust:exact;print-color-adjust:exact">
               &#8635; QC Inspection After Rework &nbsp;
+              ${entry.rwStamp?`<span style="font-weight:600;text-transform:none;letter-spacing:0;color:#0f766e">&#128337; ${fmtStamp(entry.rwStamp)}</span> &nbsp;`:''}
               ${entry.rwResult?`<span style="background:${entry.rwResult==='pass'?'#16a34a':'#dc2626'};color:#fff;border-radius:3px;padding:1px 6px;font-size:9px">${entry.rwResult.toUpperCase()}</span>`:''}
             </div>
             <div style="padding:8px 10px;font-size:11px;color:#065f46;line-height:1.6;background:#f0fdf4;-webkit-print-color-adjust:exact;print-color-adjust:exact">
@@ -7222,7 +7313,7 @@ function previewBFRows(r){
       }).join('')+'</div>':'';
     var rwBadge=rwv?'<span class="result-badge '+(rwv==='pass'?'badge-pass':'badge-fail')+'" style="font-size:9px">'+rwv.toUpperCase()+'</span>':'';
     var reworkHtml=isFail&&(rwv||rwc||rwphotos.length)?'<div class="preview-rework-section">'
-      +'<div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework</div>'
+      +'<div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework'+(rwStampFor(r,item.id)?'<span class="rw-stamp-inline">&#128337; '+esc(fmtStamp(rwStampFor(r,item.id)))+'</span>':'')+'</div>'
       +(rwc?'<div class="preview-item-comment" style="margin-top:4px">&rarr; '+esc(rwc)+'</div>':'')
       +rwPhotoHtml
       +(rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">&#9888; Rework failed &mdash; further action required</div>':'')
@@ -7281,7 +7372,7 @@ function previewWecoRows(r){
       return '<div class="preview-photo-thumb"><img src="'+p.src+'" alt="Rework '+(pi+1)+'"/><div class="preview-photo-num">Rework '+(pi+1)+'</div></div>';
     }).join('')+'</div>':'';
     var rwBadge=rwv?'<span class="result-badge '+(rwv==='pass'?'badge-pass':'badge-fail')+'" style="font-size:9px">'+rwv.toUpperCase()+'</span>':'';
-    var reworkHtml=isFail&&(rwv||rwc||rwphotos.length)?'<div class="preview-rework-section"><div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework</div>'+(rwc?'<div class="preview-item-comment">&rarr; '+esc(rwc)+'</div>':'')+rwPhotoHtml+(rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">&#9888; Rework failed</div>':'')+'</div>':'';
+    var reworkHtml=isFail&&(rwv||rwc||rwphotos.length)?'<div class="preview-rework-section"><div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework'+(rwStampFor(r,item.id)?'<span class="rw-stamp-inline">&#128337; '+esc(fmtStamp(rwStampFor(r,item.id)))+'</span>':'')+'</div>'+(rwc?'<div class="preview-item-comment">&rarr; '+esc(rwc)+'</div>':'')+rwPhotoHtml+(rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">&#9888; Rework failed</div>':'')+'</div>':'';
     rows+='<div class="preview-item-row'+(isFail?' preview-item-fail':'')+'">'
       +'<span class="result-badge '+bc+'">'+(val?vdisp:'—')+'</span>'
       +'<div style="flex:1;min-width:0">'
@@ -7371,7 +7462,7 @@ function previewItemRow(r,item){
     </div>`).join('')
   }</div>`:'';
   const reworkHtml=v==='fail'&&(rwv||rwcom||rwphotos.length)?`<div class="preview-rework-section">
-    <div class="preview-rework-header">${rwBadge} QC Inspection After Rework</div>
+    <div class="preview-rework-header">${rwBadge} QC Inspection After Rework${rwStampFor(r,item.id)?`<span class="rw-stamp-inline">&#128337; ${esc(fmtStamp(rwStampFor(r,item.id)))}</span>`:''}</div>
     ${rwcom?`<div class="preview-item-comment" style="margin-top:4px">→ ${esc(rwcom)}</div>`:''}
     ${rwPhotoHtml}
     ${rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">⚠ Rework failed — further action required</div>':''}
@@ -7697,9 +7788,9 @@ function printReport(id){
     }
     if(isFail){
       if(ps.length||rps.length){
-        allPhotos.push({label:label,photos:ps,comment:comment,engDisp:ed,rwPhotos:rps,rwResult:rwv,rwComment:rwc});
+        allPhotos.push({label:label,photos:ps,comment:comment,engDisp:ed,rwPhotos:rps,rwResult:rwv,rwComment:rwc,rwStamp:rwStampFor(r,item.id)});
       } else if(ed||rwv){
-        engDispOnly.push({label:label,comment:comment,engDisp:ed,rwResult:rwv,rwComment:rwc});
+        engDispOnly.push({label:label,comment:comment,engDisp:ed,rwResult:rwv,rwComment:rwc,rwStamp:rwStampFor(r,item.id)});
       }
     }
   });
@@ -7734,6 +7825,7 @@ function printReport(id){
           <div style="border:2px solid #008c7f;border-radius:7px;overflow:hidden;margin-top:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact">
             <div style="background:#ccfbf1;color:#065f46;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:5px 10px;border-bottom:1px solid #99f6e4;-webkit-print-color-adjust:exact;print-color-adjust:exact">
               &#8635; QC Inspection After Rework &nbsp;
+              ${entry.rwStamp?`<span style="font-weight:600;text-transform:none;letter-spacing:0;color:#0f766e">&#128337; ${fmtStamp(entry.rwStamp)}</span> &nbsp;`:''}
               ${entry.rwResult?`<span style="background:${entry.rwResult==='pass'?'#16a34a':'#dc2626'};color:#fff;border-radius:3px;padding:1px 6px;font-size:9px">${entry.rwResult.toUpperCase()}</span>`:''}
             </div>
             <div style="padding:8px 10px;font-size:11px;color:#065f46;line-height:1.6;background:#f0fdf4;-webkit-print-color-adjust:exact;print-color-adjust:exact">
