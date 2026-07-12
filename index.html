@@ -845,6 +845,69 @@ body.has-sp-banner{padding-top:44px}
 .db-table th:first-child{text-align:left}
 .db-table td{padding:7px 10px;border-bottom:1px solid var(--border)}
 .db-table tr:last-child td{border-bottom:none}
+
+/* ══ HOME EQUIPMENT GRID — ordered layout ═══════════════════════════
+   The two accordions (Cross, Gate Valve) span a full row. Left in DOM
+   order they broke the grid into ragged rows and stranded Adapter and
+   Actuator alone. Order them after the plain buttons and give the plain
+   buttons even spans so every row fills. Portrait (single column) is
+   unaffected — it keeps the original order. */
+@media (min-width:768px), (max-height:500px) and (orientation:landscape){
+  .equip-list{grid-template-columns:repeat(6,1fr);align-items:start}
+  .equip-list>button{order:1}
+  .equip-list>.gv-accordion{order:2;grid-column:1/-1}
+}
+/* 2-across zone: 2 per row, 5th button fills the row */
+@media (min-width:768px) and (max-width:1023px){
+  .equip-list>button{grid-column:span 3}
+  .equip-list>button:nth-of-type(5){grid-column:span 6}
+}
+/* 3-across zone: row of 3, then row of 2 */
+@media (min-width:1024px), (max-height:500px) and (orientation:landscape){
+  .equip-list>button:nth-of-type(-n+3){grid-column:span 2}
+  .equip-list>button:nth-of-type(n+4){grid-column:span 3}
+}
+/* Landscape phone is short — lay sub-choices out horizontally */
+@media (max-height:500px) and (orientation:landscape){
+  #cross-sub{flex-direction:row;gap:6px;padding:6px}
+  #cross-sub .scen-btn{flex:1;border-radius:8px;text-align:center;justify-content:center}
+  /* Gate Valve: sizes across the top (like Cross), scenarios on the row below */
+  #gv-sizes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:6px}
+  #gv-sizes>.size-row-btn{order:1;padding:9px 10px;border:1px solid rgba(175,97,255,.28);border-radius:8px;text-align:center;justify-content:center}
+  #gv-sizes>.size-row-btn.open{border-color:rgba(175,97,255,.6)}
+  #gv-sizes>.size-arrow,#gv-sizes .size-arrow{display:none}
+  #gv-sizes>.gv-scen{order:2;grid-column:1/-1;padding:6px;border-radius:8px}
+  .gv-scen{flex-direction:row;gap:6px;padding:6px}
+  .gv-scen .scen-btn{flex:1;border-radius:8px;text-align:center;justify-content:center}
+  .gv-sizes-hint{display:none}
+}
+/* ══ LANDSCAPE HOME — tidy 3-row grid, nothing stranded ══════════
+   Row 1: Blind Flange | WECO Flange | Frac Head
+   Row 2: Adapter      | Actuator
+   Row 3: Cross        | Gate Valve      (the two accordions, paired)
+   Vertical space is scarce in landscape, so the header, pill and rows
+   are all tightened to keep "View Report History" on screen.        */
+@media (max-height:500px) and (orientation:landscape){
+  #view-home{padding:12px 16px}
+  .home-title{font-size:17px;margin-bottom:0}
+  .home-sub2{font-size:11px;margin-bottom:2px}
+  .home-sub{font-size:10.5px;margin-top:0}
+  .home-conn{margin-top:6px;padding:5px 10px;gap:6px}
+  .home-conn-text{font-size:11px}
+  .home-conn-btn{font-size:10.5px;padding:3px 10px}
+  .home-panel{margin-top:8px;padding:10px 12px;border-radius:12px}
+  .home-panel-label{margin-bottom:6px}
+  .equip-list{gap:5px;margin-bottom:8px;align-items:start}
+  .equip-row-btn{padding:8px 10px;font-size:12px}
+  .equip-icon-wrap svg{width:26px;height:26px}
+  /* Cross + Gate Valve always share ONE row; the open sub-menu drops to the
+     full-width row beneath. display:contents lifts the accordion's button and
+     its sub-menu out of the wrapper so each becomes its own grid item. */
+  .equip-list>.gv-accordion{display:contents}
+  .equip-list>.gv-accordion>.equip-row-btn{order:2;grid-column:span 3}
+  .equip-list>.gv-accordion>.gv-sub{order:3;grid-column:1/-1;margin-top:0;border-top:1px solid rgba(175,97,255,.22);border-radius:10px}
+  .history-btn{padding:9px 12px;margin-top:8px;font-size:12px}
+}
 </style>
 <!-- ===== PWA / installable app setup ===== -->
 <link rel="manifest" href="manifest.webmanifest" />
@@ -959,7 +1022,7 @@ body.has-sp-banner{padding-top:44px}
   <line x1="22" y1="15" x2="22" y2="13.5" stroke="currentColor" stroke-width="1" opacity=".5"/>
   <line x1="22" y1="21" x2="22" y2="22.5" stroke="currentColor" stroke-width="1" opacity=".5"/>
 </svg></span><span class="equip-btn-label">Adapter</span><span class="equip-arrow">›</span></button>
-        <div class="gv-accordion"><button class="equip-row-btn gv-toggle-btn" id="cross-toggle" onclick="toggleCross()"><span class="equip-icon-wrap"><svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <div class="gv-accordion" id="cross-acc"><button class="equip-row-btn gv-toggle-btn" id="cross-toggle" onclick="toggleCross()"><span class="equip-icon-wrap"><svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!-- Horizontal body -->
   <rect x="2" y="14" width="32" height="8" rx="2" stroke="currentColor" stroke-width="1.7" fill="currentColor" opacity=".1"/>
   <!-- Vertical body -->
@@ -995,7 +1058,7 @@ body.has-sp-banner{padding-top:44px}
 </svg></span><span class="equip-btn-label">Actuator</span><span class="equip-arrow">›</span></button>
 
         <!-- Gate Valve accordion (always last) -->
-        <div class="gv-accordion">
+        <div class="gv-accordion" id="gv-acc">
           <button class="equip-row-btn gv-toggle-btn" id="gv-toggle" onclick="toggleGV()"><span class="equip-icon-wrap"><svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!-- Valve body -->
   <rect x="6" y="13" width="24" height="14" rx="2.5" stroke="currentColor" stroke-width="1.8" fill="currentColor" opacity=".1"/>
@@ -4620,14 +4683,22 @@ function resetHomeAccordion(){
 }
 
 let _crossOpen=false;
-function toggleCross(){
-  _crossOpen=!_crossOpen;
+// Only one equipment accordion may be open at a time — opening one closes the other.
+function applyCrossOpen(){
   const sub=document.getElementById('cross-sub');
   const tb=document.getElementById('cross-toggle');
   const ar=document.getElementById('cross-arrow');
+  const acc=document.getElementById('cross-acc');
   if(sub) sub.classList.toggle('hidden', !_crossOpen);
   if(tb) tb.classList.toggle('open', _crossOpen);
   if(ar) ar.style.transform=_crossOpen?'rotate(90deg)':'';
+  if(acc) acc.classList.toggle('expanded', _crossOpen);
+}
+function closeCross(){ if(!_crossOpen) return; _crossOpen=false; applyCrossOpen(); }
+function toggleCross(){
+  _crossOpen=!_crossOpen;
+  if(_crossOpen) closeGV();     // collapse Gate Valve first
+  applyCrossOpen();
 }
 function startCross(type){
   current={ id:genId(), equipType:'CROSS', formType:'CROSS', crossType:type,
@@ -4638,19 +4709,26 @@ function startCross(type){
     inspector:(spConfig.userName||''),engineerName:'',disposition:'incomplete' };
   renderForm(); showView('form');
 }
-function toggleGV(){
-  _gvOpen = !_gvOpen;
+function applyGVOpen(){
   const gvSizes  = document.getElementById('gv-sizes');
   const gvToggle = document.getElementById('gv-toggle');
   const gvArrow  = document.getElementById('gv-arrow');
-  gvSizes.classList.toggle('hidden', !_gvOpen);
-  gvToggle.classList.toggle('open', _gvOpen);
-  gvArrow.style.transform = _gvOpen ? 'rotate(90deg)' : '';
+  const gvAcc    = document.getElementById('gv-acc');
+  if(gvSizes)  gvSizes.classList.toggle('hidden', !_gvOpen);
+  if(gvToggle) gvToggle.classList.toggle('open', _gvOpen);
+  if(gvArrow)  gvArrow.style.transform = _gvOpen ? 'rotate(90deg)' : '';
+  if(gvAcc)    gvAcc.classList.toggle('expanded', _gvOpen);
   // collapse any open size when closing GV
   if(!_gvOpen){ _openSizeId = null; ['3','5','7'].forEach(k=>{
     const sb=document.getElementById('scen-'+k); if(sb) sb.classList.add('hidden');
     const bb=document.getElementById('size-btn-'+k); if(bb) bb.classList.remove('open');
   });}
+}
+function closeGV(){ if(!_gvOpen) return; _gvOpen=false; applyGVOpen(); }
+function toggleGV(){
+  _gvOpen = !_gvOpen;
+  if(_gvOpen) closeCross();     // collapse Cross first
+  applyGVOpen();
 }
 
 function toggleGVSize(sizeKey, btnId, scenId){
