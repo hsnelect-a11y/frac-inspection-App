@@ -334,22 +334,25 @@ html:not([data-theme="dark"]) .home-actions button:hover{color:var(--text)}
 .save-full-btn:hover{background:#9333ea}
 
 /* ══ HISTORY ═════════════════════════════════════════════════════ */
-.history-body{padding:16px;max-width:680px;margin:0 auto}
+.history-body{padding:16px;max-width:680px;margin:0 auto;width:100%;overflow-x:hidden}
 .search-row{display:flex;gap:8px;margin-bottom:14px}
 .search-input{flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:9px;font-size:13px;outline:none;background:var(--input-bg);color:var(--text)}
 .search-input:focus{border-color:#af61ff;box-shadow:0 0 0 3px rgba(175,97,255,.18)}
 .sort-select{padding:9px 10px;border:1px solid var(--border);border-radius:9px;font-size:12px;outline:none;color:var(--text);background:var(--input-bg)}
-.reports-list{display:grid;grid-template-columns:1fr;gap:10px;align-items:start}
-/* Two cards per row in landscape; one per row in portrait / on phones */
-@media (orientation:landscape){.reports-list{grid-template-columns:1fr 1fr}}
-.report-card{background:var(--bg2);border-radius:12px;border:1px solid var(--border);padding:14px;box-shadow:var(--card-sh);transition:background .2s}
-.report-card-top{display:flex;align-items:flex-start;gap:8px}
+.reports-list{display:grid;grid-template-columns:1fr;gap:10px;align-items:start;width:100%}
+/* Columns fit the container instead of forcing it wider. min(100%,300px) means a
+   narrow screen collapses to one column rather than overflowing. */
+@media (orientation:landscape){
+  .reports-list{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+}
+.report-card{background:var(--bg2);border-radius:12px;border:1px solid var(--border);padding:14px;box-shadow:var(--card-sh);transition:background .2s;min-width:0;overflow:hidden}
+.report-card-top{display:flex;align-items:flex-start;gap:8px;min-width:0;flex-wrap:wrap}
 .report-card-info{flex:1;min-width:0}
 .report-date-type{font-size:11px;color:var(--text3);margin-bottom:3px}
 .report-serial{font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .report-id-tag{font-family:monospace;font-size:10px;font-weight:700;color:var(--brand);letter-spacing:.04em;margin-top:1px}
 .report-size{font-size:11px;color:var(--text2);margin-top:2px}
-.disp-chip{font-size:10px;font-weight:800;padding:4px 9px;border-radius:99px;border:1px solid;white-space:nowrap;flex-shrink:0}
+.disp-chip{font-size:10px;font-weight:800;padding:4px 9px;border-radius:99px;border:1px solid;white-space:nowrap;flex-shrink:0;max-width:100%}
 .report-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .report-actions button{flex:1 1 44px;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;transition:background .12s}
 .btn-view{background:var(--bg3);color:var(--text2)}.btn-view:hover{background:var(--border)}
@@ -598,8 +601,8 @@ html:not([data-theme="dark"]) .home-actions button:hover{color:var(--text)}
   .preview-photo-thumb img{width:150px;height:112px}
   .preview-photo-thumb.expanded img{width:450px;height:337px}
 
-  /* Report cards in history — two column grid on large screens */
-  .reports-list{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  /* Report cards in history — fit as many columns as the container allows */
+  .reports-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px}
   .report-card{margin-bottom:0}
 }
 
@@ -830,7 +833,11 @@ body.has-sp-banner{padding-top:44px}
 .sp-sync-btn.disconnected:hover{background:var(--border);opacity:.8}
 [data-theme="dark"] .sp-sync-btn.disconnected{background:var(--bg3);color:var(--text3)}
 /* Last-sync timestamp shown next to the Sync button */
-.last-sync-label{font-size:10px;font-weight:600;color:var(--text3);white-space:nowrap;flex-shrink:0}
+.last-sync-label{font-size:10px;font-weight:600;color:var(--text3);white-space:nowrap;
+  flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* Landscape phone: the topbar is crowded — drop the sync label rather than let it
+   force horizontal overflow (the Sync button still shows the state). */
+@media (max-height:500px) and (orientation:landscape){ .last-sync-label{display:none} }
 .last-sync-label:empty{display:none}
 /* Let the History topbar wrap its controls on narrow screens instead of overflowing */
 #view-history .topbar{flex-wrap:wrap;row-gap:8px}
