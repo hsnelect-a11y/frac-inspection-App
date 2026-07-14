@@ -1189,6 +1189,15 @@ body.has-sp-banner{padding-top:44px}
               <button class="scen-btn scen-os" onclick="startGV('3_1_16_15K','OS_060')">Oversized .060&quot;</button>
             </div>
 
+            <button class="size-row-btn" id="size-btn-3a" onclick="toggleGVSize('3_1_16_15K_ACT','size-btn-3a','scen-3a')">
+              3-1/16&quot; – 15K Actuated <span class="size-arrow" id="size-arr-3a">›</span>
+            </button>
+            <div id="scen-3a" class="gv-scen hidden">
+              <button class="scen-btn scen-normal" onclick="startGV('3_1_16_15K_ACT','NORMAL')">Normal</button>
+              <button class="scen-btn scen-os" onclick="startGV('3_1_16_15K_ACT','OS_030')">Oversized .030&quot;</button>
+              <button class="scen-btn scen-os" onclick="startGV('3_1_16_15K_ACT','OS_060')">Oversized .060&quot;</button>
+            </div>
+
             <button class="size-row-btn" id="size-btn-5" onclick="toggleGVSize('5_1_8_15K','size-btn-5','scen-5')">
               5-1/8&quot; – 15K <span class="size-arrow" id="size-arr-5">›</span>
             </button>
@@ -1496,10 +1505,14 @@ const EQUIP_LABELS = {
 
 // Gate valve sub-options
 const GV_SIZES = {
-  '3_1_16_15K': '3-1/16" – 15K',
-  '5_1_8_15K':  '5-1/8" – 15K',
-  '7_1_16_15K': '7-1/16" – 15K'
+  '3_1_16_15K':     '3-1/16" – 15K',
+  '3_1_16_15K_ACT': '3-1/16" – 15K Actuated',
+  '5_1_8_15K':      '5-1/8" – 15K',
+  '7_1_16_15K':     '7-1/16" – 15K'
 };
+/* The actuated 3" valve is the same valve body, so it reuses the 3" spare parts
+   list. Change/remove this alias if it gets its own list. */
+const GV_SPARE_ALIAS = { '3_1_16_15K_ACT': '3_1_16_15K' };
 const GV_SCENARIOS = {
   NORMAL: 'Normal',
   OS_030: 'Oversized .030"',
@@ -3753,7 +3766,10 @@ const SPARE_PARTS_CATALOG = {
 function normPN(s){ return (s||'').toString().toUpperCase().replace(/\s+/g,''); }
 function spareCatalogKey(r){
   const ft=r.equipType||r.formType;
-  if(ft==='GATE_VALVE') return 'GATE_VALVE|'+(r.gvSize||'')+'|'+(r.gvScenario||'');
+  if(ft==='GATE_VALVE'){
+    const sz=GV_SPARE_ALIAS[r.gvSize]||r.gvSize||'';
+    return 'GATE_VALVE|'+sz+'|'+(r.gvScenario||'');
+  }
   return ft||'';
 }
 function findSpareEntry(r){ return SPARE_PARTS_CATALOG[spareCatalogKey(r)]||null; }
@@ -4098,6 +4114,7 @@ const EQUIP_IMAGES = {
 
   GATE_VALVE:                 IMG_GV_3,   // home-menu button + fallback
   'GATE_VALVE|3_1_16_15K':    IMG_GV_3,
+  'GATE_VALVE|3_1_16_15K_ACT':IMG_GV_3,
   'GATE_VALVE|5_1_8_15K':     IMG_GV_5,
   'GATE_VALVE|7_1_16_15K':    IMG_GV_7,
 
@@ -4945,7 +4962,7 @@ function resetHomeAccordion(){
   if(gvSizes)  gvSizes.classList.add('hidden');
   if(gvToggle) gvToggle.classList.remove('open');
   if(gvArrow)  gvArrow.style.transform = '';
-  ['3','5','7'].forEach(k=>{
+  ['3','3a','5','7'].forEach(k=>{
     const sb = document.getElementById('scen-'+k);
     const bb = document.getElementById('size-btn-'+k);
     if(sb) sb.classList.add('hidden');
@@ -4990,7 +5007,7 @@ function applyGVOpen(){
   if(gvArrow)  gvArrow.style.transform = _gvOpen ? 'rotate(90deg)' : '';
   if(gvAcc)    gvAcc.classList.toggle('expanded', _gvOpen);
   // collapse any open size when closing GV
-  if(!_gvOpen){ _openSizeId = null; ['3','5','7'].forEach(k=>{
+  if(!_gvOpen){ _openSizeId = null; ['3','3a','5','7'].forEach(k=>{
     const sb=document.getElementById('scen-'+k); if(sb) sb.classList.add('hidden');
     const bb=document.getElementById('size-btn-'+k); if(bb) bb.classList.remove('open');
   });}
@@ -5002,13 +5019,20 @@ function toggleGV(){
   applyGVOpen();
 }
 
+/* size key -> DOM suffix. Must stay in step with the markup; a fall-through
+   ternary silently collapsed the wrong row when a new size was added. */
+const GV_SIZE_SUFFIX = {
+  '3_1_16_15K':'3', '3_1_16_15K_ACT':'3a', '5_1_8_15K':'5', '7_1_16_15K':'7'
+};
 function toggleGVSize(sizeKey, btnId, scenId){
   const isOpen = _openSizeId === sizeKey;
   // collapse whichever was open
   if(_openSizeId){
-    const oldKey = _openSizeId === '3_1_16_15K' ? '3' : _openSizeId === '5_1_8_15K' ? '5' : '7';
-    document.getElementById('scen-'+oldKey).classList.add('hidden');
-    document.getElementById('size-btn-'+oldKey).classList.remove('open');
+    const oldKey = GV_SIZE_SUFFIX[_openSizeId];
+    const oldScen = oldKey && document.getElementById('scen-'+oldKey);
+    const oldBtn  = oldKey && document.getElementById('size-btn-'+oldKey);
+    if(oldScen) oldScen.classList.add('hidden');
+    if(oldBtn)  oldBtn.classList.remove('open');
   }
   if(isOpen){
     // clicking the same size again collapses it
