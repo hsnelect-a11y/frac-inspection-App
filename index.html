@@ -7331,6 +7331,8 @@ function reportNavHTML(r){
 }
 
 /* ══ LOCAL-ONLY REPORTS → SHAREPOINT PROMPT ════════════════════════ */
+/* Guards against re-asking within a single signed-in session. It is reset on
+   sign-in and on sign-out, so each new sign-in gets one prompt. */
 var _uploadPromptShown=false;
 function localOnlyReports(){ return reports.filter(function(r){ return !r._spSynced; }); }
 function maybePromptUploadLocal(){
@@ -8514,6 +8516,11 @@ function msVerifyConnection(callback){
     updateConnStatus();
     var b=document.getElementById('sp-signin-banner'); if(b){ b.remove(); document.body.classList.remove('has-sp-banner'); }
     toast('✅ Connected as '+spConfig.userName);
+    // A successful sign-in is a fresh chance to offer the upload — this is the
+    // one place a sign-in actually completes, so hook it here rather than
+    // relying on a once-per-page-load flag.
+    _uploadPromptShown=false;
+    setTimeout(maybePromptUploadLocal, 900);
     if(callback) callback();
   });
 }
@@ -8575,6 +8582,7 @@ function msUploadFile(folderPath,filename,content,isJson,callback){
 
 function disconnectSharePoint(){
   msAccessToken=null; msTokenExpiry=0; spSiteId=null; spDriveId=null;
+  _uploadPromptShown=false;   // re-arm: next sign-in should offer the upload again
   try{ sessionStorage.removeItem('ms_at'); sessionStorage.removeItem('ms_at_exp'); }catch(e){}
   spConfig.connected=false; spConfig.userName='';
   try{ localStorage.setItem(CFG_KEY,JSON.stringify(spConfig)); }catch(e){}
