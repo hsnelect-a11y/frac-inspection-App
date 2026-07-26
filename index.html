@@ -6457,14 +6457,13 @@ function renderForm(){
     html+='</div>';
   } else if(ft==='GATE_VALVE'){
     if(window.GVRedress){
+      // The component items are rendered inside the assessment step of the route.
       html+='<div class="card"><div class="section-title">Redress Route</div>'+GVRedress.render()+'</div>';
     }
-    if(!window.GVRedress || GVRedress.checklistApplies()){
+    if(!window.GVRedress || GVRedress.legacyChecklist()){
       GV_SECTIONS.forEach(sec=>{
-        const secItems=sec.items.filter(it=>!(window.GVRedress&&GVRedress.itemExcluded(it.id)));
-        if(!secItems.length) return;
         html+=`<div class="card"><div class="section-title">${esc(sec.title)}</div>`;
-        secItems.forEach(item=>{ html+=renderItemRow(item); });
+        sec.items.forEach(item=>{ html+=renderItemRow(item); });
         html+='</div>';
       });
     }
@@ -9072,7 +9071,11 @@ if(isConfigured()){
   /* ── Items excluded from the component assessment at RD1.5 ──────────────
      Upper bonnet assembly is not disassembled at RD1.5, so these checklist
      items are not assessable. CONFIRM THIS MAPPING WITH ENGINEERING.       */
-  var RD15_EXCLUDED_ITEMS = ['bo1', 'bo2', 'bo3', 'bo6', 'bl1', 'bl2', 'bl3'];
+  var RD15_EXCLUDED_ITEMS = [
+    'bo1', 'bo2', 'bo3', 'bo4', 'bo5', 'bo6', 'bo7',   // bonnet and balance stem housing
+    'st1', 'st2', 'st3', 'st4',                        // stem
+    'bl1', 'bl2', 'bl3', 'bl4', 'bl5', 'bl6'           // bleeder plug ports
+  ];
 
   /* ── Items that, on failure, indicate the upper bonnet is suspect ─────── */
   var BONNET_SUSPECT_ITEMS = ['bo1', 'bo2', 'bo3', 'bo6', 'bl1', 'bl2', 'bl3'];
@@ -9318,19 +9321,48 @@ if(isConfigured()){
     var r = rep || current;
     var lvl = rep ? rdLevelOf(rep) : rdLevel();
     var all = GV_SECTIONS.reduce(function (a, s2) { return a.concat(s2.items); }, []);
-    if (!lvl) return { total: all.length, assessed: all.length, excluded: [], note: '' };
+    if (!lvl) return { total: all.length, assessed: all.length, excluded: [], sections: [], note: '' };
     if (!(RD_LEVELS[lvl] && RD_LEVELS[lvl].teardown)) {
-      return { total: all.length, assessed: 0, excluded: [],
+      return { total: all.length, assessed: 0, excluded: [], sections: [],
                note: 'No component assessment at ' + RD_LEVELS[lvl].label + ' — the valve is not stripped.' };
     }
     var ex = all.filter(function (i) {
       return lvl === 'RD15' && RD15_EXCLUDED_ITEMS.indexOf(i.id) !== -1;
     });
+    // group the excluded items by the section they belong to
+    var secs = [];
+    GV_SECTIONS.forEach(function (sec) {
+      var out = sec.items.filter(function (i) {
+        return ex.some(function (e) { return e.id === i.id; });
+      });
+      if (!out.length) return;
+      secs.push({ title: sec.title, out: out.length, of: sec.items.length,
+                  whole: out.length === sec.items.length,
+                  items: out.map(function (i) { return i.label; }) });
+    });
     return {
-      total: all.length, assessed: all.length - ex.length, excluded: ex,
-      note: ex.length ? ('Upper bonnet assembly not opened at RD1.5 — '
-             + ex.length + ' items are outside the assessment scope.') : ''
+      total: all.length, assessed: all.length - ex.length, excluded: ex, sections: secs,
+      note: ex.length ? ('Not opened at RD1.5 — ' + ex.length
+             + ' items are outside the assessment scope.') : ''
     };
+  }
+
+  /* Items are shown inside the assessment step once a teardown level is set. */
+  function rdInlineChecklist() { return rdChecklistApplies() && !!rdLevel(); }
+  /* A report that predates the redress route keeps its own checklist cards. */
+  function rdLegacyChecklist() { return !rdLevel() && rdChecklistApplies(); }
+
+  /* Closes the assessment as soon as every item in scope is answered, and
+     reopens it if an item is cleared. */
+  function rdSyncAssessment() {
+    var s2 = rdState();
+    if (!rdChecklistApplies()) { return false; }
+    var items = rdApplicableItems();
+    var f = (current && current.findings) || {};
+    var done = items.length > 0 && items.every(function (i) { return !!f[i.id]; });
+    if (done && s2.steps.td_assess !== 'done') { s2.steps.td_assess = 'done'; return 'closed'; }
+    if (!done && s2.steps.td_assess === 'done') { s2.steps.td_assess = ''; return 'reopened'; }
+    return false;
   }
 
   function rdApplicableItems() {
@@ -9498,9 +9530,11 @@ if(isConfigured()){
       h += '<div style="margin-top:9px;font-size:11px;color:var(--text2)"><b>Assessment scope</b><br>'
         + s.scope.assessed + ' of ' + s.scope.total + ' component items'
         + (s.scope.note ? '<div style="color:var(--text3)">' + esc2(s.scope.note) + '</div>' : '')
-        + (s.scope.excluded.length
+        + (s.scope.sections && s.scope.sections.length
             ? '<div style="color:var(--text3)">Not assessed: '
-              + s.scope.excluded.map(function (i) { return esc2(i.label); }).join('; ') + '</div>'
+              + s.scope.sections.map(function (x) {
+                  return esc2(x.title) + (x.whole ? ' (all ' + x.of + ')' : ' (' + x.out + ' of ' + x.of + ')');
+                }).join('; ') + '</div>'
             : '')
         + '</div>';
     }
@@ -9577,7 +9611,9 @@ if(isConfigured()){
         + (s.scope.excluded.length
             ? '<tr><td style="padding:4px 6px;border:1px solid #e2d9f3">Not assessed</td>'
               + '<td style="padding:4px 6px;border:1px solid #e2d9f3;color:#666">'
-              + s.scope.excluded.map(function (i) { return esc2(i.label); }).join('; ') + '</td></tr>'
+              + s.scope.sections.map(function (x) {
+                  return esc2(x.title) + (x.whole ? ' — all ' + x.of + ' items' : ' — ' + x.out + ' of ' + x.of + ' items');
+                }).join('<br>') + '</td></tr>'
             : '')
         + '</table>';
     }
@@ -9712,6 +9748,8 @@ if(isConfigured()){
     printPhotoEntries: rdPrintPhotoEntries, isNegative: rdIsNegative,
     answerBonnet: rdAnswerBonnet, assessmentScope: rdAssessmentScope,
     flagMandatory: rdFlagMandatory, mandatoryFor: rdMandatoryFor,
+    inlineChecklist: rdInlineChecklist, legacyChecklist: rdLegacyChecklist,
+    syncAssessment: rdSyncAssessment,
     mandatoryCount: rdMandatoryCount, ruleText: rdRuleText
   };
 
@@ -9773,6 +9811,13 @@ if(isConfigured()){
     + '.gvrd-fin input{width:17px;height:17px;flex-shrink:0;accent-color:#16a34a}'
     + '.gvrd-fin-t{font-size:12px;font-weight:600;color:var(--text)}'
     + '.gvrd-fin-s{font-size:10px;color:var(--text3);font-family:ui-monospace,Menlo,monospace}'
+    + '.gvrd-items{margin-top:10px}'
+    + '.gvrd-sec{font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;'
+    + 'color:var(--brand);margin:12px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)}'
+    + '.gvrd-sec:first-child{margin-top:2px}'
+    + '.gvrd-foot{margin-top:12px;padding:11px 12px;border-radius:9px;text-align:center;'
+    + 'font-size:12px;font-weight:700;border:1px solid var(--border);background:var(--bg2);color:var(--text3)}'
+    + '.gvrd-foot.ok{background:rgba(22,163,74,.13);border-color:rgba(22,163,74,.45);color:#4ade80}'
     + '.gvrd-log{font-size:10.5px;color:var(--text3);margin-top:5px;padding-left:10px;border-left:2px solid var(--border2)}'
     + '.rd-mand-row td{background:rgba(185,0,150,.10)!important}'
     + '.rd-mand-row td:first-child{box-shadow:inset 3px 0 0 #b90096}'
@@ -9854,7 +9899,7 @@ if(isConfigured()){
       say(os.target === 'ENG' ? 'Refer to Engineering — no further oversize' : 'Routed to machine shop — ' + os.label);
     }
     // level or scope changed → the checklist and spares content changes too
-    if (id === 'rx_level' || id === 'esc_bonnet') { rerenderForm(); reportPartsChange(before); }
+    if (id === 'rx_level' || id === 'esc_bonnet') { R.syncAssessment(); rerenderForm(); reportPartsChange(before); }
     else refresh();
     if (window.refreshSparesCard) try { refreshSparesCard(); } catch (x) {}
   };
@@ -9878,6 +9923,8 @@ if(isConfigured()){
 
   /* called by the application after any component finding changes */
   window.gvRdOnFinding = function () {
+    var sync = R.syncAssessment();
+    if (sync === 'closed') say('Component assessment complete');
     var esc2 = R.findingEscalation();
     if (esc2) {
       var before = mandatorySnapshot();
@@ -9976,18 +10023,33 @@ if(isConfigured()){
       var f = current.findings || {};
       var done = items.filter(function (i) { return !!f[i.id]; }).length;
       var sc = R.assessmentScope();
-      var ex = '';
-      if (sc.excluded.length) {
-        ex = '<div class="gvrd-out warn" style="margin-top:8px">Dismantled parts only'
-          + '<span>' + e(sc.note) + '</span></div>'
+      var h = '';
+
+      if (sc.sections && sc.sections.length) {
+        h += '<div class="gvrd-out warn">Dismantled parts only<span>' + e(sc.note) + '</span></div>'
           + '<div class="gvrd-sub" style="margin-top:6px"><b>Not assessed at this level:</b><br>'
-          + sc.excluded.map(function (i) { return e(i.label); }).join('<br>') + '</div>';
+          + sc.sections.map(function (x) {
+              return e(x.title) + (x.whole ? ' — all ' + x.of + ' items' : ' — ' + x.out + ' of ' + x.of + ' items');
+            }).join('<br>')
+          + '</div>';
       }
-      return '<div class="gvrd-sub">' + done + ' of ' + items.length + ' component items answered.</div>' + ex
-        + '<div class="gvrd-btns" style="margin-top:8px">'
-        + '<button class="gvrd-btn' + (v === 'done' ? ' on-ok' : '') + '"'
-        + (done < items.length ? ' disabled style="opacity:.5"' : '')
-        + ' onclick="gvRdSet(\'td_assess\',\'done\')">Assessment complete</button></div>';
+
+      // the items being assessed sit inside this step
+      if (window.renderItemRow) {
+        h += '<div class="gvrd-items">';
+        GV_SECTIONS.forEach(function (sec) {
+          var secItems = sec.items.filter(function (i) { return !R.itemExcluded(i.id); });
+          if (!secItems.length) return;
+          h += '<div class="gvrd-sec">' + e(sec.title) + '</div>';
+          secItems.forEach(function (it) { h += renderItemRow(it); });
+        });
+        h += '</div>';
+      }
+
+      h += (done >= items.length && items.length
+        ? '<div class="gvrd-foot ok">&#10003; Assessment complete — ' + items.length + ' of ' + items.length + ' items assessed</div>'
+        : '<div class="gvrd-foot">' + done + ' of ' + items.length + ' items assessed</div>');
+      return h;
     }
     if (t === 'dims') {
       return '<div class="gvrd-dims">'
