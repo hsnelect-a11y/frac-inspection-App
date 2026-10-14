@@ -10562,7 +10562,7 @@ function detect(pn, std){
 /* ── evaluation ───────────────────────────────────────────────────────── */
 function newEval(){
   return { receivedFrom:'', receivedOther:'', variantSrc:'', detectedPN:'', autoDesc:'',
-           comp:{}, pts:{}, meas:{}, small:{}, nameplate:'', plate:null, prevHWR:false, notes:'',
+           comp:{}, pts:{}, meas:{}, small:{}, nameplate:'', plate:null, prevHWR:false, prevHWRSrc:'', prevHWRRefs:[], notes:'',
            engRequest:false, engRemarks:'', engBy:'', engDate:'',
            inspDate:today(), rev1:'', rev1Date:'', rev2:'', rev2Date:'',
            reworkTimestamps:{}, std:null };
@@ -10748,6 +10748,36 @@ function testPlan(std, a){
   return { rows:rows, basis:basis, weld:weld, wp:wp, factor:f, notes:t.notes||'' };
 }
 
+/* ── valve history by serial number ────────────────────────────────────
+   Earlier gate valve reports for the same serial (this device and
+   everything synced from SharePoint): what they dispositioned, and whether
+   a hot-weld repair was recommended or completed. */
+function bareSN(s){ return String(s||'').toUpperCase().replace(/[\s\-_.\/]/g,''); }
+function valveHistory(r, list){
+  var sn = bareSN(r && r.header && r.header.serialNo);
+  if(sn.length<4) return [];
+  list = list || (typeof reports!=='undefined' ? reports : []);
+  return list.filter(function(x){
+    return x && x!==r && x.id!==r.id && (x.equipType||x.formType)==='GATE_VALVE' && bareSN(x.header && x.header.serialNo)===sn;
+  }).map(function(x){
+    var h = { id:x.id, date:x.savedAt||x.createdAt||'', cfg:x.gvScenario||'', disp:x.disposition||'', route:'none', target:'', hwr:false, cwr:false, done:false, prevHWR:false, legacy:!x.gvEval };
+    try{
+      if(x.gvEval){
+        var a = analyse(x);
+        h.route = a.route.type; h.target = a.route.target || ''; h.hwr = a.route.type==='hotweld'; h.cwr = !!a.route.cwr;
+        h.prevHWR = !!x.gvEval.prevHWR;
+      } else if(x.gvRedress && x.gvRedress.outcome==='repair_os'){
+        h.target = x.gvRedress.osTarget || '';
+        h.route = h.target==='NORMAL' ? 'hotweld' : 'os'; h.hwr = h.route==='hotweld';
+      }
+    }catch(err){}
+    h.done = h.disp==='rework_complete';
+    return h;
+  }).sort(function(p, q){ return String(q.date).localeCompare(String(p.date)); });
+}
+/* weld repair on record: an earlier report routed to HWR/CWR, or said the valve had been HWR'd */
+function hwrEvidence(hist){ return (hist||[]).filter(function(h){ return h.hwr || h.prevHWR; }); }
+
 /* Name plate: change to the modified part number given in the SOW. */
 function nameplateDisp(r, a, std){
   var g = r.gvEval, fromPN = g.detectedPN || (a.fromVar.pns||[])[0] || r.header.partNo || r.header.assyPN || '';
@@ -10812,7 +10842,11 @@ function outcome(a, r){
     o = { tone:'ok', title:'STANDARD REDRESS', text:'All critical areas evaluated in good condition. Replace consumables and test.' };
   if(a.route.type==='hotweld' && a.route.from!=='OS_060') o.title = 'REPAIR — HOT-WELD SEAT POCKETS TO NORMAL (DEPTH OVER OS ALLOWANCE)';
   if(a.route.jump && a.route.type==='os') o.title += ' (DIRECT FROM '+OS_LABEL[a.route.from].toUpperCase()+')';
-  if(a.route.cwr) o.cwr = std_adv(a, 'cwr');
+  if(a.route.cwr){
+    o.cwr = std_adv(a, 'cwr');
+    var refs = (r && r.gvEval && r.gvEval.prevHWRRefs) || [];
+    if(refs.length) o.cwr += ' Previous HWR on record: '+refs.map(function(x){ return x.id+(x.date?' ('+String(x.date).slice(0,10)+')':''); }).join(', ')+'.';
+  }
   if(a.route.type!=='none'){
     var fp = a.nameplate.fromPN || '—', tp = a.nameplate.toPN || 'PN not set';
     o.pnChange = { from:fp, fromCfg:OS_LABEL[a.route.from], to:tp, toCfg:OS_LABEL[a.route.target] };
@@ -10829,6 +10863,7 @@ function std_adv(a, k){ return (a.std && a.std.advisory && a.std.advisory[k]) ||
 var SOW_LABEL = { NORMAL:'Normal → OS .030"', OS_030:'OS .030" → OS .060"', OS_060:'Hot-weld repair (HWR) → Normal', CWR:'CWR — valve hot-weld repaired before' };
 window.GVEval = {
   fromJSON:fromJSON, factoryStd:factoryStd, embeddedRev:function(){ var e = embedded(); return e ? e.rev : ''; },
+  valveHistory:valveHistory, hwrEvidence:hwrEvidence, bareSN:bareSN,
   componentsFor:componentsFor, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
   keys:valveKeys, newValveId:newValveId, blankValve:blankValve, defaultTesting:defaultTesting, valvesByNominal:valvesByNominal,
   NOMINALS:['1-13/16','2-1/16','2-9/16','3-1/16','4-1/16','5-1/8','7-1/16'], IMAGES:IMAGES,
@@ -11228,6 +11263,11 @@ var css = ''
  +'.gve-kv div:nth-child(odd){color:var(--text3)}.gve-kv div:nth-child(even){color:var(--text);font-weight:600}'
  +'.gve-snpn{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}'
  +'.gve-cwr{margin-top:9px;padding:8px 10px;border-radius:8px;background:rgba(175,97,255,.12);border:1px solid rgba(175,97,255,.45);font-size:12px;color:var(--text);line-height:1.45}'
+ +'.gve-hist{margin-top:8px;border:1px solid var(--border);border-radius:9px;overflow:hidden}'
+ +'.gve-hist-h{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);background:var(--bg3);padding:6px 10px}'
+ +'.gve-hist-r{display:flex;gap:10px;flex-wrap:wrap;padding:6px 10px;font-size:11.5px;border-top:1px solid var(--border);color:var(--text2)}'
+ +'.gve-hist-r .d{font-family:ui-monospace,Menlo,monospace;color:var(--text3)}.gve-hist-r .i{font-weight:700;color:var(--text)}.gve-hist-r .t{flex:1;min-width:180px}'
+ +'.gve-hist-r.w{background:rgba(175,97,255,.08)}.gve-hist-r.w .t{color:var(--text);font-weight:600}'
  +'.gve-np{margin-top:8px;font-size:12px;color:var(--text);line-height:1.45}'
  +'.gve-note{font-size:11px;color:var(--text3);margin-top:6px;line-height:1.45}'
  +'@media(max-width:479px){.gve-detail,.gve-meas,.gve-snpn,.gve-manual{grid-template-columns:1fr}.gve-kv{grid-template-columns:1fr}}';
@@ -11441,6 +11481,7 @@ function testingHTML(std, a){
 /* ── whole form ───────────────────────────────────────────────────────── */
 function renderForm(){
   G.setFormRef(current);
+  syncHistory();
   var r=current, s=g(), a=G.analyse(r), d0=dispFor(r.disposition=a.disp), h='';
   document.getElementById('form-title').textContent=formTypeLabel(r);
   h+='<div id="eq-hero-slot">'+equipHeroHTML(r)+'</div>';
@@ -11455,14 +11496,14 @@ function renderForm(){
   h+=f('Part rev','partRev',"setHeader('partRev',this.value)");
   h+=f('Assy level part no.','assyPN',"gvePN('assyPN',this.value)");
   h+=f('Part rev','assyRev',"setHeader('assyRev',this.value)");
-  h+=f('Serial / batch no.','serialNo',"setHeader('serialNo',this.value)");
+  h+=f('Serial / batch no.','serialNo',"gveSN(this.value)");
   h+=f('Service order no.','so',"setHeader('so',this.value)");
   h+=f('Service notification no.','notification',"setHeader('notification',this.value)");
   h+=f('Equipment no.','equipmentNo',"setHeader('equipmentNo',this.value)");
   h+='</div>';
   h+='<div style="margin-top:10px"><label class="field-label">Equipment description</label><input class="field-input" id="gve-desc" value="'+e(r.header.sizeDesc||'')+'" oninput="setHeader(\'sizeDesc\',this.value)"/></div>';
   h+='<div id="gve-detect">'+detectHTML()+'</div>';
-  h+='<label class="gve-abn" style="margin-top:10px"><input type="checkbox"'+(s.prevHWR?' checked':'')+' onchange="gvePrevHWR(this.checked)"/> Valve was hot-weld repaired before (HWR) — a further weld repair follows the CWR SOW</label>';
+  h+='<div id="gve-hist">'+historyHTML()+'</div>';
   h+='<div style="margin-top:10px"><label class="field-label">General note — current nameplate details</label><textarea class="field-input" rows="2" oninput="gveG(\'nameplate\',this.value)">'+e(s.nameplate||'')+'</textarea>'+(typeof bfPhotoBtns==='function'?bfPhotoBtns('gve_nameplate'):'')+'</div>';
   h+='</div>';
   h+='<div class="disp-banner" id="disp-banner" style="background:'+d0.bg+';border-color:'+d0.border+';border-left-color:'+d0.color+'"><div class="disp-label" style="color:'+d0.color+'">'+d0.label+'</div><div class="disp-desc" style="color:'+d0.color+'">'+d0.desc+'</div></div>';
@@ -11489,6 +11530,41 @@ function renderForm(){
   h+='<button class="save-full-btn" onclick="saveReport()">Save &amp; Complete Report</button>';
   document.getElementById('form-body').innerHTML=h;
   updateProgress();
+}
+
+/* ── valve history (previous reports for this serial number) ─────────── */
+var HIST = [];
+function syncHistory(){
+  var s=g();
+  HIST = G.valveHistory(current);
+  var ev = G.hwrEvidence(HIST);
+  if(s.prevHWRSrc==='manual') return;          /* the inspector decided — keep it */
+  if(ev.length){ s.prevHWR = true; s.prevHWRSrc = 'history'; s.prevHWRRefs = ev.map(function(x){ return { id:x.id, date:x.date }; }); }
+  else if(s.prevHWRSrc==='history'){ s.prevHWR = false; s.prevHWRSrc = ''; s.prevHWRRefs = []; }
+}
+function routeText(x){
+  if(x.route==='hotweld') return x.cwr ? 'CWR weld repair to Normal' : 'HWR to Normal';
+  if(x.route==='os') return 'machining to '+(OS_LABEL[x.target]||x.target);
+  return x.disp==='all_pass' ? 'standard redress' : x.disp==='incomplete' ? 'evaluation not completed' : 'redress / repairs';
+}
+function historyHTML(){
+  var s=g(), sn=(current.header.serialNo||'').trim(), h='';
+  var box = '<label class="gve-abn" style="margin-top:10px"><input type="checkbox"'+(s.prevHWR?' checked':'')+' onchange="gvePrevHWR(this.checked)"/> Valve was hot-weld repaired before (HWR) — a further weld repair follows the CWR SOW'
+    +(s.prevHWRSrc==='history' ? ' <span class="gve-chip eng" style="margin-left:4px">FROM VALVE HISTORY</span>' : '')+'</label>';
+  if(!sn) return box+'<div class="gve-note">Enter or scan the serial number to check this valve\'s previous reports for HWR.</div>';
+  if(!HIST.length) return box+'<div class="gve-note">No previous reports for serial '+e(sn)+' in the app'+(typeof tokenValid==='function'&&tokenValid()?'':' (sync with SharePoint to include other devices)')+'. Tick the box if the valve is known to have been hot-weld repaired.</div>';
+  h+='<div class="gve-hist"><div class="gve-hist-h">Valve history — serial '+e(sn)+' · '+HIST.length+' previous report'+(HIST.length>1?'s':'')+'</div>';
+  HIST.slice(0,6).forEach(function(x){
+    var w = x.hwr || x.prevHWR;
+    h+='<div class="gve-hist-r'+(w?' w':'')+'"><span class="d">'+e(String(x.date).slice(0,10))+'</span><span class="i">'+e(x.id)+'</span>'
+      +'<span class="t">'+e(OS_LABEL[x.cfg]||x.cfg||'—')+' → '+e(routeText(x))+(x.route!=='none' ? (x.done?' · rework complete':' · completion not recorded') : '')
+      +(x.prevHWR && !x.hwr ? ' · recorded as previously HWR' : '')+(x.legacy?' · old redress form':'')+'</span></div>';
+  });
+  h+='</div>';
+  var last = HIST.filter(function(x){ return x.route!=='none'; })[0];
+  if(last && current.gvScenario && last.target && last.target!==current.gvScenario)
+    h+='<div class="gve-note" style="color:#d97706;font-weight:700">The last report ('+e(last.id)+') routed this valve to '+e(OS_LABEL[last.target]||last.target)+', but it is identified now as '+e(OS_LABEL[current.gvScenario])+'. Check the nameplate and part number.</div>';
+  return box+h;
 }
 
 /* ── refresh helpers ──────────────────────────────────────────────────── */
@@ -11576,7 +11652,8 @@ window.gveManual = function(which, v){
 };
 window.gveRecv = function(v){ var s=g(); s.receivedFrom = s.receivedFrom===v ? '' : v; set('gve-recv', recvHTML()); };
 window.gveG = function(k, v){ g()[k]=v; };
-window.gvePrevHWR = function(on){ g().prevHWR=!!on; status(); };
+window.gvePrevHWR = function(on){ var s=g(); s.prevHWR=!!on; s.prevHWRSrc='manual'; if(!on) s.prevHWRRefs=[]; set('gve-hist', historyHTML()); status(); };
+window.gveSN = function(v){ setHeader('serialNo', v); g().prevHWRSrc = g().prevHWRSrc==='manual' ? 'manual' : ''; syncHistory(); set('gve-hist', historyHTML()); status(); };
 window.gveStatus = function(){ status(); };
 window.gveEngReq = function(on){ g().engRequest=!!on; var b=document.getElementById('gve-engbox'); if(b) b.style.display=on?'block':'none'; status(); };
 window.gveComp = function(cid, k, v){ var s=g(); if(!s.comp[cid]) s.comp[cid]={}; s.comp[cid][k]=v; };
@@ -11691,7 +11768,10 @@ function printDoc(r){
     +'<tr><td style="'+LB+'">SERVICE ORDER NUMBER</td><td style="'+B+'" colspan="3">'+e(r.header.so||'')+'</td></tr>'
     +'<tr><td style="'+LB+'">SERVICE NOTIFICATION NO</td><td style="'+B+'" colspan="3">'+e(r.header.notification||'')+'</td></tr>'
     +'<tr><td style="'+LB+'">EQUIPMENT DESCRIPTION</td><td style="'+B+'" colspan="3">'+e(r.header.sizeDesc||'')
-      +(a.known?' <span class="tag">(identified as '+e(std.size.label)+' · '+e(OS_LABEL[r.gvScenario])+(s.variantSrc==='pn'?' from PN '+e(s.detectedPN):', selected manually')+')</span>':'')+'</td></tr></table>';
+      +(a.known?' <span class="tag">(identified as '+e(std.size.label)+' · '+e(OS_LABEL[r.gvScenario])+(s.variantSrc==='pn'?' from PN '+e(s.detectedPN):', selected manually')+')</span>':'')+'</td></tr>'
+    +(function(){ var hs=G.valveHistory(r); if(!hs.length) return '';
+        return '<tr><td style="'+LB+'">VALVE HISTORY (SERIAL)</td><td style="'+B+'" colspan="3">'+hs.slice(0,5).map(function(x){ return e(String(x.date).slice(0,10))+' '+e(x.id)+': '+e(OS_LABEL[x.cfg]||x.cfg||'—')+' → '+e(routeText(x))+(x.route!=='none'?(x.done?' (complete)':' (completion not recorded)'):''); }).join('<br>')+'</td></tr>'; })()
+    +'</table>';
   var dcol = o.tone==='ok'?'#15803d':o.tone==='minor'?'#b45309':o.tone==='major'?'#b91c1c':'#4b5563';
   h+='<div style="border:1px solid '+dcol+';border-left:5px solid '+dcol+';padding:8px 10px;margin-bottom:10px">'
     +'<div style="font-size:9px;font-weight:700;color:#6b7280;letter-spacing:.06em">VALVE DISPOSITION</div>'
