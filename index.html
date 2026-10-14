@@ -4137,6 +4137,7 @@ function equipImage(r){
   if(!r) return '';
   const t=r.equipType||r.formType;
   if(!t) return '';
+  if(t==='GATE_VALVE' && r.gvEval && window.GVEval){ const k=GVEval.imageKey(r); return (k && EQUIP_IMAGES['GATE_VALVE|'+k]) || ''; }
   if(t==='GATE_VALVE' && r.gvSize   && EQUIP_IMAGES['GATE_VALVE|'+r.gvSize])   return EQUIP_IMAGES['GATE_VALVE|'+r.gvSize];
   if(t==='CROSS'      && r.crossType&& EQUIP_IMAGES['CROSS|'+r.crossType])      return EQUIP_IMAGES['CROSS|'+r.crossType];
   return EQUIP_IMAGES[t] || '';
@@ -4187,7 +4188,7 @@ function refreshEquipHero(){
 function formTypeLabel(r){
   const base = EQUIP_LABELS[r.equipType] || r.equipType || '';
   if(r.equipType==='GATE_VALVE'){
-    const sz = GV_SIZES[r.gvSize]||r.gvSize||'';
+    const sz = (r.gvEval && window.GVEval) ? GVEval.valveLabel(r) : (GV_SIZES[r.gvSize]||r.gvSize||'');
     const sc = GV_SCENARIOS[r.gvScenario]||r.gvScenario||'';
     return base + (sz?' · '+sz:'') + (sc?' · '+sc:'');
   }
@@ -10323,46 +10324,61 @@ function e(s){ return (typeof esc==='function') ? esc(s) : String(s==null?'':s);
 function today(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
 /* ── default standards ────────────────────────────────────────────────── */
+/* A valve in the standards ("valve family"): its own name, nominal size,
+   photo and three configurations, each with part numbers, IBOM, component
+   PNs, spares, SOW and dimensions. The three standard valves keep their old
+   keys so existing reports still match; added valves get generated keys. */
+var DEFAULT_KEYS = SIZE_KEYS.slice();
+var NOMINAL = { '3_1_16_15K':'3-1/16', '5_1_8_15K':'5-1/8', '7_1_16_15K':'7-1/16' };
+var IMAGES = [ ['3_1_16_15K','3-1/16" manual'], ['3_1_16_15K_ACT','3-1/16" actuated'], ['5_1_8_15K','5-1/8"'], ['7_1_16_15K','7-1/16"'], ['','No photo'] ];
+function catalogKeyFor(nominal){ for(var k in NOMINAL) if(NOMINAL[k]===nominal) return k; return ''; }
+function blankVariant(catKey, os){
+  var cat = (typeof SPARE_PARTS_CATALOG!=='undefined') ? SPARE_PARTS_CATALOG : {};
+  var c = (catKey && cat['GATE_VALVE|'+catKey+'|'+os]) || { pns:[], consumables:[], condition:[] };
+  return {
+    pns: [],
+    bodyPN:'', plateBlankPN:'', sowNewPN:'', seatPN:'', gatePN:'', mstemPN:'', bstemPN:'', bonnetPN:'', bsbPN:'',
+    pocketIdMin:'', pocketIdMax:'', f2fMin:'', f2fMax:'', gateThkMin:'', seatThkMin:'',
+    sow: null,      /* SOW for leaving this configuration: {id,name,type,size,uploadedAt,spItemId,webUrl,spPath,pending} */
+    ibom: null,     /* last imported IBOM: {pn,rev,desc,file,importedAt,rows:[…]} */
+    consumables: clone(c.consumables||[]),
+    condition:   clone(c.condition||[])
+  };
+}
+function blankValve(label, nominal, image){
+  var ck = catalogKeyFor(nominal||''), v = {};
+  OS_KEYS.forEach(function(os){ v[os] = blankVariant(ck, os); });
+  return { label:label||'', nominal:nominal||'', image:image===undefined ? ck : image, variants:v,
+           cwrSow:null, cwrNewPN:'' };   /* CWR SOW: used instead of HWR when the valve was hot-weld repaired before */
+}
+function defaultTesting(){
+  return {
+    workingPsi:'15,000',          /* rated working pressure */
+    hwrFactor:'1.5',              /* body test after hot-weld repair = factor × working pressure */
+    cwrUseFactor:false,           /* CWR is tested at working pressure unless Engineering sets this */
+    bodyHold:'3 min primary + 15 min secondary',
+    seatHold:'3 min primary + 15 min secondary, each side',
+    lowPsi:'', lowHold:'',
+    procedure:'TST10065665',
+    drift:'Drift per OMM10009346 section 8.2 — count and record the number of turns',
+    acceptance:'No visible leakage and no pressure drop during the hold periods',
+    notes:'Body test at 1.5 × working pressure after hot-weld repair (HWR) only. Standard redress, OS .030" / OS .060" machining and CWR: body and gate/seat tests at working pressure.'
+  };
+}
 function defaultStd(){
   var cat = (typeof SPARE_PARTS_CATALOG!=='undefined') ? SPARE_PARTS_CATALOG : {};
-  var sizes = {};
-  SIZE_KEYS.forEach(function(sk){
-    var v = {};
-    OS_KEYS.forEach(function(os){
-      var c = cat['GATE_VALVE|'+sk+'|'+os] || { pns:[], consumables:[], condition:[] };
-      v[os] = {
-        pns: (c.pns||[]).slice(),
-        bodyPN:'', plateBlankPN:'', sowNewPN:'', seatPN:'', gatePN:'', mstemPN:'', bstemPN:'', bonnetPN:'', bsbPN:'',
-        pocketIdMin:'', pocketIdMax:'', f2fMin:'', f2fMax:'', gateThkMin:'', seatThkMin:'',
-        sow: null,      /* SOW for leaving this configuration: {id,name,type,size,uploadedAt,spItemId,webUrl,spPath,pending} */
-        ibom: null,     /* last imported IBOM: {pn,rev,desc,file,importedAt,rows:[…]} */
-        consumables: clone(c.consumables||[]),
-        condition:   clone(c.condition||[])
-      };
-    });
-    sizes[sk] = { label:(typeof GV_SIZES!=='undefined' && GV_SIZES[sk]) || sk, variants:v,
-                  cwrSow:null, cwrNewPN:'' };   /* CWR SOW: used instead of HWR when the valve was hot-weld repaired before */
-  });
-
-  var testing = {};
-  SIZE_KEYS.forEach(function(sk){
-    testing[sk] = {
-      workingPsi:'15,000',          /* rated working pressure */
-      hwrFactor:'1.5',              /* body test after hot-weld repair = factor × working pressure */
-      cwrUseFactor:false,           /* CWR is tested at working pressure unless Engineering sets this */
-      bodyHold:'3 min primary + 15 min secondary',
-      seatHold:'3 min primary + 15 min secondary, each side',
-      lowPsi:'', lowHold:'',
-      procedure:'TST10065665',
-      drift:'Drift per OMM10009346 section 8.2 — count and record the number of turns',
-      acceptance:'No visible leakage and no pressure drop during the hold periods',
-      notes:'Body test at 1.5 × working pressure after hot-weld repair (HWR) only. Standard redress, OS .030" / OS .060" machining and CWR: body and gate/seat tests at working pressure.'
-    };
+  var sizes = {}, testing = {};
+  DEFAULT_KEYS.forEach(function(sk){
+    var vv = blankValve((typeof GV_SIZES!=='undefined' && GV_SIZES[sk]) || sk, NOMINAL[sk], sk);
+    OS_KEYS.forEach(function(os){ var c = cat['GATE_VALVE|'+sk+'|'+os]; if(c) vv.variants[os].pns = (c.pns||[]).slice(); });
+    sizes[sk] = vv; testing[sk] = defaultTesting();
   });
 
   return {
     rev:'1.0', approvedBy:'', updatedAt:'',
     sizes: sizes,
+    valveOrder: DEFAULT_KEYS.slice(),   /* display order of the valves */
+    removed: [],                        /* standard valves Engineering deleted */
     groups: {
       seatPocket: { bands:[
           { max:0.002, action:'POLISH', text:'Polish seat pocket ID and face with Scotch-Brite to remove the defect. No high points or sharp edges. Confirm seat pocket ID and face to face within tolerance.' } ],
@@ -10436,14 +10452,37 @@ function migrate(got){
   });
   return got;
 }
+/* Added valves get every field a standard valve has; deleted standard
+   valves stay deleted; the display order lists every valve once. */
+function normalise(std){
+  var removed = std.removed || (std.removed = []);
+  removed.forEach(function(k){ delete std.sizes[k]; delete std.testing[k]; });
+  Object.keys(std.sizes).forEach(function(k){
+    if(DEFAULT_KEYS.indexOf(k)===-1) std.sizes[k] = fill(blankValve('', ''), std.sizes[k]);
+    std.testing[k] = fill(defaultTesting(), std.testing[k]);
+  });
+  var order = (std.valveOrder||[]).filter(function(k, i, a){ return std.sizes[k] && a.indexOf(k)===i; });
+  Object.keys(std.sizes).forEach(function(k){ if(order.indexOf(k)===-1) order.push(k); });
+  std.valveOrder = order;
+  return std;
+}
+function valveKeys(std){ std = std || liveStd(); return (std.valveOrder||[]).filter(function(k){ return std.sizes[k]; }); }
+function newValveId(std){ var id; do { id = 'gv'+Date.now().toString(36)+Math.random().toString(36).slice(2,5); } while(std && std.sizes[id]); return id; }
+/* the valves whose nominal size matches, e.g. "3-1/16" */
+function valvesByNominal(std, nominal, preferActuated){
+  var l = valveKeys(std).filter(function(k){ return std.sizes[k].nominal===nominal; });
+  if(preferActuated!==undefined) l.sort(function(a, b){
+    var x = /actuat/i.test(std.sizes[a].label)===!!preferActuated ? 0 : 1, y = /actuat/i.test(std.sizes[b].label)===!!preferActuated ? 0 : 1; return x-y; });
+  return l;
+}
 function loadStd(){
   var got = null;
   try{ var s = localStorage.getItem(STD_KEY); if(s) got = JSON.parse(s); }catch(x){}
-  STD = fill(defaultStd(), migrate(got));
+  STD = normalise(fill(defaultStd(), migrate(got)));
   return STD;
 }
 function writeStd(s){
-  STD = fill(defaultStd(), migrate(s));
+  STD = normalise(fill(defaultStd(), migrate(s)));
   try{ localStorage.setItem(STD_KEY, JSON.stringify(STD)); }catch(x){}
   return STD;
 }
@@ -10478,8 +10517,9 @@ function detect(pn, std){
   std = std || liveStd();
   var a = normPN2(pn), b = bare(pn);
   if(!a) return null;
-  for(var i=0;i<SIZE_KEYS.length;i++){
-    var sk = SIZE_KEYS[i], sz = std.sizes[sk]; if(!sz) continue;
+  var keys = valveKeys(std);
+  for(var i=0;i<keys.length;i++){
+    var sk = keys[i], sz = std.sizes[sk]; if(!sz) continue;
     for(var j=0;j<OS_KEYS.length;j++){
       var os = OS_KEYS[j], v = sz.variants[os]; if(!v) continue;
       var list = v.pns || [];
@@ -10760,6 +10800,10 @@ function outcome(a, r){
 function std_adv(a, k){ return (a.std && a.std.advisory && a.std.advisory[k]) || ''; }
 var SOW_LABEL = { NORMAL:'Normal → OS .030"', OS_030:'OS .030" → OS .060"', OS_060:'Hot-weld repair (HWR) → Normal', CWR:'CWR — valve hot-weld repaired before' };
 window.GVEval = {
+  keys:valveKeys, newValveId:newValveId, blankValve:blankValve, defaultTesting:defaultTesting, valvesByNominal:valvesByNominal,
+  NOMINALS:['1-13/16','2-1/16','2-9/16','3-1/16','4-1/16','5-1/8','7-1/16'], IMAGES:IMAGES,
+  imageKey:function(r){ var st = stdOf(r); return st && st.size && st.size.image!==undefined ? st.size.image : r.gvSize; },
+  valveLabel:function(r){ var st = stdOf(r); return (st && st.size && st.size.label) || (typeof GV_SIZES!=='undefined' && GV_SIZES[r.gvSize]) || r.gvSize || ''; },
   SOW_LABEL:SOW_LABEL, testPlan:testPlan, planRoute:planRoute, routeTable:routeTable, allowance:allowance,
   SIZE_KEYS:SIZE_KEYS, OS_KEYS:OS_KEYS, OS_LABEL:OS_LABEL, SIZE_SHORT:SIZE_SHORT, NEXT:NEXT,
   ACTIONS:ACTIONS, ACTION_KEYS:ACTION_KEYS, DEFECT_TYPES:DEFECT_TYPES, RECEIVED:RECEIVED,
@@ -11040,12 +11084,10 @@ function mapComponents(rows){
   });
   return res;
 }
+/* nominal size from an IBOM description, e.g. "FE 3 1/16-15K" → "3-1/16" */
 function sizeFromDesc(desc){
-  var d = String(desc||'').toUpperCase().replace(/\s+/g,' ');
-  if(/3[ -]1\/16/.test(d)) return '3_1_16_15K';
-  if(/5[ -]1\/8/.test(d)) return '5_1_8_15K';
-  if(/7[ -]1\/16/.test(d)) return '7_1_16_15K';
-  return '';
+  var m = String(desc||'').toUpperCase().match(/\b(\d{1,2})[ -](\d{1,2}\/\d{1,2})\b/);
+  return m ? m[1]+'-'+m[2] : '';
 }
 /* SOW file name → route slot. "SoW-OS30-P149968.pptx" → OS30 conversion of the valve whose body is P149968. */
 function sowSlot(name, std){
@@ -11057,7 +11099,7 @@ function sowSlot(name, std){
   else if(/OS[\s_.-]*0?60\b|\.060/.test(t)) type = 'OS_030';
   else if(/OS[\s_.-]*0?30\b|\.030/.test(t)) type = 'NORMAL';
   var hit = null;
-  G.SIZE_KEYS.some(function(sk){ return G.OS_KEYS.some(function(os){
+  G.keys(std).some(function(sk){ return G.OS_KEYS.some(function(os){
     var v = std.sizes[sk].variants[os], all = [v.bodyPN].concat(v.pns||[]).filter(Boolean).map(function(x){ return String(x).toUpperCase(); });
     if(pns.some(function(p){ return all.indexOf(p)!==-1; })){ hit = { size:sk, os:os }; return true; }
   }); });
@@ -11194,13 +11236,13 @@ function detectHTML(){
     }
   } else if(typed){
     cls='warn';
-    h+='<span class="gve-missing">Part number not found in the Gate Valve standards.</span><br>Select the size and configuration below, or ask Engineering to add the part number in Settings.';
+    h+='<span class="gve-missing">Part number not found in the Gate Valve standards.</span><br>Select the valve and configuration below, or ask Engineering to add the part number in Settings.';
   } else {
-    h+='Enter the top level or assembly part number — the size and configuration (Normal, OS .030", OS .060") are detected automatically.';
+    h+='Enter or scan the top level or assembly part number — the valve and its configuration (Normal, OS .030", OS .060") are detected automatically.';
   }
   h+='<div class="gve-manual">'
-    +'<div><label class="field-label">Size</label><select class="field-input" onchange="gveManual(\'size\',this.value)"><option value="">Select…</option>'
-    +G.SIZE_KEYS.map(function(k){ return '<option value="'+k+'"'+(r.gvSize===k?' selected':'')+'>'+e(std.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
+    +'<div><label class="field-label">Valve</label><select class="field-input" onchange="gveManual(\'size\',this.value)"><option value="">Select…</option>'
+    +G.keys(std).map(function(k){ return '<option value="'+k+'"'+(r.gvSize===k?' selected':'')+'>'+e(std.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
     +'<div><label class="field-label">Configuration</label><select class="field-input" onchange="gveManual(\'os\',this.value)"><option value="">Select…</option>'
     +G.OS_KEYS.map(function(k){ return '<option value="'+k+'"'+(r.gvScenario===k?' selected':'')+'>'+e(OS_LABEL[k])+'</option>'; }).join('')+'</select></div></div>';
   return '<div class="gve-detect '+cls+'">'+h+'</div>';
@@ -11731,7 +11773,7 @@ var LOCAL = 'ocr/';
 var CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@'+TESS_VER+'/dist/tesseract.min.js';
 
 /* ── parsing (pure, unit-tested) ──────────────────────────────────────── */
-var SIZE_MAP = { '3-1/16':'3_1_16_15K', '5-1/8':'5_1_8_15K', '7-1/16':'7_1_16_15K' };
+var SIZE_MAP = { '1-13/16':1, '2-1/16':1, '2-9/16':1, '3-1/16':1, '3-1/8':1, '4-1/16':1, '5-1/8':1, '7-1/16':1 };   /* API 6A nominal sizes */
 var PRESSURES = [2000,3000,5000,10000,15000,20000];
 
 function clean(t){
@@ -11794,7 +11836,7 @@ function parsePlate(raw){
   while((m = sre.exec(text))){ sizes.push(m[1]+'-'+m[2]+'/'+m[3]); }
   sizes = best(sizes.filter(function(s){ return SIZE_MAP[s]; }));
   r.sizeText = sizes[0] || '';
-  r.sizeKey = SIZE_MAP[r.sizeText] || '';
+  r.sizeKey = '';   /* resolved against the valves in the standards when reviewed */
   var ps = []; var pre = /\b(\d{1,2}[,.]?\d{3})\s*PSI\b/gi;
   while((m = pre.exec(text))){ var p = parseInt(m[1].replace(/[,.]/g,''),10); if(PRESSURES.indexOf(p)!==-1) ps.push(String(p)); }
   r.pressure = best(ps)[0] || '';
@@ -12003,18 +12045,19 @@ function stepReview(){
   var found = !!(r.serial || r.assyPN);
   if(S.kind==='plate'){
     var hit = r.assyPN ? G.detect(r.assyPN) : null, std = G.liveStd();
+    if(!r.sizeKey && r.sizeText){ var vk = G.valvesByNominal(std, r.sizeText, /ACTUAT|HYDRAUL/i.test(r.raw)); r.sizeKey = vk[0] || ''; r.sizeMany = vk.length>1; }
     var msg = !found ? '<div class="gvo-msg bad">No serial or assembly number could be read. Type them in, or retake the photo closer and without glare.</div>'
       : hit ? '<div class="gvo-msg ok">Assembly number recognised: <b>'+e(std.sizes[hit.size].label)+' · '+e(G.OS_LABEL[hit.os])+'</b>.</div>'
       : r.assyPN ? '<div class="gvo-msg warn">Assembly number '+e(r.assyPN)+' is not in the Gate Valve standards.'
-          +(r.sizeKey ? ' Size <b>'+e(r.sizeText)+'</b> from the plate will be selected — choose the configuration on the form.' : ' Select size and configuration on the form.')
+          +(r.sizeKey ? ' Size <b>'+e(r.sizeText)+'</b> from the plate: <b>'+e(std.sizes[r.sizeKey].label)+'</b> will be selected'+(r.sizeMany?' (more than one valve has this size — check it)':'')+' — choose the configuration on the form.' : ' Select the valve and configuration on the form.')
           +' Engineering can add this number in Settings.</div>'
       : '<div class="gvo-msg warn">Assembly number not read — check the value below.</div>';
     h += msg+'<div class="gvo-grid">'
       + field('sn','Serial number', r.serial, r.snList)
       + field('pn','Assembly number', r.assyPN, r.pnList)
       + field('rev','Rev', r.rev||'')
-      + '<div><label class="field-label">Size</label><select class="field-input" id="gvo-size"><option value="">Not read</option>'
-      + G.SIZE_KEYS.map(function(k){ return '<option value="'+k+'"'+(r.sizeKey===k?' selected':'')+'>'+e(std.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
+      + '<div><label class="field-label">Valve</label><select class="field-input" id="gvo-size"><option value="">Not read</option>'
+      + G.keys(std).map(function(k){ return '<option value="'+k+'"'+(r.sizeKey===k?' selected':'')+'>'+e(std.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
       + '<div class="full"><label class="field-label">Equipment description</label><input class="field-input" id="gvo-desc" value="'+e(S.autoDesc = G.descFor(hit?hit.size:r.sizeKey, hit?hit.os:'', plateOf(r)))+'"/>'
       + '<div class="gvo-alt">'+(hit?'':'The configuration is added when it is selected on the form.')+'</div></div>'
       + '<div class="full"><label class="field-label">Nameplate details (General note)</label><textarea class="field-input" id="gvo-note" rows="2">'+e(plateSummary(r))+'</textarea></div>'
@@ -12079,7 +12122,7 @@ var G = window.GVEval; if(!G) return;
 var e = G.e, num = G.num, OS_LABEL = G.OS_LABEL, ACTIONS = G.ACTIONS;
 var SP_FILE = '_gv_standards.json';
 
-var D = null, dirty = false, tab = 'valves', size = G.SIZE_KEYS[0], vos = 'NORMAL', note = '';
+var D = null, dirty = false, tab = 'valves', size = G.keys(G.liveStd())[0], vos = 'NORMAL', note = '';
 
 /* ── styles ───────────────────────────────────────────────────────────── */
 var css = ''
@@ -12133,6 +12176,13 @@ var css = ''
  +'.gvs-tag{display:inline-block;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:999px;letter-spacing:.04em}'
  +'.gvs-tag.sp{background:rgba(22,163,74,.14);color:#16a34a}.gvs-tag.loc{background:rgba(245,158,11,.16);color:#d97706}'
  +'.gvs-map td select{min-width:220px}'
+ +'.gvs-vbar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;padding:10px;border-radius:11px;background:var(--bg3);border:1px solid var(--border)}'
+ +'.gvs-vsel{flex:1;min-width:220px}.gvs-vsel select{font-weight:700}'
+ +'.gvs-vact{display:flex;gap:6px;flex-wrap:wrap}'
+ +'.gvs-vbtn{padding:8px 11px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid var(--btn-idle-border);background:var(--btn-idle-bg);color:var(--btn-idle-color)}'
+ +'.gvs-vbtn.pri{background:var(--brand);border-color:var(--brand);color:#fff}'
+ +'.gvs-vbtn.del{color:#dc2626;border-color:rgba(220,38,38,.35)}'
+ +'.gvs-newv{margin-top:10px;padding:10px;border-radius:10px;border:1px dashed var(--brand)}'
  +'@media(max-width:560px){.gvs-grid,.gvs-test{grid-template-columns:1fr}}';
 var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
@@ -12164,18 +12214,20 @@ if(sb){ var first = sb.querySelector('.settings-card'); if(first && first.nextSi
 
 function infoRows(){
   var s = G.liveStd(), pnSet = 0, pnAll = 0, dimSet = 0, dimAll = 0;
-  G.SIZE_KEYS.forEach(function(sk){ G.OS_KEYS.forEach(function(os){
+  var keys = G.keys(s);
+  keys.forEach(function(sk){ G.OS_KEYS.forEach(function(os){
     var v = s.sizes[sk].variants[os];
     G.COMP_PN_FIELDS.forEach(function(f){ pnAll++; if(String(v[f[0]]||'').trim()) pnSet++; });
     ['pocketIdMin','pocketIdMax','f2fMin','f2fMax','gateThkMin','seatThkMin'].forEach(function(k){ dimAll++; if(num(v[k])!==null) dimSet++; });
   });});
-  var vp = 0; G.SIZE_KEYS.forEach(function(sk){ G.OS_KEYS.forEach(function(os){ if((s.sizes[sk].variants[os].pns||[]).length) vp++; }); });
+  var vp = 0; keys.forEach(function(sk){ G.OS_KEYS.forEach(function(os){ if((s.sizes[sk].variants[os].pns||[]).length) vp++; }); });
   var row = function(k, v){ return '<div class="info-row"><span class="info-key">'+e(k)+'</span><span class="info-val">'+v+'</span></div>'; };
   var frac = function(a, b){ return (a===b ? '<span class="gvs-ok">'+a+' / '+b+'</span>' : '<span style="color:#d97706;font-weight:700">'+a+' / '+b+'</span>'); };
   return row('Revision', e(s.rev||'—'))
     + row('Approved by', e(s.approvedBy||'—'))
     + row('Last saved', s.updatedAt ? e(new Date(s.updatedAt).toLocaleString('en-GB')) : 'Defaults — not yet saved')
-    + row('Valve part numbers', frac(vp, 9))
+    + row('Valves', String(keys.length))
+    + row('Valve part numbers', frac(vp, keys.length*3))
     + row('Component part numbers', frac(pnSet, pnAll))
     + row('Dimensional limits', frac(dimSet, dimAll));
 }
@@ -12200,9 +12252,17 @@ function actionSel(path){
   return '<select class="field-input" onchange="gvsSet(\''+q(path)+'\',this.value);gvsRender()">'
     + G.ACTION_KEYS.map(function(k){ return '<option value="'+k+'"'+(v===k?' selected':'')+'>'+e(ACTIONS[k].label)+'</option>'; }).join('')+'</select>';
 }
+/* valve selector shown on every tab that works per valve */
 function sizePills(){
-  return '<div class="gvs-pills">'+G.SIZE_KEYS.map(function(sk){
-    return '<button class="gvs-pill'+(size===sk?' on':'')+'" onclick="gvsSize(\''+sk+'\')">'+e(D.sizes[sk].label||G.SIZE_SHORT[sk])+'</button>'; }).join('')+'</div>';
+  var keys = G.keys(D);
+  if(keys.indexOf(size)===-1) size = keys[0];
+  return '<div class="gvs-vbar"><div class="gvs-vsel"><label class="field-label">Valve</label><select class="field-input" onchange="gvsSize(this.value)">'
+    + keys.map(function(k){ var c = D.sizes[k].variants.NORMAL.pns||[];
+        return '<option value="'+k+'"'+(size===k?' selected':'')+'>'+e(D.sizes[k].label||'Unnamed valve')+(c[0]?'  ('+e(c[0])+')':'')+'</option>'; }).join('')
+    +'</select></div><div class="gvs-vact"><button class="gvs-vbtn pri" onclick="gvsValveNew()">+ Add valve</button>'
+    +'<button class="gvs-vbtn" onclick="gvsValveNew(\''+size+'\')">Copy</button>'
+    +'<button class="gvs-vbtn" onclick="gvsValveMove(-1)" title="Move up">&uarr;</button><button class="gvs-vbtn" onclick="gvsValveMove(1)" title="Move down">&darr;</button>'
+    +'<button class="gvs-vbtn del" onclick="gvsValveDel()">Delete</button></div></div>';
 }
 function osPills(){
   return '<div class="gvs-pills">'+G.OS_KEYS.map(function(os){
@@ -12212,7 +12272,7 @@ function osPills(){
 /* ── validation ───────────────────────────────────────────────────────── */
 function duplicates(std){
   var seen = {}, out = [];
-  G.SIZE_KEYS.forEach(function(sk){ G.OS_KEYS.forEach(function(os){
+  G.keys(std).forEach(function(sk){ G.OS_KEYS.forEach(function(os){
     (std.sizes[sk].variants[os].pns||[]).forEach(function(pn){
       var b = String(pn).toUpperCase().replace(/[\s\-_.]/g,''); if(!b) return;
       var where = (std.sizes[sk].label||sk)+' '+OS_LABEL[os];
@@ -12242,7 +12302,9 @@ function tabValves(){
   h += '<div class="gvs-btns" style="margin:0 0 6px"><label class="settings-btn-connect" style="cursor:pointer">Import IBOM<input type="file" accept=".xls,.xlsx,.htm,.html" style="display:none" onchange="gvsIbomFile(this)"/></label></div>'
     +'<div class="gvs-tip" style="margin:0 0 12px">Use the .xls exported from the IBOM tool. The top level part number and the component part numbers (body, seats, gate, stems, bonnets) are filled in for the matching configuration; you confirm them first.</div>';
   h += sizePills();
-  h += '<div style="margin-bottom:10px;max-width:320px"><label class="field-label">Size label</label>'+inp('sizes|'+size+'|label', G.SIZE_SHORT[size])+'</div>';
+  h += '<div class="gvs-grid" style="margin-bottom:12px"><div><label class="field-label">Valve name</label>'+inp('sizes|'+size+'|label', 'e.g. 3-1/16" – 15K Actuated')+'</div>'
+    +'<div class="gvs-grid" style="gap:8px"><div><label class="field-label">Nominal size</label>'+nominalSel()+'</div>'
+    +'<div><label class="field-label">Photo</label>'+imageSel()+'</div></div></div>';
   h += '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:24%"></th>'
     + G.OS_KEYS.map(function(os){ return '<th>'+e(OS_LABEL[os])+'</th>'; }).join('')+'</tr></thead><tbody>';
   var row = function(lbl, key, kind, ph){
@@ -12268,6 +12330,17 @@ function tabValves(){
   var dup = duplicates(D);
   if(dup.length) h += '<div class="gvs-warn">Duplicate part numbers — detection would be ambiguous:<br>'+dup.map(e).join('<br>')+'</div>';
   return h+'</div>';
+}
+function nominalSel(){
+  var v = D.sizes[size].nominal||'';
+  var list = G.NOMINALS.indexOf(v)===-1 && v ? G.NOMINALS.concat([v]) : G.NOMINALS;
+  return '<select class="field-input" onchange="gvsSet(\'sizes|'+size+'|nominal\',this.value)"><option value="">—</option>'
+    + list.map(function(n){ return '<option value="'+e(n)+'"'+(n===v?' selected':'')+'>'+e(n)+'"</option>'; }).join('')+'</select>';
+}
+function imageSel(){
+  var v = D.sizes[size].image||'';
+  return '<select class="field-input" onchange="gvsSet(\'sizes|'+size+'|image\',this.value)">'
+    + G.IMAGES.map(function(x){ return '<option value="'+x[0]+'"'+(x[0]===v?' selected':'')+'>'+e(x[1])+'</option>'; }).join('')+'</select>';
 }
 function pnCell(os){
   var path = 'sizes|'+size+'|variants|'+os+'|pns', list = getP(path) || [];
@@ -12305,7 +12378,7 @@ function slotGet(sk, os){ return os==='CWR' ? D.sizes[sk].cwrSow : D.sizes[sk].v
 function slotSet(sk, os, m){ if(os==='CWR') D.sizes[sk].cwrSow = m; else D.sizes[sk].variants[os].sow = m; }
 function tabSow(){
   var h = '<div class="card"><div class="section-title">Scope of work files</div>'
-    +'<div class="gvs-tip">One SOW per conversion and valve size. When the evaluation routes a valve to oversize machining or hot-weld repair, the report links the SOW for that valve. The SOW for a conversion is linked to the valve\'s top level part number through its GV body part number (from the IBOM).</div>'
+    +'<div class="gvs-tip">One SOW per conversion and valve. When the evaluation routes a valve to oversize machining or hot-weld repair, the report links the SOW for that valve. The SOW for a conversion is linked to the valve\'s top level part number through its GV body part number (from the IBOM).</div>'
     +'<div class="gvs-btns" style="margin:0 0 6px"><label class="settings-btn-connect" style="cursor:pointer">Upload SOW files<input type="file" multiple accept=".pptx,.ppt,.pdf,.docx,.doc,.xlsx,.xls" style="display:none" onchange="gvsSowBulk(this)"/></label></div>'
     +'<div class="gvs-tip" style="margin:0 0 12px">Files are placed automatically from their names — the GV body or valve part number and OS30, OS60 or HWR, for example <b>SoW-OS30-P149968.pptx</b>. Files that cannot be placed are listed for you to choose.</div>'
     + sizePills();
@@ -12335,7 +12408,7 @@ function tabSow(){
 function tabSpares(){
   var base = 'sizes|'+size+'|variants|'+vos+'|', h = '';
   h += '<div class="card"><div class="section-title">Spares and consumables</div>';
-  h += '<div class="gvs-tip">Lists for each size and configuration. The report uses the lists of the configuration leaving the shop — after machining to oversize or hot-weld repair, that is the new configuration.</div>';
+  h += '<div class="gvs-tip">Lists for each valve and configuration. The report uses the lists of the configuration leaving the shop — after machining to oversize or hot-weld repair, that is the new configuration.</div>';
   h += sizePills() + osPills();
   h += '<div class="gvs-tip" style="margin:0">Valve PN: <b>'+e((D.sizes[size].variants[vos].pns||[]).join(' / ')||'not set')+'</b></div>';
   h += listTable(base+'consumables', 'Consumables — always replaced');
@@ -12406,7 +12479,7 @@ function testPlanTable(){
 }
 function tabTesting(){
   var p = 'testing|'+size+'|', h = '<div class="card"><div class="section-title">Testing requirements</div>'
-    +'<div class="gvs-tip">Printed on every report for the valve size; the test pressures follow the disposition. The inspector does not record test results in this flow.</div>'+sizePills();
+    +'<div class="gvs-tip">Printed on every report for this valve; the test pressures follow the disposition. The inspector does not record test results in this flow.</div>'+sizePills();
   h += '<div class="gvs-grid">'
     +'<div><label class="field-label">Working pressure (psi)</label>'+inp(p+'workingPsi','15,000')+'</div>'
     +'<div><label class="field-label">Body test factor after hot-weld repair</label>'+inp(p+'hwrFactor','1.5','num')+'</div>'
@@ -12420,7 +12493,7 @@ function tabTesting(){
     +'<div class="full"><label class="field-label">Drift</label>'+inp(p+'drift')+'</div>'
     +'<div class="full"><label class="field-label">Acceptance criteria</label>'+area(p+'acceptance',2)+'</div>'
     +'<div class="full"><label class="field-label">Notes</label>'+area(p+'notes',2)+'</div></div>';
-  h += '<div class="gvs-btns" style="margin-top:12px"><button class="settings-btn-disconnect" onclick="gvsCopyTesting()">Copy these values to the other sizes</button></div>';
+  h += '<div class="gvs-btns" style="margin-top:12px"><button class="settings-btn-disconnect" onclick="gvsCopyTesting()">Copy these values to the other valves</button></div>';
   return h+'</div>';
 }
 
@@ -12518,8 +12591,8 @@ window.gvsCatalog = function(){
   var v = D.sizes[size].variants[vos]; v.consumables = def.consumables; v.condition = def.condition; mark(); gvsRender();
 };
 window.gvsCopyTesting = function(){
-  if(!confirm('Copy the '+D.sizes[size].label+' testing requirements to the other sizes?')) return;
-  G.SIZE_KEYS.forEach(function(sk){ if(sk!==size) D.testing[sk] = G.clone(D.testing[size]); }); mark(); toast('Testing requirements copied');
+  if(!confirm('Copy the '+D.sizes[size].label+' testing requirements to every other valve?')) return;
+  G.keys(D).forEach(function(sk){ if(sk!==size) D.testing[sk] = G.clone(D.testing[size]); }); mark(); toast('Testing requirements copied');
 };
 window.gvsTry = function(){
   var out = document.getElementById('gvs-t-out'); if(!out) return;
@@ -12569,6 +12642,8 @@ window.gvsSave = function(){
   var dup = duplicates(D), bp = bandProblems(D);
   if(dup.length){ toast('⚠ Duplicate valve part numbers — see Valves & PNs', 4000); tab = 'valves'; render(); return; }
   if(bp.length){ toast('⚠ '+bp[0], 4000); tab = 'criteria'; render(); return; }
+  var unnamed = G.keys(D).filter(function(k){ return !String(D.sizes[k].label||'').trim(); });
+  if(unnamed.length){ size = unnamed[0]; tab = 'valves'; render(); toast('⚠ Every valve needs a name', 3500); return; }
   if(!String(D.approvedBy||'').trim()){ toast('⚠ Enter who approved this revision', 3500); window.scrollTo(0,0); return; }
   Object.keys(D.groups).forEach(function(gk){
     var g = D.groups[gk];
@@ -12608,6 +12683,44 @@ function modal(html){
 function mhead(t){ return '<div class="gvo-h"><div class="gvo-t">'+e(t)+'</div><button class="gvo-x" onclick="gvsModalClose()">&#x2715;</button></div>'; }
 window.gvsModalClose = function(){ var ov = document.getElementById('gvs-ov'); if(ov) ov.style.display = 'none'; IB = null; PEND = null; };
 
+/* ── add / copy / move / delete valves ────────────────────────────────── */
+window.gvsValveNew = function(copyFrom){
+  var src = copyFrom && D.sizes[copyFrom], nom = src ? src.nominal||'' : '';
+  var h = mhead(src ? 'Copy valve — '+src.label : 'Add valve')
+    +'<div class="gvs-tip">'+(src ? 'The copy keeps component part numbers, spares, SOW files, dimensions and testing. Add its own valve part numbers, or import its IBOMs, afterwards.' : 'Give the valve a name, then add its part numbers or import its IBOMs. You can copy the settings of a similar valve to start from.')+'</div>'
+    +'<div class="gvo-grid"><div class="full"><label class="field-label">Valve name</label><input class="field-input" id="gvs-nv-name" value="'+e(src ? src.label+' (copy)' : '')+'" placeholder="e.g. 3-1/16&quot; – 15K Actuated"/></div>'
+    +'<div><label class="field-label">Nominal size</label><select class="field-input" id="gvs-nv-nom">'+G.NOMINALS.map(function(n){ return '<option value="'+n+'"'+(n===nom?' selected':'')+'>'+n+'"</option>'; }).join('')+'</select></div>'
+    +'<div><label class="field-label">Photo</label><select class="field-input" id="gvs-nv-img">'+G.IMAGES.map(function(x){ return '<option value="'+x[0]+'"'+(src && x[0]===src.image?' selected':'')+'>'+e(x[1])+'</option>'; }).join('')+'</select></div>'
+    +'<div class="full"><label class="field-label">Start from</label><select class="field-input" id="gvs-nv-copy"><option value="">Blank — spares from the catalog for the nominal size</option>'
+    + G.keys(D).map(function(k){ return '<option value="'+k+'"'+(copyFrom===k?' selected':'')+'>Copy of '+e(D.sizes[k].label)+'</option>'; }).join('')+'</select></div></div>'
+    +'<div class="gvo-acts"><button class="gvo-cancel" onclick="gvsModalClose()">Cancel</button><button class="gvo-apply" onclick="gvsValveCreate()">'+(src?'Create copy':'Add valve')+'</button></div>';
+  modal(h);
+  setTimeout(function(){ var n = document.getElementById('gvs-nv-name'); if(n){ n.focus(); n.select(); } }, 50);
+};
+window.gvsValveCreate = function(){
+  var nm = document.getElementById('gvs-nv-name').value.trim();
+  if(!nm){ toast('⚠ Enter a valve name'); return; }
+  if(G.keys(D).some(function(k){ return String(D.sizes[k].label).trim().toLowerCase()===nm.toLowerCase(); })){ toast('⚠ A valve with this name already exists'); return; }
+  size = createValve(nm, document.getElementById('gvs-nv-nom').value, document.getElementById('gvs-nv-img').value, document.getElementById('gvs-nv-copy').value);
+  vos = 'NORMAL'; tab = 'valves';
+  gvsModalClose(); render(); window.scrollTo(0,0);
+  toast('✓ '+nm+' added — add its part numbers or import its IBOMs, then Save', 4500);
+};
+window.gvsValveMove = function(d){
+  var o = D.valveOrder, i = o.indexOf(size), j = i+d;
+  if(i<0 || j<0 || j>=o.length) return;
+  o[i] = o[j]; o[j] = size; mark(); gvsRender();
+};
+window.gvsValveDel = function(){
+  var keys = G.keys(D);
+  if(keys.length<2){ toast('⚠ At least one valve is needed'); return; }
+  if(!confirm('Delete '+D.sizes[size].label+' from the standards? Saved reports keep their copy; new reports can no longer identify this valve.')) return;
+  delete D.sizes[size]; delete D.testing[size];
+  D.valveOrder = D.valveOrder.filter(function(k){ return k!==size; });
+  if(['3_1_16_15K','5_1_8_15K','7_1_16_15K'].indexOf(size)!==-1) (D.removed = D.removed||[]).push(size);
+  size = G.keys(D)[0]; mark(); gvsRender();
+};
+
 /* ── IBOM import ──────────────────────────────────────────────────────── */
 var IB = null;
 var MAP_FIELDS = [['bodyPN','GV body'],['plateBlankPN','Name plate (blank)'],['seatPN','Seat'],['gatePN','Gate'],['mstemPN','Main stem'],['bstemPN','Balance stem'],['bonnetPN','Main bonnet'],['bsbPN','Balance stem bonnet']];
@@ -12616,19 +12729,53 @@ window.gvsIbomFile = function(input){
   G.ibom.readTable(f).then(function(rows){
     var ib = G.ibom.parse(rows);
     var hit = G.detect(ib.pn, D);
-    IB = { file:f.name, ib:ib, map:G.ibom.map(ib.rows), size: hit ? hit.size : (G.ibom.sizeFromDesc(ib.desc) || size), os: hit ? hit.os : vos, known:!!hit };
+    var nom = G.ibom.sizeFromDesc(ib.desc), act = /ACTUAT|HYDRAUL|\bHYD\b/i.test(ib.desc);
+    var same = nom ? G.valvesByNominal(D, nom, act) : [];
+    var fits = same.filter(function(k){ return /actuat/i.test(D.sizes[k].label)===act; });
+    IB = { file:f.name, ib:ib, map:G.ibom.map(ib.rows), known:!!hit, nominal:nom, act:act,
+           size: hit ? hit.size : (fits[0] || '__new'), copyFrom: same[0] || '',
+           os: hit ? hit.os : (/\bOS\s*0?60\b|\.060/i.test(ib.desc) ? 'OS_060' : /\bOS\s*0?30\b|\.030/i.test(ib.desc) ? 'OS_030' : 'NORMAL'),
+           name: suggestName(ib.desc, nom, act) };
     ibomDialog();
   }).catch(function(x){ toast('⚠ IBOM import: '+(x && x.message || x), 5000); });
 };
+function suggestName(desc, nom, act){
+  var d = String(desc||'').toUpperCase(), p = d.match(/-(\d{1,2})K\b/), m = d.match(/\bM(\d{2,4})\b/);
+  return (nom ? nom+'"' : 'Gate valve')+(p ? ' – '+p[1]+'K' : '')+(m ? ' M'+m[1] : '')+(act ? ' Actuated' : ' Manual');
+}
+function imageFor(nom, act){ return nom==='3-1/16' ? (act ? '3_1_16_15K_ACT' : '3_1_16_15K') : nom==='5-1/8' ? '5_1_8_15K' : nom==='7-1/16' ? '7_1_16_15K' : ''; }
+/* Create a valve, blank or copied from another (copy keeps component PNs,
+   spares, SOWs, dimensions and testing; never the valve PNs or the IBOM). */
+function createValve(name, nominal, image, copyFrom){
+  var id = G.newValveId(D), v;
+  if(copyFrom && D.sizes[copyFrom]){
+    v = G.clone(D.sizes[copyFrom]);
+    G.OS_KEYS.forEach(function(os){ v.variants[os].pns = []; v.variants[os].ibom = null; v.variants[os].sowNewPN = ''; });
+    v.cwrNewPN = '';
+  } else v = G.blankValve(name, nominal, image);
+  v.label = name; v.nominal = nominal; v.image = image;
+  D.sizes[id] = v;
+  D.testing[id] = G.clone((copyFrom && D.testing[copyFrom]) || G.defaultTesting());
+  (D.valveOrder = D.valveOrder || []).push(id);
+  mark();
+  return id;
+}
 function rowLabel(r){ return r.pn+(r.rev?' rev '+r.rev:'')+' — '+String(r.desc).slice(0,60); }
 function ibomDialog(){
   var ib = IB.ib, h = mhead('Import IBOM — '+ib.pn);
   h += '<div class="gvo-msg '+(IB.known?'ok':'warn')+'"><b>'+e(ib.pn)+'</b> rev '+e(ib.rev||'—')+' — '+e(ib.desc)+'<br>'
     +(IB.known ? 'Already listed as '+e(D.sizes[IB.size].label)+' · '+e(OS_LABEL[IB.os])+'.' : 'Not in the standards yet — choose where it belongs. It will be added to the valve part numbers.')+'</div>';
-  h += '<div class="gvo-grid"><div><label class="field-label">Size</label><select class="field-input" id="gvs-ib-size">'
-    + G.SIZE_KEYS.map(function(k){ return '<option value="'+k+'"'+(IB.size===k?' selected':'')+'>'+e(D.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
+  h += '<div class="gvo-grid"><div><label class="field-label">Valve</label><select class="field-input" id="gvs-ib-size" onchange="document.getElementById(\'gvs-ib-new\').style.display=this.value===\'__new\'?\'grid\':\'none\'">'
+    + G.keys(D).map(function(k){ return '<option value="'+k+'"'+(IB.size===k?' selected':'')+'>'+e(D.sizes[k].label)+'</option>'; }).join('')
+    + '<option value="__new"'+(IB.size==='__new'?' selected':'')+'>+ New valve from this IBOM</option></select></div>'
     +'<div><label class="field-label">Configuration</label><select class="field-input" id="gvs-ib-os">'
     + G.OS_KEYS.map(function(k){ return '<option value="'+k+'"'+(IB.os===k?' selected':'')+'>'+e(OS_LABEL[k])+'</option>'; }).join('')+'</select></div></div>';
+  h += '<div class="gvo-grid gvs-newv" id="gvs-ib-new" style="display:'+(IB.size==='__new'?'grid':'none')+'">'
+    +'<div class="full"><label class="field-label">New valve name</label><input class="field-input" id="gvs-ib-name" value="'+e(IB.name)+'"/></div>'
+    +'<div><label class="field-label">Nominal size</label><select class="field-input" id="gvs-ib-nom">'+G.NOMINALS.map(function(n){ return '<option value="'+n+'"'+(n===IB.nominal?' selected':'')+'>'+n+'"</option>'; }).join('')+'</select></div>'
+    +'<div><label class="field-label">Copy spares, SOWs, dimensions and testing from</label><select class="field-input" id="gvs-ib-copy"><option value="">Nothing — start blank</option>'
+    + G.keys(D).map(function(k){ return '<option value="'+k+'"'+(IB.copyFrom===k?' selected':'')+'>'+e(D.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
+    +'<div class="full gvs-tip" style="margin:0">Component part numbers come from this IBOM; anything the IBOM does not list (for example the gate and seats when they are the same as the copied valve) is kept from the copy.</div></div>';
   h += '<div class="section-title" style="margin-top:14px">Component part numbers</div><div class="gvs-tip">Matched from the IBOM descriptions. Change any that are wrong; choose "Not in this IBOM" to keep the current value.</div>';
   var opts = ib.rows.filter(function(r){ return r.lvl>1; });
   h += '<div class="gvs-scroll"><table class="gvs-tbl gvs-map"><tbody>';
@@ -12647,7 +12794,13 @@ function ibomDialog(){
 }
 window.gvsIbomApply = function(){
   if(!IB) return;
-  var sk = document.getElementById('gvs-ib-size').value, os = document.getElementById('gvs-ib-os').value, v = D.sizes[sk].variants[os], n = 0;
+  var sk = document.getElementById('gvs-ib-size').value, os = document.getElementById('gvs-ib-os').value, n = 0;
+  if(sk==='__new'){
+    var nm = document.getElementById('gvs-ib-name').value.trim(), nom = document.getElementById('gvs-ib-nom').value;
+    if(!nm){ toast('⚠ Enter a name for the new valve'); return; }
+    sk = createValve(nm, nom, imageFor(nom, IB.act), document.getElementById('gvs-ib-copy').value);
+  }
+  var v = D.sizes[sk].variants[os];
   MAP_FIELDS.forEach(function(f){
     var i = document.getElementById('gvs-ib-'+f[0]).value;
     if(i!==''){ v[f[0]] = IB.opts[+i].pn; n++; }
@@ -12708,8 +12861,8 @@ window.gvsSowBulk = function(input){
       +'<div class="gvs-tip">These files could not be placed from their names — no known GV body or valve part number, or no OS30 / OS60 / HWR in the name.</div>';
     open.forEach(function(x, i){
       h += '<div class="gvs-sow"><div class="gvs-sow-t" style="word-break:break-all">'+e(x.f.name)+'</div><div class="gvo-grid" style="margin-top:8px">'
-        +'<div><label class="field-label">Size</label><select class="field-input" id="gvs-pl-s'+i+'"><option value="">Skip this file</option>'
-        + G.SIZE_KEYS.map(function(k){ return '<option value="'+k+'"'+(x.size===k?' selected':'')+'>'+e(D.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
+        +'<div><label class="field-label">Valve</label><select class="field-input" id="gvs-pl-s'+i+'"><option value="">Skip this file</option>'
+        + G.keys(D).map(function(k){ return '<option value="'+k+'"'+(x.size===k?' selected':'')+'>'+e(D.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
         +'<div><label class="field-label">Conversion</label><select class="field-input" id="gvs-pl-o'+i+'">'
         + SLOTS.map(function(k){ return '<option value="'+k+'"'+(x.os===k?' selected':'')+'>'+e(G.SOW_LABEL[k])+'</option>'; }).join('')+'</select></div></div></div>';
     });
@@ -12729,7 +12882,7 @@ window.gvsSowPlace = function(){
 /* Upload any SOW still only on this device (used before publishing). */
 function uploadPending(std){
   var jobs = [];
-  G.SIZE_KEYS.forEach(function(sk){ SLOTS.forEach(function(os){
+  G.keys(std).forEach(function(sk){ SLOTS.forEach(function(os){
     var m = os==='CWR' ? std.sizes[sk].cwrSow : std.sizes[sk].variants[os].sow;
     if(m && !m.webUrl) jobs.push(G.files.upload(m, sowTag(sk, os)).catch(function(){ return m; }));
   }); });
