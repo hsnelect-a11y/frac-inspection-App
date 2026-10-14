@@ -1159,7 +1159,7 @@ body.has-sp-banner{padding-top:44px}
 
         <!-- Gate Valve accordion (always last) -->
         <div class="gv-accordion" id="gv-acc">
-          <button class="equip-row-btn gv-toggle-btn" id="gv-toggle" data-equip="GATE_VALVE" onclick="toggleGV()"><span class="equip-icon-wrap"><svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <button class="equip-row-btn gv-toggle-btn" id="gv-toggle" data-equip="GATE_VALVE" onclick="startGVEval()"><span class="equip-icon-wrap"><svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!-- Valve body -->
   <rect x="6" y="13" width="24" height="14" rx="2.5" stroke="currentColor" stroke-width="1.8" fill="currentColor" opacity=".1"/>
   <!-- Left bore -->
@@ -3988,7 +3988,7 @@ function renderSparesCardInner(){
   // Gate valve: identify the parts mandatory at the redress level in force.
   // The list itself is never filtered — rows are only flagged and highlighted.
   let rdMandBanner='';
-  if((current.equipType||current.formType)==='GATE_VALVE' && window.GVRedress){
+  if((current.equipType||current.formType)==='GATE_VALVE' && window.GVRedress && !current.gvEval){
     GVRedress.flagMandatory(L, GVRedress.level());
     rdMandBanner=GVRedress.mandatoryBannerHTML();
   }
@@ -4819,6 +4819,7 @@ function allItems(r){
   return GENERIC_ITEMS;
 }
 function getDisposition(findings, r){
+  if(r && r.gvEval && window.GVEval) return GVEval.disposition(r);
   // Flow-based dispositions
   if((r.equipType||r.formType)==='BLIND_FLANGE') return bfCalcDisposition();
   if((r.equipType||r.formType)==='WECO_FLANGE')  return wecoCalcDisposition();
@@ -5095,7 +5096,7 @@ function setFinding(itemId,val){
   updateProgress();
   updateDispositionBanner();
   // Gate valve: a finding may raise the redress level (RD1.5 -> RD2, RD2 -> RD3)
-  if((current.equipType||current.formType)==='GATE_VALVE' && window.gvRdOnFinding) gvRdOnFinding();
+  if((current.equipType||current.formType)==='GATE_VALVE' && !current.gvEval && window.gvRdOnFinding) gvRdOnFinding();
 }
 function setComment(itemId,val){ current.comments[itemId]=val; }
 
@@ -6349,6 +6350,9 @@ function updateProgress(){
     total=visible.length;
     answered=visible.filter(id=>f[id]).length;
     failed=visible.filter(id=>f[id]==='fail'||f[id]==='yes').length;
+  } else if(current.gvEval && window.GVEval){
+    const pr=GVEval.progress(current);
+    answered=pr.answered; total=pr.total; failed=pr.failed;
   } else if(ft==='GATE_VALVE' && window.GVRedress){
     const pr=GVRedress.progress();
     answered=pr.answered; total=pr.total; failed=pr.failed;
@@ -6403,6 +6407,7 @@ function updateReworkVisibility(itemId){
 }
 
 function renderForm(){
+  if(current && current.gvEval && window.GVEval && GVEval.renderForm){ GVEval.renderForm(); return; }
   const title = formTypeLabel(current);
   document.getElementById('form-title').textContent = title;
   const d0=dispFor(current.disposition);
@@ -6635,6 +6640,7 @@ function removeSpare(id){
 function updateSpare(id,key,val){ const s=current.spares.find(x=>x.id===id); if(s) s[key]=val; }
 
 function saveReport(){
+  if(current && current.gvEval && window.GVEval) GVEval.beforeSave(current);
   current.disposition=getDisposition(current.findings,current);
   current.savedAt=new Date().toISOString();
   const idx=reports.findIndex(r=>r.id===current.id);
@@ -6707,6 +6713,7 @@ function msUploadPrintFile(folderPath, filename, content, callback){
 }
 
 function buildPrintHTML(r){
+  if(r && r.gvEval && window.GVEval && GVEval.printDoc) return GVEval.printDoc(r);
   // Always use light colours for print
   const d=DISPOSITIONS[r.disposition]||DISPOSITIONS.incomplete;
   const ft=r.equipType||r.formType;
@@ -7422,7 +7429,8 @@ function editReport(id){
   if(!current.inspector)       current.inspector='';
   if(!current.engineerName)    current.engineerName='';
   if(!current.header)          current.header={};
-  if((current.equipType||current.formType)==='GATE_VALVE' && !current.gvRedress){
+  if(current.gvEval && window.GVEval) GVEval.backfill(current);
+  if((current.equipType||current.formType)==='GATE_VALVE' && !current.gvRedress && !current.gvEval){
     current.gvRedress={assigned:'',level:'',history:[],steps:{},data:{},finish:{},outcome:'',osTarget:''};
   }
   // ── BF-specific backfill ──────────────────────────────────────────
@@ -7781,6 +7789,7 @@ function previewWecoRows(r){
 }
 
 function renderPreview(r){
+  if(r && r.gvEval && window.GVEval && GVEval.previewHTML){ document.getElementById('preview-body').innerHTML=reportNavHTML(r)+GVEval.previewHTML(r); return; }
   const d=dispFor(r.disposition)||dispFor('incomplete');
   let html=reportNavHTML(r);
   html+=equipHeroHTML(r);
@@ -7887,6 +7896,7 @@ function previewItemRow(r,item){
 // ═══ PRINT / PDF (always light mode) ════════════════════════════════
 function printReport(id){
   const r=reports.find(x=>x.id===id); if(!r) return;
+  if(r.gvEval && window.GVEval && GVEval.print){ GVEval.print(r); return; }
   // Always use light colours for print
   const d=DISPOSITIONS[r.disposition]||DISPOSITIONS.incomplete;
   const ft=r.equipType||r.formType;
@@ -10173,6 +10183,2618 @@ if(isConfigured()){
   R.render = function () { return '<div id="gvrd-flow" class="gvrd-wrap">' + inner() + '</div>'; };
   R.refresh = refresh;
 
+})();
+
+</script>
+
+<!-- ══ GATE VALVE EVALUATION — core ══ -->
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   GATE VALVE EVALUATION — standardised disposition
+   Follows the FRAC EVALUATION REPORT. The inspector records Good / Damaged
+   with defect type and depth for each critical area; the disposition is
+   automatic from the Gate Valve Engineering Standards held in Settings.
+   Engineering is involved only when the inspector flags an abnormal finding,
+   or when a defect type is set by Engineering to always need review.
+   Report state: current.gvEval   ·   Standards: localStorage frac_gv_standards_v1
+   ═══════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+
+var SIZE_KEYS = ['3_1_16_15K','5_1_8_15K','7_1_16_15K'];
+var OS_KEYS   = ['NORMAL','OS_030','OS_060'];
+var OS_LABEL  = { NORMAL:'Normal', OS_030:'Oversize .030"', OS_060:'Oversize .060"' };
+var SIZE_SHORT= { '3_1_16_15K':'3-1/16"', '5_1_8_15K':'5-1/8"', '7_1_16_15K':'7-1/16"' };
+var STD_KEY   = 'frac_gv_standards_v1';
+
+/* Seat pocket machining moves the valve one step along this route. */
+var NEXT = {
+  NORMAL: { type:'os',      target:'OS_030', adv:'osTo030' },
+  OS_030: { type:'os',      target:'OS_060', adv:'osTo060' },
+  OS_060: { type:'hotweld', target:'NORMAL', adv:'hotWeld' }
+};
+
+var ACTIONS = {
+  ACCEPT:      { label:'Accept — use as is',        sev:0, tone:'ok'    },
+  POLISH:      { label:'Polish',                     sev:1, tone:'minor' },
+  BUFF:        { label:'Buff',                       sev:1, tone:'minor' },
+  LAP:         { label:'Lap',                        sev:1, tone:'minor' },
+  SKIM:        { label:'Skim machine',               sev:2, tone:'minor' },
+  RETAP:       { label:'Re-tap / counterbore',       sev:2, tone:'minor' },
+  REPLACE:     { label:'Replace component',          sev:3, tone:'major' },
+  WELD:        { label:'Weld repair',                sev:4, tone:'major' },
+  MACHINE_OS:  { label:'Oversize machining / HWR',   sev:4, tone:'major' },
+  ENGINEERING: { label:'Refer to Engineering',       sev:5, tone:'eng'   }
+};
+var ACTION_KEYS = Object.keys(ACTIONS);
+
+var DEFECT_TYPES = [
+  ['scratch','Scratch / scoring'], ['pitting','Pitting'], ['corrosion','Corrosion'],
+  ['erosion','Erosion / washout'], ['impact','Impact / dent'], ['galling','Galling'],
+  ['thread','Thread damage'], ['crack','Crack'], ['other','Other']
+];
+var RECEIVED = [ ['hal','HAL Tree'], ['neser','NESER Tree'], ['stuck','Pre-Intervention Stuck'],
+                 ['usgv','US GV'], ['other','Others'] ];
+
+/* Criteria groups — each critical area belongs to one. */
+var GROUP_LABELS = {
+  seatPocket:  'Seat pocket (ID and face)',
+  ringGroove:  'Ring grooves (body and bonnets)',
+  backSeat:    'Back seat / back seat angle',
+  packingBore: 'UV packing area',
+  testPort:    'Test port thread and face',
+  gate:        'Gate hard face and bore edges',
+  seat:        'Seat hard face, back face and bore edges',
+  stem:        'Main and balance stem sealing surfaces'
+};
+
+/* The evaluation form — mirrors the FRAC EVALUATION REPORT. */
+var COMPONENTS = [
+  { id:'body', n:'1', title:'GV Body', snpn:true, pnKey:'bodyPN', points:[
+    { id:'body_pocket', label:'Seat Pocket', hint:'Measure ID and face to face; check ID and face for defects', group:'seatPocket',
+      meas:[ {k:'pocketId', l:'Seat pocket ID (in)', min:'pocketIdMin', max:'pocketIdMax'},
+             {k:'pocketF2F', l:'Face to face (in)',  min:'f2fMin',      max:'f2fMax'} ] },
+    { id:'body_rg_top', label:'Top Ring Groove',    group:'ringGroove' },
+    { id:'body_rg_lhs', label:'LHS Ring Groove',    group:'ringGroove' },
+    { id:'body_rg_rhs', label:'RHS Ring Groove',    group:'ringGroove' },
+    { id:'body_rg_btm', label:'Bottom Ring Groove', group:'ringGroove' },
+    { id:'body_backseat', label:'Back Seat Angle',  group:'backSeat' },
+    { id:'body_nc', label:'Non-sealing and non-critical areas', hint:'Gate slot, ID, main bore, bottom face', mode:'nc' }
+  ]},
+  { id:'bonnet', n:'2', title:'Main Bonnet', snpn:true, replaceKey:'bonnetPN', points:[
+    { id:'bon_rg',       label:'Ring Groove',               group:'ringGroove' },
+    { id:'bon_backseat', label:'Back Seat',                 group:'backSeat' },
+    { id:'bon_uv',       label:'UV Packing Area',           group:'packingBore' },
+    { id:'bon_port',     label:'Test Port Thread and Face', group:'testPort' },
+    { id:'bon_nc',       label:'Non-sealing and non-critical areas', hint:'IDs, bottom face', mode:'nc' }
+  ]},
+  { id:'bsb', n:'3', title:'Balance Stem Bonnet', snpn:true, replaceKey:'bsbPN', points:[
+    { id:'bsb_rg',   label:'Ring Groove',               group:'ringGroove' },
+    { id:'bsb_uv',   label:'UV Packing Area',           group:'packingBore' },
+    { id:'bsb_port', label:'Test Port Thread and Face', group:'testPort' },
+    { id:'bsb_nc',   label:'Non-sealing and non-critical areas', hint:'IDs, bottom face', mode:'nc' }
+  ]},
+  { id:'gate', n:'4', title:'Gate', snpn:true, replaceKey:'gatePN', points:[
+    { id:'gate_face', label:'Hard-face sides and bore edges', group:'gate',
+      meas:[ {k:'gateThk', l:'Actual thickness (in)', min:'gateThkMin'} ] }
+  ]},
+  { id:'seat1', n:'5', title:'Seat 1', snpn:true, replaceKey:'seatPN', points:[
+    { id:'seat1_face', label:'Hard face, back face and bore edges', group:'seat',
+      meas:[ {k:'seat1Thk', l:'Actual thickness (in)', min:'seatThkMin'} ] }
+  ]},
+  { id:'seat2', n:'5', title:'Seat 2', snpn:true, replaceKey:'seatPN', points:[
+    { id:'seat2_face', label:'Hard face, back face and bore edges', group:'seat',
+      meas:[ {k:'seat2Thk', l:'Actual thickness (in)', min:'seatThkMin'} ] }
+  ]},
+  { id:'mstem', n:'6', title:'Main Stem', snpn:true, replaceKey:'mstemPN', points:[
+    { id:'mstem_face', label:'Stem sealing surfaces', group:'stem' }
+  ]},
+  { id:'bstem', n:'7', title:'Balance Stem', snpn:true, replaceKey:'bstemPN', points:[
+    { id:'bstem_face', label:'Stem sealing surfaces', group:'stem' }
+  ]},
+  { id:'studs', n:'8', title:'Studs / Nuts', snpn:false, points:[
+    { id:'studs', label:'Studs and nuts', hint:'Thread condition and fit for function', mode:'studs' }
+  ]}
+];
+var COMP_PN_FIELDS = [
+  ['bodyPN','GV body'], ['plateBlankPN','Name plate (blank)'], ['seatPN','Seat'], ['gatePN','Gate'], ['mstemPN','Main stem'], ['bstemPN','Balance stem'],
+  ['bonnetPN','Main bonnet'], ['bsbPN','Balance stem bonnet']
+];
+
+/* ── helpers ──────────────────────────────────────────────────────────── */
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+function isObj(o){ return o && typeof o==='object' && !Array.isArray(o); }
+function fill(def, got){
+  if(got===undefined || got===null) return clone(def);
+  if(!isObj(def) || !isObj(got)) return got;
+  var out={};
+  Object.keys(got).forEach(function(k){ out[k]=got[k]; });
+  Object.keys(def).forEach(function(k){ out[k]=fill(def[k], got[k]); });
+  return out;
+}
+function num(v){
+  if(v===undefined || v===null || v==='') return null;
+  var f=parseFloat(String(v).replace(',','.'));
+  return isNaN(f) ? null : f;
+}
+function normPN2(s){ return String(s||'').toUpperCase().replace(/\s+/g,''); }
+function bare(s){ return normPN2(s).replace(/[-_.]/g,''); }
+function e(s){ return (typeof esc==='function') ? esc(s) : String(s==null?'':s); }
+function today(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+/* ── default standards ────────────────────────────────────────────────── */
+function defaultStd(){
+  var cat = (typeof SPARE_PARTS_CATALOG!=='undefined') ? SPARE_PARTS_CATALOG : {};
+  var sizes = {};
+  SIZE_KEYS.forEach(function(sk){
+    var v = {};
+    OS_KEYS.forEach(function(os){
+      var c = cat['GATE_VALVE|'+sk+'|'+os] || { pns:[], consumables:[], condition:[] };
+      v[os] = {
+        pns: (c.pns||[]).slice(),
+        bodyPN:'', plateBlankPN:'', sowNewPN:'', seatPN:'', gatePN:'', mstemPN:'', bstemPN:'', bonnetPN:'', bsbPN:'',
+        pocketIdMin:'', pocketIdMax:'', f2fMin:'', f2fMax:'', gateThkMin:'', seatThkMin:'',
+        sow: null,      /* SOW for leaving this configuration: {id,name,type,size,uploadedAt,spItemId,webUrl,spPath,pending} */
+        ibom: null,     /* last imported IBOM: {pn,rev,desc,file,importedAt,rows:[…]} */
+        consumables: clone(c.consumables||[]),
+        condition:   clone(c.condition||[])
+      };
+    });
+    sizes[sk] = { label:(typeof GV_SIZES!=='undefined' && GV_SIZES[sk]) || sk, variants:v,
+                  cwrSow:null, cwrNewPN:'' };   /* CWR SOW: used instead of HWR when the valve was hot-weld repaired before */
+  });
+
+  var testing = {};
+  SIZE_KEYS.forEach(function(sk){
+    testing[sk] = {
+      workingPsi:'15,000',          /* rated working pressure */
+      hwrFactor:'1.5',              /* body test after hot-weld repair = factor × working pressure */
+      cwrUseFactor:false,           /* CWR is tested at working pressure unless Engineering sets this */
+      bodyHold:'3 min primary + 15 min secondary',
+      seatHold:'3 min primary + 15 min secondary, each side',
+      lowPsi:'', lowHold:'',
+      procedure:'TST10065665',
+      drift:'Drift per OMM10009346 section 8.2 — count and record the number of turns',
+      acceptance:'No visible leakage and no pressure drop during the hold periods',
+      notes:'Body test at 1.5 × working pressure after hot-weld repair (HWR) only. Standard redress, OS .030" / OS .060" machining and CWR: body and gate/seat tests at working pressure.'
+    };
+  });
+
+  return {
+    rev:'1.0', approvedBy:'', updatedAt:'',
+    sizes: sizes,
+    groups: {
+      seatPocket: { bands:[
+          { max:0.002, action:'POLISH', text:'Polish seat pocket ID and face with Scotch-Brite to remove the defect. No high points or sharp edges. Confirm seat pocket ID and face to face within tolerance.' } ],
+        over:{ action:'MACHINE_OS', text:'Defect exceeds the polish limit — machine the seat pockets to oversize, or hot-weld repair, by defect depth.' } },
+      ringGroove: { bands:[
+          { max:0.002, action:'POLISH', text:'Polish ring groove with Scotch-Brite. Remove compression marks; no high points or sharp edges. Verify ring groove dimensions per API 6A.' },
+          { max:0.005, action:'SKIM',   text:'Skim-machine the ring groove to remove the defect. Verify ring groove dimensions per API 6A and the drawing.' } ],
+        over:{ action:'WELD', text:'Defect exceeds the skim limit — weld-repair (inlay) the ring groove and re-machine to drawing. Hardness check and NDE after welding.' } },
+      backSeat: { bands:[
+          { max:0.002, action:'POLISH', text:'Polish back seat with Scotch-Brite. No high points or sharp edges.' },
+          { max:0.005, action:'SKIM',   text:'Skim-machine the back seat angle within drawing tolerance.' } ],
+        over:{ action:'WELD', text:'Weld-repair the back seat and re-machine to drawing. Hardness check and NDE after welding.' } },
+      packingBore: { bands:[
+          { max:0.002, action:'POLISH', text:'Polish / hone the UV packing bore. Surface finish per drawing.' } ],
+        over:{ action:'REPLACE', text:'Defect in the UV packing area exceeds the polish limit — replace the bonnet.' } },
+      testPort: { bands:[
+          { max:0.002, action:'POLISH', text:'Chase the thread and polish the sealing face. Gauge test the thread.' } ],
+        over:{ action:'RETAP', text:'Re-tap or counterbore the test port per SoW. Gauge test after repair.' } },
+      gate: { bands:[
+          { max:0.001, action:'LAP', text:'Lap the gate hard-face sides. Verify flatness and thickness.' } ],
+        over:{ action:'REPLACE', text:'Hard-face damage exceeds the lap limit — replace the gate.' } },
+      seat: { bands:[
+          { max:0.001, action:'LAP', text:'Lap the seat face. Verify flatness and thickness.' } ],
+        over:{ action:'REPLACE', text:'Seat damage exceeds the lap limit — replace the seats.' } },
+      stem: { bands:[
+          { max:0.001, action:'POLISH', text:'Polish the stem sealing surface. No high points.' } ],
+        over:{ action:'REPLACE', text:'Stem damage exceeds the polish limit — replace the stem.' } }
+    },
+    choices: {
+      nc: {
+        buff:   { action:'BUFF',        text:'Buff to remove or minimise the defect. No high points or sharp edges after rework.' },
+        severe: { action:'ENGINEERING', text:'Severe damage on a non-critical area — refer to Engineering.' }
+      },
+      studs: {
+        polish:  { action:'POLISH',  text:'Gentle polish to minimise the defect. Confirm fit for function.' },
+        damaged: { action:'REPLACE', text:'Replace the studs and nuts with new.' }
+      }
+    },
+    forceEngTypes: ['crack'],
+    /* metal removed by each oversize; a seat pocket defect deeper than what the
+       next oversize removes goes to the one after, then to hot-weld repair */
+    osAllowance: { OS_030:'0.030', OS_060:'0.060' },
+    seatsAsPair: true,
+    testing: testing,
+    advisory: {
+      osTo030: 'Machine the seat pockets to oversize .030". Re-identify the valve to the OS .030 part number, fit OS .030 seats and seat seals regardless of seat condition, and re-stamp the nameplate.',
+      osTo060: 'Machine the seat pockets to oversize .060". Re-identify the valve to the OS .060 part number, fit OS .060 seats and seat seals regardless of seat condition, and re-stamp the nameplate.',
+      hotWeld: 'Seat pockets are at the maximum oversize (.060"). Hot-weld repair the seat pockets and re-machine to the standard (Normal) bore. Re-identify the valve to the Normal part number, fit Normal seats and seat seals, and re-stamp the nameplate. Hardness check and NDE after welding per procedure.',
+      hotWeldDepth: 'Defect depth exceeds the maximum oversize allowance (.060"). Hot-weld repair the seat pockets and re-machine to the standard (Normal) bore. Re-identify the valve to the Normal part number, fit Normal seats and seat seals, and re-stamp the nameplate. Hardness check and NDE after welding per procedure.',
+      cwr: 'This valve was hot-weld repaired before (HWR). A second weld repair shall be carried out to the CWR scope of work, not the HWR scope of work.',
+      nameplate: 'Change the name plate to the modified part number given in the SOW. Re-stamp or replace the name plate before release.',
+      general: 'Replace every consumable listed for the final valve configuration. Grease, drift and count turns, paint, mark and stencil per the operation and maintenance manual before release.',
+      engPolicy: 'Engineering is involved only when the inspector flags an abnormal finding, or when a defect type is set to always need Engineering review.'
+    }
+  };
+}
+
+/* ── standards storage ────────────────────────────────────────────────── */
+var STD = null;
+/* Older saved standards had fixed body/seat test pressures. */
+var OLD_TEST_NOTE = 'Default values follow the API 6A 15K rating. Engineering to confirm against TST10065665.';
+function migrate(got){
+  if(!got || !got.testing) return got;
+  var def = defaultStd().testing;
+  Object.keys(got.testing).forEach(function(sk){
+    var t = got.testing[sk]; if(!t) return;
+    if(!t.workingPsi && t.seatPsi) t.workingPsi = t.seatPsi;
+    delete t.bodyPsi; delete t.seatPsi; delete t.cwrFactor;
+    if(typeof t.notes==='string' && t.notes.indexOf('after hot-weld repair only. Standard redress and OS')!==-1 && def[sk]) t.notes = def[sk].notes;
+    if(t.notes===OLD_TEST_NOTE && def[sk]) t.notes = def[sk].notes;
+  });
+  return got;
+}
+function loadStd(){
+  var got = null;
+  try{ var s = localStorage.getItem(STD_KEY); if(s) got = JSON.parse(s); }catch(x){}
+  STD = fill(defaultStd(), migrate(got));
+  return STD;
+}
+function writeStd(s){
+  STD = fill(defaultStd(), migrate(s));
+  try{ localStorage.setItem(STD_KEY, JSON.stringify(STD)); }catch(x){}
+  return STD;
+}
+function liveStd(){ return STD || loadStd(); }
+
+/* The slice of the standards that applies to one valve size. Saved into each
+   report so a signed-off report keeps the rules it was dispositioned under. */
+function project(std, sk){
+  if(!std || !std.sizes[sk]) return null;
+  var size = clone(std.sizes[sk]);
+  /* reports keep the IBOM header only, not every row */
+  OS_KEYS.forEach(function(os){ var v = size.variants[os]; if(v && v.ibom) delete v.ibom.rows; });
+  return {
+    rev:std.rev, approvedBy:std.approvedBy, updatedAt:std.updatedAt, sizeKey:sk,
+    size:size, groups:clone(std.groups), choices:clone(std.choices),
+    forceEngTypes:(std.forceEngTypes||[]).slice(), seatsAsPair:!!std.seatsAsPair,
+    testing:clone(std.testing[sk]||{}), advisory:clone(std.advisory)
+  };
+}
+/* The report open in the form is evaluated against the live standards; any
+   other report (preview, print, history) uses the snapshot saved with it. */
+var formRef = null;
+function stdOf(r){
+  if(!r || !r.gvEval) return null;
+  var live = r===formRef && r===current;
+  if(!live && r.gvEval.std && r.gvEval.std.size) return r.gvEval.std;
+  return r.gvSize ? project(liveStd(), r.gvSize) : null;
+}
+
+/* ── part number detection ────────────────────────────────────────────── */
+function detect(pn, std){
+  std = std || liveStd();
+  var a = normPN2(pn), b = bare(pn);
+  if(!a) return null;
+  for(var i=0;i<SIZE_KEYS.length;i++){
+    var sk = SIZE_KEYS[i], sz = std.sizes[sk]; if(!sz) continue;
+    for(var j=0;j<OS_KEYS.length;j++){
+      var os = OS_KEYS[j], v = sz.variants[os]; if(!v) continue;
+      var list = v.pns || [];
+      for(var k=0;k<list.length;k++){
+        if(normPN2(list[k])===a || bare(list[k])===b) return { size:sk, os:os, pn:list[k] };
+      }
+    }
+  }
+  return null;
+}
+
+/* ── evaluation ───────────────────────────────────────────────────────── */
+function newEval(){
+  return { receivedFrom:'', receivedOther:'', variantSrc:'', detectedPN:'', autoDesc:'',
+           comp:{}, pts:{}, meas:{}, small:{}, nameplate:'', plate:null, prevHWR:false, notes:'',
+           engRequest:false, engRemarks:'', engBy:'', engDate:'',
+           inspDate:today(), rev1:'', rev1Date:'', rev2:'', rev2Date:'',
+           reworkTimestamps:{}, std:null };
+}
+function backfill(r){
+  var d = newEval(), g = r.gvEval;
+  Object.keys(d).forEach(function(k){ if(g[k]===undefined) g[k]=d[k]; });
+}
+
+function worst(a, b){
+  if(!a) return b; if(!b) return a;
+  return ACTIONS[b.action].sev > ACTIONS[a.action].sev ? b : a;
+}
+
+function measCheck(r, pt, std){
+  if(!pt.meas) return null;
+  var v = std.size.variants[r.gvScenario]; if(!v) return null;
+  var M = r.gvEval.meas || {}, res = null, cfg = OS_LABEL[r.gvScenario];
+  pt.meas.forEach(function(m){
+    var val = num(M[m.k]); if(val===null) return;
+    var mn = m.min ? num(v[m.min]) : null, mx = m.max ? num(v[m.max]) : null;
+    var hit = null;
+    if(m.k==='pocketId'){
+      if(mx!==null && val>mx) hit = { action:'MACHINE_OS', text:'Seat pocket ID '+val+' in is above the '+mx+' in maximum for '+cfg+'.' };
+      else if(mn!==null && val<mn) hit = { action:'ENGINEERING', text:'Seat pocket ID '+val+' in is below the '+mn+' in minimum for '+cfg+' — refer to Engineering.' };
+    } else if(m.k==='pocketF2F'){
+      if((mx!==null && val>mx) || (mn!==null && val<mn))
+        hit = { action:'ENGINEERING', text:'Face to face '+val+' in is outside the '+(mn!==null?mn:'—')+' to '+(mx!==null?mx:'—')+' in range for '+cfg+' — refer to Engineering.' };
+    } else {
+      if(mn!==null && val<mn) hit = { action:'REPLACE', text:'Thickness '+val+' in is below the '+mn+' in minimum — replace.' };
+    }
+    if(hit){ hit.src='meas'; res = worst(res, hit); }
+  });
+  return res;
+}
+
+function evalPoint(r, pt, std){
+  var g = r.gvEval, s = g.pts[pt.id] || {}, res = null, pending = false;
+  if(s.st==='good'){
+    res = { action:'ACCEPT', text:'Good condition — no action.', src:'insp' };
+  } else if(s.st){
+    var forced = s.type && (std.forceEngTypes||[]).indexOf(s.type)!==-1;
+    if(pt.mode){
+      var ch = (std.choices[pt.mode]||{})[s.st];
+      if(ch) res = { action:ch.action, text:ch.text, src:'choice' };
+    } else {
+      var d = num(s.depth);
+      if(!s.type || d===null) pending = true;
+      else {
+        var grp = std.groups[pt.group] || { bands:[], over:{action:'ENGINEERING',text:'No criteria set — refer to Engineering.'} };
+        var bands = (grp.bands||[]).slice().sort(function(a,b){ return num(a.max)-num(b.max); });
+        var band = null;
+        for(var i=0;i<bands.length;i++){ if(d <= num(bands[i].max)+1e-9){ band = bands[i]; break; } }
+        var hitB = band || grp.over;
+        res = { action:hitB.action, src:'depth',
+                text:hitB.text + ' (Depth '+d+' in'+(band?' — within the '+num(band.max)+' in limit':' — above the '+(bands.length?num(bands[bands.length-1].max):0)+' in limit')+'.)' };
+      }
+    }
+    if(forced){
+      var tl = (DEFECT_TYPES.filter(function(t){ return t[0]===s.type; })[0]||[,s.type])[1];
+      res = { action:'ENGINEERING', text:'Defect type "'+tl+'" always needs Engineering review.', src:'type' };
+      pending = false;
+    }
+  }
+  var m = measCheck(r, pt, std);
+  if(m){
+    if(res && res.action!=='ACCEPT' && ACTIONS[m.action].sev <= ACTIONS[res.action].sev) res = { action:res.action, text:res.text+' '+m.text, src:res.src };
+    else if(res && res.action!=='ACCEPT') res = { action:m.action, text:m.text+' '+res.text, src:'meas' };
+    else res = m;
+  }
+  if(s.abnormal){
+    res = { action:'ENGINEERING', text:'Flagged abnormal by the inspector — Engineering review requested.', src:'abnormal' };
+    pending = false;
+  }
+  if(res && res.action==='MACHINE_OS' && r.gvScenario){
+    var pl = planRoute(std, r.gvScenario, res.src==='depth' ? num(s.depth) : null);
+    res.text += ' Route: '+(pl.type==='hotweld' ? 'hot-weld repair back to Normal' : OS_LABEL[r.gvScenario]+' → '+OS_LABEL[pl.target]+(pl.jump?' (direct)':''))+'.';
+  }
+  return { res:res, pending:pending, answered: !!s.st && !pending, s:s };
+}
+
+/* ── seat pocket route by defect depth ─────────────────────────────────
+   The smallest oversize that removes the defect; deeper than the last
+   oversize allows → hot-weld repair back to Normal. With no depth (seat
+   pocket ID over size) the next step. */
+var OS_ORDER = ['NORMAL','OS_030','OS_060'];
+function allowance(std, os){
+  if(os==='NORMAL') return 0;
+  var v = num((std.osAllowance||{})[os]);
+  return v===null ? (os==='OS_030' ? 0.030 : 0.060) : v;
+}
+function planRoute(std, from, depth){
+  var i0 = OS_ORDER.indexOf(from), base = allowance(std, from);
+  for(var i=i0+1;i<OS_ORDER.length;i++){
+    if(depth===null || depth <= allowance(std, OS_ORDER[i]) - base + 1e-9)
+      return { type:'os', target:OS_ORDER[i], jump:i>i0+1 };
+  }
+  return { type:'hotweld', target:'NORMAL', jump:from!=='OS_060' };
+}
+function routeTable(std, from){
+  var base = allowance(std, from), out = [], i0 = OS_ORDER.indexOf(from);
+  for(var i=i0+1;i<OS_ORDER.length;i++) out.push({ upTo:+(allowance(std, OS_ORDER[i])-base).toFixed(4), type:'os', target:OS_ORDER[i] });
+  out.push({ upTo:null, type:'hotweld', target:'NORMAL' });
+  return out;
+}
+
+function analyse(r){
+  var std = stdOf(r), g = r.gvEval;
+  var a = { std:std, known:false, points:[], answered:0, total:0, incomplete:true,
+            engOpen:[], actionPts:[], qcOpen:[], route:{type:'none'}, parts:[], disp:'incomplete' };
+  if(!std || !r.gvScenario || !std.size.variants[r.gvScenario]) return a;
+  a.known = true; a.incomplete = false;
+  COMPONENTS.forEach(function(c){ c.points.forEach(function(pt){
+    var ev = evalPoint(r, pt, std); ev.pt = pt; ev.comp = c;
+    a.points.push(ev); a.total++;
+    if(ev.answered) a.answered++; else a.incomplete = true;
+    if(ev.res && ev.res.action!=='ACCEPT'){
+      a.actionPts.push(ev);
+      if(ev.res.action==='ENGINEERING' && !String(ev.s.eng||'').trim()) a.engOpen.push(ev);
+      if(ev.s.qc!=='pass') a.qcOpen.push(ev);
+    }
+  });});
+  var mpts = a.points.filter(function(ev){ return ev.res && ev.res.action==='MACHINE_OS'; });
+  if(mpts.length){
+    var ds = mpts.map(function(ev){ return ev.res.src==='depth' ? num(ev.s.depth) : null; }).filter(function(d){ return d!==null; });
+    var depth = ds.length ? Math.max.apply(null, ds) : null;
+    var pl = planRoute(std, r.gvScenario, depth), adv = std.advisory, text;
+    if(pl.type==='os'){
+      text = adv[pl.target==='OS_030' ? 'osTo030' : 'osTo060'] || '';
+      if(pl.jump) text = 'Defect depth '+depth+' in exceeds the '+OS_LABEL.OS_030+' allowance — machine directly to '+OS_LABEL[pl.target]+'. '+text;
+    } else {
+      text = (r.gvScenario==='OS_060' ? adv.hotWeld : (adv.hotWeldDepth || adv.hotWeld)) || '';
+      if(depth!==null && r.gvScenario!=='OS_060') text = 'Defect depth '+depth+' in. '+text;
+    }
+    a.route = { type:pl.type, from:r.gvScenario, target:pl.target, jump:pl.jump, depth:depth, text:text,
+                cwr: pl.type==='hotweld' && !!g.prevHWR };
+  }
+  a.fromVar = std.size.variants[r.gvScenario];
+  a.toOS    = a.route.type==='none' ? r.gvScenario : a.route.target;
+  a.toVar   = std.size.variants[a.toOS];
+  /* scope of work files for the conversion, and the next one in case defects remain */
+  a.sows = []; a.sowNext = null;
+  if(a.route.type==='os'){
+    for(var k=OS_ORDER.indexOf(r.gvScenario); k<OS_ORDER.indexOf(a.route.target); k++)
+      a.sows.push({ slot:OS_ORDER[k], label:SOW_LABEL[OS_ORDER[k]], meta:std.size.variants[OS_ORDER[k]].sow || null });
+    var nx = a.route.target==='OS_030' ? 'OS_030' : 'OS_060';
+    a.sowNext = { slot:nx, label:SOW_LABEL[nx], meta:std.size.variants[nx].sow || null };
+  } else if(a.route.type==='hotweld'){
+    if(a.route.cwr) a.sows.push({ slot:'CWR', label:SOW_LABEL.CWR, meta:std.size.cwrSow || null });
+    else a.sows.push({ slot:'OS_060', label:SOW_LABEL.OS_060, meta:std.size.variants.OS_060.sow || null });
+  }
+  a.sow = a.sows.length ? a.sows[0].meta : null;
+  a.nameplate = nameplateDisp(r, a, std);
+  a.globalEng = !!g.engRequest && !String(g.engRemarks||'').trim();
+  a.engInvolved = !!g.engRequest || a.actionPts.some(function(ev){ return ev.res.action==='ENGINEERING'; });
+  if(a.incomplete) a.disp = 'incomplete';
+  else if(a.engOpen.length || a.globalEng) a.disp = 'has_fails';
+  else if(!a.actionPts.length) a.disp = 'all_pass';
+  else a.disp = a.qcOpen.length ? 'has_fails' : 'rework_complete';
+  a.parts = partsList(r, a);
+  return a;
+}
+
+/* Test pressures for this valve: the body test is raised to 1.5 × working
+   pressure only after hot-weld repair (HWR); everything else — standard
+   redress, oversize machining and CWR — is tested at working pressure. */
+function psi(n){ return Math.round(n).toLocaleString('en-US'); }
+function testPlan(std, a){
+  var t = (std && std.testing) || {}, wp = num(String(t.workingPsi||'').replace(/,/g,''));
+  var f = num(t.hwrFactor) || 1.5, route = a && a.route || { type:'none' };
+  var weld = route.type==='hotweld' && (!route.cwr || t.cwrUseFactor===true);
+  var basis = route.type==='hotweld' ? (route.cwr ? 'CWR' : 'Hot-weld repair')
+            : route.type==='os' ? 'Oversize machining to '+OS_LABEL[route.target] : 'Standard redress';
+  var rows = [];
+  if(wp!==null){
+    rows.push(['Body test', psi(weld ? wp*f : wp)+' psi — '+(weld ? f+' × working pressure ('+basis+')' : 'working pressure')+(t.bodyHold?' — '+t.bodyHold:'')]);
+    rows.push(['Gate / seat test', psi(wp)+' psi — working pressure'+(t.seatHold?' — '+t.seatHold:'')]);
+  }
+  if(t.lowPsi) rows.push(['Low pressure seat test', t.lowPsi+' psi'+(t.lowHold?' — '+t.lowHold:'')]);
+  if(t.procedure) rows.push(['Procedure', t.procedure]);
+  if(t.drift) rows.push(['Drift', t.drift]);
+  if(t.acceptance) rows.push(['Acceptance', t.acceptance]);
+  return { rows:rows, basis:basis, weld:weld, wp:wp, factor:f, notes:t.notes||'' };
+}
+
+/* Name plate: change to the modified part number given in the SOW. */
+function nameplateDisp(r, a, std){
+  var g = r.gvEval, fromPN = g.detectedPN || (a.fromVar.pns||[])[0] || r.header.partNo || r.header.assyPN || '';
+  if(a.route.type==='none') return { change:false, fromPN:fromPN, text:'No change to the name plate'+(fromPN?' — part number '+fromPN+' retained':'')+'.' };
+  var last = a.sows.length ? a.sows[a.sows.length-1] : null, ovr = '';
+  if(last) ovr = last.slot==='CWR' ? std.size.cwrNewPN : (std.size.variants[last.slot]||{}).sowNewPN;
+  var toPN = String(ovr||'').trim() || (a.toVar.pns||[])[0] || '';
+  var fb = a.fromVar.bodyPN||'', tb = a.toVar.bodyPN||'';
+  var sowName = last && last.meta ? last.meta.name : '';
+  var text = 'Change the name plate part number '+(fromPN||'—')+' → '+(toPN||'PN not set')+' ('+OS_LABEL[a.toOS]+')'
+    +(fb && tb && fb!==tb ? '; GV body '+fb+' → '+tb : '')
+    +(sowName ? ', as given in '+sowName : '')+'. Re-stamp or replace the name plate before release.';
+  return { change:true, fromPN:fromPN, toPN:toPN, fromBody:fb, toBody:tb, sow:sowName, text:text, blank:a.toVar.plateBlankPN || a.fromVar.plateBlankPN || '' };
+}
+
+/* Parts to replace for the valve configuration that leaves the shop. */
+function partsList(r, a){
+  var g = r.gvEval, to = a.toVar || {}, rows = [], osChange = a.route.type!=='none';
+  function add(pn, desc, qty, why, kind){ rows.push({ pn:pn||'', desc:desc||'', qty:String(qty==null?'':qty), why:why, kind:kind }); }
+  if(a.nameplate && a.nameplate.change && a.nameplate.blank)
+    add(a.nameplate.blank, 'Name plate (blank)', 1, 'Re-identify the valve to '+(a.nameplate.toPN||OS_LABEL[a.toOS]), 'component');
+  var seatRep = a.points.filter(function(ev){ return ev.comp.replaceKey==='seatPN' && ev.res && ev.res.action==='REPLACE'; }).length;
+  if(osChange){
+    add(to.seatPN, 'Seat — '+OS_LABEL[a.route.target], 2,
+        (a.route.type==='hotweld' ? 'Seat pockets restored to Normal' : 'Seat pockets machined to '+OS_LABEL[a.route.target])+' — replaced regardless of seat condition', 'component');
+  } else if(seatRep){
+    var q = a.std.seatsAsPair ? 2 : seatRep;
+    add(to.seatPN, 'Seat — '+OS_LABEL[a.toOS], q, seatRep===1 && a.std.seatsAsPair ? 'Seat damaged — seats replaced as a pair' : 'Seat damaged', 'component');
+  }
+  COMPONENTS.forEach(function(c){
+    if(!c.replaceKey || c.replaceKey==='seatPN') return;
+    var hit = a.points.some(function(ev){ return ev.comp===c && ev.res && ev.res.action==='REPLACE'; });
+    if(hit) add(to[c.replaceKey], c.title, 1, 'Replace per evaluation', 'component');
+  });
+  var studsRep = a.points.some(function(ev){ return ev.comp.id==='studs' && ev.res && ev.res.action==='REPLACE'; });
+  (to.condition||[]).forEach(function(cp){
+    var key = cp.pn || cp.description;
+    var auto = studsRep && /stud|nut/i.test(cp.description||'');
+    if((g.small||{})[key]==='replace' || auto)
+      add(cp.pn, cp.description, cp.qty, auto ? 'Studs / nuts damaged' : 'Found damaged — based on condition', 'condition');
+  });
+  (to.consumables||[]).forEach(function(c){ add(c.pn, c.description, c.qty, 'Consumable — always replaced', 'consumable'); });
+  (r.spares||[]).filter(function(s){ return s.description || s.pn; }).forEach(function(s){
+    add(s.pn, s.description, s.qty||'1', s.comment || 'Added by the inspector', 'manual');
+  });
+  return rows;
+}
+
+function outcome(a, r){
+  if(!a.known) return { tone:'idle', title:'IDENTIFY THE VALVE', text:'Enter the top level or assembly part number to load the standards for this valve.' };
+  var sevMax = a.actionPts.reduce(function(m,ev){ return Math.max(m, ACTIONS[ev.res.action].sev); }, 0);
+  var o;
+  if(a.route.type==='hotweld')
+    o = { tone:'major', title:'REPAIR — HOT-WELD SEAT POCKETS TO NORMAL', text:a.route.text };
+  else if(a.route.type==='os')
+    o = { tone:'major', title:'REPAIR — MACHINE TO '+OS_LABEL[a.route.target].toUpperCase(), text:a.route.text };
+  else if(sevMax>=3)
+    o = { tone:'major', title:'REDRESS WITH REPAIRS', text:'Carry out the repairs listed against each finding, then the standard redress.' };
+  else if(sevMax>=1)
+    o = { tone:'minor', title:'REDRESS WITH MINOR REWORK', text:'Carry out the rework listed against each finding, then the standard redress.' };
+  else
+    o = { tone:'ok', title:'STANDARD REDRESS', text:'All critical areas evaluated in good condition. Replace consumables and test.' };
+  if(a.route.type==='hotweld' && a.route.from!=='OS_060') o.title = 'REPAIR — HOT-WELD SEAT POCKETS TO NORMAL (DEPTH OVER OS ALLOWANCE)';
+  if(a.route.jump && a.route.type==='os') o.title += ' (DIRECT FROM '+OS_LABEL[a.route.from].toUpperCase()+')';
+  if(a.route.cwr) o.cwr = std_adv(a, 'cwr');
+  if(a.route.type!=='none'){
+    var fp = a.nameplate.fromPN || '—', tp = a.nameplate.toPN || 'PN not set';
+    o.pnChange = { from:fp, fromCfg:OS_LABEL[a.route.from], to:tp, toCfg:OS_LABEL[a.route.target] };
+  }
+  o.lines = [];
+  if(a.incomplete) o.lines.push((a.total-a.answered)+' of '+a.total+' critical areas still to evaluate');
+  if(a.engOpen.length) o.lines.push(a.engOpen.length+' finding(s) waiting for Engineering disposition');
+  if(a.globalEng) o.lines.push('Engineering review requested for this valve — remarks outstanding');
+  if(a.actionPts.length && a.qcOpen.length) o.lines.push(a.qcOpen.length+' of '+a.actionPts.length+' rework item(s) waiting for QC after rework');
+  return o;
+}
+
+function std_adv(a, k){ return (a.std && a.std.advisory && a.std.advisory[k]) || ''; }
+var SOW_LABEL = { NORMAL:'Normal → OS .030"', OS_030:'OS .030" → OS .060"', OS_060:'Hot-weld repair (HWR) → Normal', CWR:'CWR — valve hot-weld repaired before' };
+window.GVEval = {
+  SOW_LABEL:SOW_LABEL, testPlan:testPlan, planRoute:planRoute, routeTable:routeTable, allowance:allowance,
+  SIZE_KEYS:SIZE_KEYS, OS_KEYS:OS_KEYS, OS_LABEL:OS_LABEL, SIZE_SHORT:SIZE_SHORT, NEXT:NEXT,
+  ACTIONS:ACTIONS, ACTION_KEYS:ACTION_KEYS, DEFECT_TYPES:DEFECT_TYPES, RECEIVED:RECEIVED,
+  GROUP_LABELS:GROUP_LABELS, COMPONENTS:COMPONENTS, COMP_PN_FIELDS:COMP_PN_FIELDS, STD_KEY:STD_KEY,
+  clone:clone, fill:fill, num:num, e:e, today:today,
+  defaultStd:defaultStd, loadStd:loadStd, writeStd:writeStd, liveStd:liveStd, project:project, stdOf:stdOf,
+  detect:detect, newEval:newEval, backfill:backfill, evalPoint:evalPoint, analyse:analyse, outcome:outcome,
+  disposition:function(r){ return analyse(r).disp; },
+  progress:function(r){ var a=analyse(r); return { answered:a.answered, total:a.known?a.total:1, failed:a.qcOpen.length }; },
+  setFormRef:function(r){ formRef = r || null; },
+  beforeSave:function(r){
+    backfill(r);
+    formRef = null;
+    if(r.gvSize) r.gvEval.std = project(liveStd(), r.gvSize);
+    if(r.gvEval.engBy) r.engineerName = r.gvEval.engBy;
+  }
+};
+loadStd();
+})();
+
+</script>
+
+<!-- ══ GATE VALVE EVALUATION — SOW files and IBOM ══ -->
+<script>
+/* ═══ GATE VALVE EVALUATION — SOW files and IBOM import ═══════════════════
+   SOW files: kept on the device in IndexedDB and, when connected, uploaded to
+   SharePoint (<Reports folder>/_GV_SOW/). The standards hold only the file
+   details (name, SharePoint link); reports link to the file.
+   IBOM: reads the IBOM export (.xls saved as an HTML table, or .xlsx) and maps
+   the rows to the valve's component part numbers.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var G = window.GVEval; if(!G) return;
+var e = G.e;
+var DB = 'frac_gv_files', STORE = 'files', SP_DIR = '_GV_SOW';
+
+/* ── IndexedDB ────────────────────────────────────────────────────────── */
+var dbp = null;
+function db(){
+  if(dbp) return dbp;
+  dbp = new Promise(function(res, rej){
+    try{
+      var rq = indexedDB.open(DB, 1);
+      rq.onupgradeneeded = function(){ rq.result.createObjectStore(STORE); };
+      rq.onsuccess = function(){ res(rq.result); };
+      rq.onerror = function(){ rej(rq.error); };
+    }catch(x){ rej(x); }
+  });
+  dbp.catch(function(){ dbp = null; });
+  return dbp;
+}
+function tx(mode, fn){
+  return db().then(function(d){ return new Promise(function(res, rej){
+    var t = d.transaction(STORE, mode), st = t.objectStore(STORE), out = fn(st);
+    t.oncomplete = function(){ res(out && out.result); }; t.onerror = function(){ rej(t.error); };
+  }); });
+}
+function putBlob(id, rec){ return tx('readwrite', function(st){ return st.put(rec, id); }); }
+function getBlob(id){ return tx('readonly', function(st){ return st.get(id); }).catch(function(){ return null; }); }
+function delBlob(id){ return tx('readwrite', function(st){ return st.delete(id); }).catch(function(){}); }
+
+function fileId(){ return 'f'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function fmtSize(n){ n = +n||0; return n>1048576 ? (n/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(n/1024))+' KB'; }
+
+/* Store a picked file on the device and return its details. */
+function addFile(file){
+  var meta = { id:fileId(), name:file.name, type:file.type||'', size:file.size, uploadedAt:new Date().toISOString(), pending:true };
+  return putBlob(meta.id, { blob:file, name:file.name, type:file.type||'' }).then(function(){ return meta; });
+}
+
+/* ── SharePoint ───────────────────────────────────────────────────────── */
+function spReady(){ return typeof tokenValid==='function' && tokenValid() && typeof spConfig!=='undefined' && !!spConfig.reportsFolder; }
+function enc(p){ return p.split('/').map(encodeURIComponent).join('/'); }
+function graph(){ return 'https://graph.microsoft.com/v1.0/drives/'+spDriveId; }
+function resolve(){ return new Promise(function(res){ msResolveSite(function(ok){ res(!!ok); }); }); }
+function ensureDir(){
+  return fetch(graph()+'/root:/'+enc(spConfig.reportsFolder)+':/children', {
+    method:'POST', headers:{ 'Authorization':'Bearer '+msAccessToken, 'Content-Type':'application/json' },
+    body:JSON.stringify({ name:SP_DIR, folder:{}, '@microsoft.graph.conflictBehavior':'fail' })
+  }).catch(function(){});
+}
+function safe(s){ return String(s).replace(/[\\/:*?"<>|#%]+/g,'_'); }
+function putSmall(path, blob){
+  return fetch(graph()+'/root:/'+enc(path)+':/content', { method:'PUT', headers:{ 'Authorization':'Bearer '+msAccessToken }, body:blob })
+    .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); });
+}
+function putLarge(path, blob){
+  return fetch(graph()+'/root:/'+enc(path)+':/createUploadSession', {
+    method:'POST', headers:{ 'Authorization':'Bearer '+msAccessToken, 'Content-Type':'application/json' },
+    body:JSON.stringify({ item:{ '@microsoft.graph.conflictBehavior':'replace' } })
+  }).then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(sess){
+      var CH = 320*1024*10, total = blob.size, from = 0;
+      function next(){
+        var to = Math.min(from+CH, total);
+        return fetch(sess.uploadUrl, { method:'PUT', headers:{ 'Content-Range':'bytes '+from+'-'+(to-1)+'/'+total }, body:blob.slice(from, to) })
+          .then(function(r){ if(!r.ok && r.status!==202) throw new Error('HTTP '+r.status); from = to; return from<total ? next() : r.json(); });
+      }
+      return next();
+    });
+}
+/* Upload one SOW. `tag` makes the SharePoint name unique per size and route. */
+function upload(meta, tag){
+  if(!spReady()) return Promise.resolve(meta);
+  return Promise.all([resolve(), getBlob(meta.id)]).then(function(x){
+    if(!x[0] || !x[1]) return meta;
+    var path = spConfig.reportsFolder+'/'+SP_DIR+'/'+safe((tag?tag+' - ':'')+meta.name);
+    var go = function(){ return x[1].blob.size > 4*1024*1024 ? putLarge(path, x[1].blob) : putSmall(path, x[1].blob); };
+    return go().catch(function(){ return ensureDir().then(go); }).then(function(item){
+      meta.spItemId = item.id; meta.webUrl = item.webUrl; meta.spPath = path; meta.pending = false;
+      return meta;
+    });
+  });
+}
+function fetchFromSP(meta){
+  if(!spReady() || !(meta.spItemId || meta.spPath)) return Promise.resolve(null);
+  return resolve().then(function(ok){
+    if(!ok) return null;
+    var url = meta.spItemId ? graph()+'/items/'+meta.spItemId+'/content' : graph()+'/root:/'+enc(meta.spPath)+':/content';
+    return fetch(url, { headers:{ 'Authorization':'Bearer '+msAccessToken } }).then(function(r){ return r.ok ? r.blob() : null; });
+  }).then(function(b){
+    if(!b) return null;
+    var rec = { blob:b, name:meta.name, type:meta.type||b.type };
+    return putBlob(meta.id, rec).then(function(){ return rec; }, function(){ return rec; });
+  }).catch(function(){ return null; });
+}
+
+/* ── open / download ──────────────────────────────────────────────────── */
+var KNOWN = {};
+function remember(meta){ if(meta && meta.id) KNOWN[meta.id] = meta; }
+function saveBlob(rec){
+  var url = URL.createObjectURL(rec.blob), a = document.createElement('a');
+  a.href = url; a.download = rec.name || 'file'; document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 4000);
+}
+function viewable(meta){ return /pdf|image\/|text\//i.test(meta.type||'') || /\.(pdf|png|jpe?g|txt)$/i.test(meta.name||''); }
+function localThen(meta, onBlob, fallback){
+  getBlob(meta.id).then(function(rec){ return rec || fetchFromSP(meta); }).then(function(rec){
+    if(rec) onBlob(rec); else fallback();
+  });
+}
+/* Open: SharePoint shows Office files in the browser; otherwise the device copy. */
+window.gveFileOpen = function(id){
+  var meta = KNOWN[id]; if(!meta) return;
+  if(meta.webUrl && navigator.onLine !== false){ window.open(meta.webUrl, '_blank'); return; }
+  localThen(meta, function(rec){
+    if(viewable(meta)){ var u = URL.createObjectURL(rec.blob); window.open(u, '_blank'); setTimeout(function(){ URL.revokeObjectURL(u); }, 60000); }
+    else saveBlob(rec);
+  }, function(){ toast('⚠ '+meta.name+' is not on this device — connect to SharePoint to open it'); });
+};
+window.gveFileGet = function(id){
+  var meta = KNOWN[id]; if(!meta) return;
+  localThen(meta, saveBlob, function(){
+    if(meta.webUrl) window.open(meta.webUrl+(meta.webUrl.indexOf('?')===-1?'?':'&')+'download=1', '_blank');
+    else toast('⚠ '+meta.name+' is not on this device — connect to SharePoint to download it');
+  });
+};
+var CLIP = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+function linkHTML(meta, label){
+  if(!meta) return '';
+  remember(meta);
+  return '<div class="gvf-link"><span class="gvf-ic">'+CLIP+'</span><div class="gvf-t"><div class="gvf-l">'+e(label||'Attachment')+'</div>'
+    +'<button class="gvf-name" onclick="gveFileOpen(\''+meta.id+'\')">'+e(meta.name)+'</button><span class="gvf-sz">'+e(fmtSize(meta.size))+'</span></div>'
+    +'<button class="gvf-btn" onclick="gveFileOpen(\''+meta.id+'\')">Open</button><button class="gvf-btn" onclick="gveFileGet(\''+meta.id+'\')">Download</button></div>';
+}
+function printLink(meta, label){
+  if(!meta) return '';
+  return '<div style="margin-top:4px">&#128206; <b>'+e(label)+':</b> '
+    +(meta.webUrl ? '<a href="'+e(meta.webUrl)+'" target="_blank">'+e(meta.name)+'</a>' : e(meta.name)+' <span style="font-size:9px;color:#6b7280">(open from the app)</span>')+'</div>';
+}
+
+var css = '.gvf-link{display:flex;align-items:center;gap:9px;margin-top:9px;padding:8px 10px;border-radius:9px;border:1px solid var(--border2);background:var(--bg2)}'
+ +'.gvf-ic{color:var(--brand);display:flex}.gvf-t{flex:1;min-width:0}'
+ +'.gvf-l{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)}'
+ +'.gvf-name{background:none;border:none;padding:0;color:var(--brand);font-weight:700;font-size:12.5px;text-align:left;text-decoration:underline;word-break:break-all;cursor:pointer}'
+ +'.gvf-sz{font-size:10.5px;color:var(--text3);margin-left:6px}'
+ +'.gvf-btn{padding:6px 10px;border-radius:7px;font-size:11px;font-weight:700;border:1px solid var(--btn-idle-border);background:var(--btn-idle-bg);color:var(--btn-idle-color);flex-shrink:0}';
+var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+
+/* ── IBOM ─────────────────────────────────────────────────────────────── */
+function rowsFromHTML(text){
+  var doc = new DOMParser().parseFromString(text, 'text/html'), out = [];
+  doc.querySelectorAll('tr').forEach(function(tr){
+    out.push(Array.prototype.map.call(tr.querySelectorAll('td,th'), function(td){ return td.textContent.replace(/\s+/g,' ').trim(); }));
+  });
+  return out;
+}
+/* minimal .xlsx reader (zip + DecompressionStream) — first worksheet only */
+function rowsFromXLSX(buf){
+  var u8 = new Uint8Array(buf), dv = new DataView(buf), files = {};
+  var eocd = -1; for(var i=u8.length-22;i>=Math.max(0,u8.length-66000);i--){ if(dv.getUint32(i,true)===0x06054b50){ eocd=i; break; } }
+  if(eocd<0) return Promise.reject(new Error('not a valid .xlsx file'));
+  var n = dv.getUint16(eocd+10,true), p = dv.getUint32(eocd+16,true), dec = new TextDecoder();
+  for(var k=0;k<n;k++){
+    var meth = dv.getUint16(p+10,true), csz = dv.getUint32(p+20,true), fnl = dv.getUint16(p+28,true), exl = dv.getUint16(p+30,true), cml = dv.getUint16(p+32,true), off = dv.getUint32(p+42,true);
+    var name = dec.decode(u8.subarray(p+46, p+46+fnl));
+    var data = off + 30 + dv.getUint16(off+26,true) + dv.getUint16(off+28,true);
+    files[name] = { meth:meth, raw:u8.subarray(data, data+csz) };
+    p += 46+fnl+exl+cml;
+  }
+  function read(name){
+    var f = files[name]; if(!f) return Promise.resolve('');
+    if(f.meth===0) return Promise.resolve(dec.decode(f.raw));
+    var ds = new Blob([f.raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Response(ds).text();
+  }
+  var sheet = Object.keys(files).filter(function(x){ return /^xl\/worksheets\/sheet\d*\.xml$/.test(x); }).sort()[0];
+  return Promise.all([read('xl/sharedStrings.xml'), read(sheet)]).then(function(x){
+    var P = new DOMParser(), ss = [];
+    if(x[0]) P.parseFromString(x[0],'application/xml').querySelectorAll('si').forEach(function(si){ ss.push(si.textContent); });
+    var rows = [];
+    P.parseFromString(x[1],'application/xml').querySelectorAll('row').forEach(function(r){
+      var arr = [];
+      r.querySelectorAll('c').forEach(function(c){
+        var ref = c.getAttribute('r')||'', col = 0, m = ref.match(/^[A-Z]+/);
+        if(m) for(var j=0;j<m[0].length;j++) col = col*26 + (m[0].charCodeAt(j)-64);
+        var v = c.querySelector('v'), t = c.getAttribute('t'), val = '';
+        if(t==='s' && v) val = ss[+v.textContent]||''; else if(t==='inlineStr') val = c.textContent; else if(v) val = v.textContent;
+        arr[(col||arr.length+1)-1] = String(val).replace(/\s+/g,' ').trim();
+      });
+      for(var j=0;j<arr.length;j++) if(arr[j]===undefined) arr[j]='';
+      rows.push(arr);
+    });
+    return rows;
+  });
+}
+function readTable(file){
+  return file.arrayBuffer().then(function(buf){
+    var u8 = new Uint8Array(buf, 0, Math.min(8, buf.byteLength));
+    if(u8[0]===0x50 && u8[1]===0x4b) return rowsFromXLSX(buf);
+    if(u8[0]===0xD0 && u8[1]===0xCF) throw new Error('This is an old binary Excel file. Use the .xls exported from the IBOM tool, or save it as .xlsx.');
+    return rowsFromHTML(new TextDecoder().decode(buf));
+  });
+}
+function parseIBOM(rows){
+  var hi = -1, H = null;
+  for(var i=0;i<rows.length;i++){
+    var low = rows[i].map(function(c){ return c.toLowerCase(); });
+    if(low.indexOf('level')!==-1 && low.indexOf('part')!==-1){ hi = i; H = low; break; }
+  }
+  if(hi<0) throw new Error('No IBOM table found — expected Level and Part columns.');
+  var col = function(re){ for(var j=0;j<H.length;j++) if(re.test(H[j])) return j; return -1; };
+  var cL = col(/^level$/), cP = col(/^part$/), cR = col(/^part rev/), cD = col(/description/), cQ = col(/^qty$/), cU = col(/^uom$/), cS = col(/status/);
+  var out = [];
+  rows.slice(hi+1).forEach(function(r){
+    var lvl = (r[cL]||'').trim(), raw = (r[cP]||'').trim();
+    if(!/^\d+[A-Z]?$/.test(lvl) || !raw) return;
+    var alt = /alternate/i.test(raw) || /[A-Z]$/.test(lvl);
+    var pn = raw.replace(/^\+*\s*/,'').replace(/\(.*?\)/g,'').trim().split(/\s+/)[0];
+    out.push({ lvl:parseInt(lvl,10), pn:pn, rev:cR>=0?r[cR]||'':'', desc:cD>=0?r[cD]||'':'', qty:cQ>=0?r[cQ]||'':'', uom:cU>=0?r[cU]||'':'',
+               status:cS>=0?r[cS]||'':'', alt:alt });
+  });
+  if(!out.length) throw new Error('The IBOM table has no part rows.');
+  var top = out.filter(function(x){ return x.lvl===1; })[0] || out[0];
+  return { pn:top.pn, rev:top.rev, desc:top.desc, rows:out };
+}
+/* Which IBOM row is which evaluated component. First non-alternate match wins. */
+var RULES = {
+  plateBlankPN: [ function(d){ return /NAME ?PLATE/.test(d) && /BLANK/.test(d); }, function(d){ return /NAME ?PLATE/.test(d) && /GATE VALVE/.test(d); } ],
+  bodyPN:   [ function(d){ return /\bGV BODY\b|\bVALVE BODY\b/.test(d) && !/FORGING|RAW|SEMI|CASTING/.test(d); } ],
+  seatPN:   [ function(d){ return /\bSEAT ASSY\b/.test(d) && !/BALANC/.test(d); }, function(d){ return /\bGV SEAT\b|\bSEAT\b/.test(d) && !/SEAL|SPRING|POCKET/.test(d); } ],
+  gatePN:   [ function(d){ return /\bGV GATE\b|\bGATE\b/.test(d) && !/GUIDE|VALVE|SEAT|SPRING/.test(d); } ],
+  mstemPN:  [ function(d){ return /\bSTEM\b/.test(d) && !/BALANC|RETAINER|PROTECT|PACKING|SEAL|ADAPTER|NUT|PIN/.test(d); } ],
+  bstemPN:  [ function(d){ return /BALANC\w*\W+(?:\w+\W+)?STEM/.test(d) && !/BONNET|RETAINER|PACKING|SEAL/.test(d); } ],
+  bonnetPN: [ function(d){ return /\bBONNET BODY\b/.test(d) && !/BALANC/.test(d); }, function(d){ return /\bBONNET\b/.test(d) && /ASSY/.test(d) && !/BALANC/.test(d); } ],
+  bsbPN:    [ function(d){ return /BALANC/.test(d) && /BONNET/.test(d) && !/SEAL|STUD/.test(d); } ]
+};
+function mapComponents(rows){
+  var res = {};
+  Object.keys(RULES).forEach(function(k){
+    var hit = null;
+    RULES[k].some(function(fn){
+      hit = rows.filter(function(r){ return !r.alt && !/^OBSOLETE/i.test(r.desc) && fn(String(r.desc).toUpperCase()); })[0] || null;
+      return !!hit;
+    });
+    res[k] = hit;
+  });
+  return res;
+}
+function sizeFromDesc(desc){
+  var d = String(desc||'').toUpperCase().replace(/\s+/g,' ');
+  if(/3[ -]1\/16/.test(d)) return '3_1_16_15K';
+  if(/5[ -]1\/8/.test(d)) return '5_1_8_15K';
+  if(/7[ -]1\/16/.test(d)) return '7_1_16_15K';
+  return '';
+}
+/* SOW file name → route slot. "SoW-OS30-P149968.pptx" → OS30 conversion of the valve whose body is P149968. */
+function sowSlot(name, std){
+  var n = String(name||'').toUpperCase(), type = '';
+  var pns = n.match(/P\d{5,12}(?:-\d{3,4})?|\d{2}-\d{3}-\d{3}/g) || [];
+  var t = n.replace(/P\d{5,12}(?:-\d{3,4})?|\d{2}-\d{3}-\d{3}/g,' ');
+  if(/\bCWR\b/.test(t)) type = 'CWR';
+  else if(/HWR|HOT[\s_-]*WELD|TO[\s_-]*(STD|STANDARD|NORMAL)/.test(t)) type = 'OS_060';
+  else if(/OS[\s_.-]*0?60\b|\.060/.test(t)) type = 'OS_030';
+  else if(/OS[\s_.-]*0?30\b|\.030/.test(t)) type = 'NORMAL';
+  var hit = null;
+  G.SIZE_KEYS.some(function(sk){ return G.OS_KEYS.some(function(os){
+    var v = std.sizes[sk].variants[os], all = [v.bodyPN].concat(v.pns||[]).filter(Boolean).map(function(x){ return String(x).toUpperCase(); });
+    if(pns.some(function(p){ return all.indexOf(p)!==-1; })){ hit = { size:sk, os:os }; return true; }
+  }); });
+  if(!hit) return { size:'', slot:type, pnFound:false, pns:pns };
+  /* the PN names the configuration the valve is in before the conversion */
+  return { size:hit.size, slot:type || hit.os, pnFound:true, matchedOS:hit.os, pns:pns };
+}
+
+G.files = { addFile:addFile, upload:upload, getBlob:getBlob, delBlob:delBlob, linkHTML:linkHTML, printLink:printLink,
+            remember:remember, fmtSize:fmtSize, spReady:spReady };
+G.ibom = { readTable:readTable, parse:parseIBOM, map:mapComponents, sizeFromDesc:sizeFromDesc, rowsFromHTML:rowsFromHTML };
+G.sowSlot = sowSlot;
+})();
+
+</script>
+
+<!-- ══ GATE VALVE EVALUATION — form, preview, print ══ -->
+<script>
+/* ═══ GATE VALVE EVALUATION — inspector form, preview and print ═══════════ */
+(function(){
+'use strict';
+var G = window.GVEval; if(!G) return;
+var e = G.e, num = G.num, OS_LABEL = G.OS_LABEL, ACTIONS = G.ACTIONS;
+
+/* ── styles ───────────────────────────────────────────────────────────── */
+var css = ''
+ +'.gve-pt{border:1px solid var(--border);border-radius:10px;padding:11px;margin-bottom:8px;background:var(--insp-idle)}'
+ +'.gve-pt.st-good{border-color:rgba(22,163,74,.45)}'
+ +'.gve-pt.st-act{border-color:rgba(245,158,11,.5)}'
+ +'.gve-pt.st-eng{border-color:rgba(175,97,255,.6)}'
+ +'.gve-pt-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}'
+ +'.gve-pt-label{font-size:13px;font-weight:700;color:var(--text)}'
+ +'.gve-pt-hint{font-size:11px;color:var(--text3);margin-top:2px}'
+ +'.gve-chip{font-size:9.5px;font-weight:800;padding:3px 8px;border-radius:999px;white-space:nowrap;flex-shrink:0;letter-spacing:.03em}'
+ +'.gve-chip.ok{background:rgba(22,163,74,.15);color:#16a34a}'
+ +'.gve-chip.minor{background:rgba(245,158,11,.16);color:#d97706}'
+ +'.gve-chip.major{background:rgba(220,38,38,.14);color:#dc2626}'
+ +'.gve-chip.eng{background:rgba(175,97,255,.18);color:#9333ea}'
+ +'.gve-chip.pend{background:var(--bg3);color:var(--text3)}'
+ +'[data-theme="dark"] .gve-chip.ok{color:#4ade80}[data-theme="dark"] .gve-chip.minor{color:#fbbf24}'
+ +'[data-theme="dark"] .gve-chip.major{color:#f87171}[data-theme="dark"] .gve-chip.eng{color:#c4b5fd}'
+ +'.gve-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}'
+ +'.gve-btn{flex:1;min-width:92px;padding:9px 8px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid var(--btn-idle-border);background:var(--btn-idle-bg);color:var(--btn-idle-color)}'
+ +'.gve-btn:hover{background:var(--btn-idle-hover)}'
+ +'.gve-btn.on-ok{background:#16a34a;border-color:#16a34a;color:#fff}'
+ +'.gve-btn.on-warn{background:#d97706;border-color:#d97706;color:#fff}'
+ +'.gve-btn.on-bad{background:#dc2626;border-color:#dc2626;color:#fff}'
+ +'.gve-meas{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}'
+ +'.gve-detail{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}'
+ +'.gve-detail .full{grid-column:1/-1}'
+ +'.gve-abn{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--text2);cursor:pointer}'
+ +'.gve-abn input{width:16px;height:16px;accent-color:#9333ea}'
+ +'.gve-disp{margin-top:9px;border-radius:9px;padding:9px 11px;border:1px solid;font-size:12px;line-height:1.45}'
+ +'.gve-disp.t-ok{background:rgba(22,163,74,.08);border-color:rgba(22,163,74,.35);color:var(--text2)}'
+ +'.gve-disp.t-minor{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.4);color:var(--text2)}'
+ +'.gve-disp.t-major{background:rgba(220,38,38,.07);border-color:rgba(220,38,38,.38);color:var(--text2)}'
+ +'.gve-disp.t-eng{background:rgba(175,97,255,.09);border-color:rgba(175,97,255,.45);color:var(--text2)}'
+ +'.gve-disp.pend{background:var(--bg3);border-color:var(--border);color:var(--text3);font-style:italic}'
+ +'.gve-disp-h{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:3px}'
+ +'.gve-act{font-weight:800;font-size:12px;color:var(--text)}'
+ +'.gve-auto{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)}'
+ +'.gve-qc{display:flex;align-items:center;gap:6px;margin-top:9px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed var(--border2)}'
+ +'.gve-qc-l{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--brand3);margin-right:4px}'
+ +'.gve-qc .gve-btn{flex:0 0 auto;min-width:70px;padding:6px 10px}'
+ +'.gve-out{border-radius:12px;padding:12px 14px;margin-bottom:14px;border:1px solid;border-left-width:5px}'
+ +'.gve-out.ok{background:rgba(22,163,74,.08);border-color:rgba(22,163,74,.45)}'
+ +'.gve-out.minor{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.45)}'
+ +'.gve-out.major{background:rgba(220,38,38,.07);border-color:rgba(220,38,38,.45)}'
+ +'.gve-out.idle{background:var(--bg3);border-color:var(--border2)}'
+ +'.gve-out-k{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text3)}'
+ +'.gve-out-t{font-size:15px;font-weight:800;color:var(--text);margin-top:2px}'
+ +'.gve-out-d{font-size:12px;color:var(--text2);margin-top:4px;line-height:1.5}'
+ +'.gve-out-l{font-size:11.5px;color:var(--text3);margin-top:4px}'
+ +'.gve-pnchg{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:12px}'
+ +'.gve-pnchg b{font-family:ui-monospace,Menlo,monospace;color:var(--text)}'
+ +'.gve-pnchg span.cfg{font-size:10.5px;color:var(--text3)}'
+ +'.gve-recv{display:flex;flex-wrap:wrap;gap:6px}'
+ +'.gve-pill{padding:7px 12px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid var(--btn-idle-border);background:var(--btn-idle-bg);color:var(--btn-idle-color)}'
+ +'.gve-pill.on{background:var(--brand);border-color:var(--brand);color:#fff}'
+ +'.gve-detect{margin-top:10px;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--bg3);font-size:12px;color:var(--text2);line-height:1.5}'
+ +'.gve-detect.ok{border-color:rgba(22,163,74,.45)}'
+ +'.gve-detect.warn{border-color:rgba(245,158,11,.5)}'
+ +'.gve-detect b.v{font-size:14px;color:var(--text)}'
+ +'.gve-manual{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}'
+ +'.gve-tbl{width:100%;border-collapse:collapse;font-size:12px}'
+ +'.gve-tbl th{background:var(--brand-dk);color:#fff;font-size:10px;font-weight:800;text-transform:uppercase;padding:6px 8px;text-align:left}'
+ +'.gve-tbl td{border-bottom:1px solid var(--border);padding:6px 8px;color:var(--text);vertical-align:top}'
+ +'.gve-tbl td.pn{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;white-space:nowrap}'
+ +'.gve-tbl td.why{font-size:11px;color:var(--text3)}'
+ +'.gve-tbl tr.grp td{background:var(--bg3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)}'
+ +'.gve-missing{color:#dc2626;font-weight:700;font-family:inherit}'
+ +'.gve-small{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px}'
+ +'.gve-small .d{flex:1;color:var(--text)}.gve-small .p{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--text3)}'
+ +'.gve-small .gve-btn{flex:0 0 auto;min-width:64px;padding:5px 9px;font-size:11px}'
+ +'.gve-kv{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;font-size:12px}'
+ +'.gve-kv div:nth-child(odd){color:var(--text3)}.gve-kv div:nth-child(even){color:var(--text);font-weight:600}'
+ +'.gve-snpn{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}'
+ +'.gve-cwr{margin-top:9px;padding:8px 10px;border-radius:8px;background:rgba(175,97,255,.12);border:1px solid rgba(175,97,255,.45);font-size:12px;color:var(--text);line-height:1.45}'
+ +'.gve-np{margin-top:8px;font-size:12px;color:var(--text);line-height:1.45}'
+ +'.gve-note{font-size:11px;color:var(--text3);margin-top:6px;line-height:1.45}'
+ +'@media(max-width:479px){.gve-detail,.gve-meas,.gve-snpn,.gve-manual{grid-template-columns:1fr}.gve-kv{grid-template-columns:1fr}}';
+var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+
+function g(){ return current.gvEval; }
+function pt(id){ var f=null; G.COMPONENTS.forEach(function(c){ c.points.forEach(function(p){ if(p.id===id) f={pt:p,comp:c}; }); }); return f; }
+function evFor(a, id){ for(var i=0;i<a.points.length;i++) if(a.points[i].pt.id===id) return a.points[i]; return null; }
+function set(id, html){ var el=document.getElementById(id); if(el) el.innerHTML=html; }
+function typeLabel(t){ var x=G.DEFECT_TYPES.filter(function(d){ return d[0]===t; })[0]; return x?x[1]:(t||''); }
+function ptState(id){ var s=g().pts; if(!s[id]) s[id]={}; return s[id]; }
+
+/* ── identification ───────────────────────────────────────────────────── */
+function recvHTML(){
+  var s=g();
+  return '<div class="gve-recv">'+G.RECEIVED.map(function(x){
+      return '<button class="gve-pill'+(s.receivedFrom===x[0]?' on':'')+'" onclick="gveRecv(\''+x[0]+'\')">'+e(x[1])+'</button>'; }).join('')+'</div>'
+    +(s.receivedFrom==='other' ? '<input class="field-input" style="margin-top:8px" placeholder="Received from (specify)" value="'+e(s.receivedOther)+'" oninput="gveG(\'receivedOther\',this.value)"/>' : '');
+}
+function detectHTML(){
+  var r=current, s=g(), std=G.liveStd(), h='', cls='';
+  var typed = (r.header.partNo||'') || (r.header.assyPN||'');
+  if(r.gvSize && r.gvScenario && std.sizes[r.gvSize]){
+    var v=std.sizes[r.gvSize].variants[r.gvScenario];
+    cls='ok';
+    h+='Identified: <b class="v">'+e(std.sizes[r.gvSize].label)+' · '+e(OS_LABEL[r.gvScenario])+'</b><br>';
+    h+=(s.variantSrc==='pn' ? 'Detected from part number <b>'+e(s.detectedPN)+'</b>' : 'Selected manually')
+      +' &middot; Standard PN: <b>'+e((v.pns||[]).join(' / ')||'not set')+'</b><br>';
+    h+='Seat pocket defect over the polish limit: '+G.routeTable(std, r.gvScenario).map(function(x){
+        var pn=(std.sizes[r.gvSize].variants[x.target].pns||[])[0]||'PN not set';
+        return x.type==='os' ? 'up to '+x.upTo.toFixed(3)+'" → <b>'+e(OS_LABEL[x.target])+'</b> ('+e(pn)+')' : 'deeper → <b>HWR to Normal</b> ('+e(pn)+')'; }).join(' · ');
+    if(s.variantSrc==='manual' && typed){
+      var hit=G.detect(r.header.partNo)||G.detect(r.header.assyPN);
+      if(!hit){ cls='warn'; h+='<br><span class="gve-missing">Entered part number is not in the Gate Valve standards.</span>'; }
+      else if(hit.size!==r.gvSize || hit.os!==r.gvScenario){ cls='warn'; h+='<br><span class="gve-missing">Entered part number belongs to '+e(std.sizes[hit.size].label)+' · '+e(OS_LABEL[hit.os])+'.</span>'; }
+    }
+  } else if(typed){
+    cls='warn';
+    h+='<span class="gve-missing">Part number not found in the Gate Valve standards.</span><br>Select the size and configuration below, or ask Engineering to add the part number in Settings.';
+  } else {
+    h+='Enter the top level or assembly part number — the size and configuration (Normal, OS .030", OS .060") are detected automatically.';
+  }
+  h+='<div class="gve-manual">'
+    +'<div><label class="field-label">Size</label><select class="field-input" onchange="gveManual(\'size\',this.value)"><option value="">Select…</option>'
+    +G.SIZE_KEYS.map(function(k){ return '<option value="'+k+'"'+(r.gvSize===k?' selected':'')+'>'+e(std.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
+    +'<div><label class="field-label">Configuration</label><select class="field-input" onchange="gveManual(\'os\',this.value)"><option value="">Select…</option>'
+    +G.OS_KEYS.map(function(k){ return '<option value="'+k+'"'+(r.gvScenario===k?' selected':'')+'>'+e(OS_LABEL[k])+'</option>'; }).join('')+'</select></div></div>';
+  return '<div class="gve-detect '+cls+'">'+h+'</div>';
+}
+
+/* ── one critical area ────────────────────────────────────────────────── */
+function chipHTML(ev){
+  if(!ev) return '';
+  if(ev.pending) return '<span class="gve-chip pend">DEPTH NEEDED</span>';
+  if(!ev.res) return ev.s.st ? '' : '<span class="gve-chip pend">TO DO</span>';
+  var A=ACTIONS[ev.res.action];
+  var lbl = ev.res.action==='ACCEPT' ? 'GOOD' : (ev.res.action==='ENGINEERING' ? 'ENGINEERING' : A.label.toUpperCase());
+  if(ev.res.action!=='ACCEPT' && ev.s.qc==='pass') lbl += ' · QC ✓';
+  return '<span class="gve-chip '+A.tone+'">'+e(lbl)+'</span>';
+}
+function ptClass(ev){
+  if(!ev || !ev.res) return '';
+  if(ev.res.action==='ACCEPT') return 'st-good';
+  return ev.res.action==='ENGINEERING' ? 'st-eng' : 'st-act';
+}
+function dispHTML(ev){
+  if(!ev) return '';
+  var id=ev.pt.id;
+  if(ev.pending) return '<div class="gve-disp pend">Select the defect type and enter the approximate depth — the disposition is set automatically.</div>';
+  if(!ev.res) return '';
+  var A=ACTIONS[ev.res.action], h='';
+  var src = ev.res.src==='abnormal' ? 'Inspector flag' : ev.res.src==='type' ? 'Defect type rule' : ev.res.src==='meas' ? 'Measurement rule' : 'Auto · standard';
+  h+='<div class="gve-disp t-'+A.tone+'"><div class="gve-disp-h"><span class="gve-act">'+e(A.label)+'</span><span class="gve-auto">'+e(src)+'</span></div>';
+  h+='<div>'+e(ev.res.text)+'</div>';
+  if(ev.res.action==='ENGINEERING'){
+    h+='<label class="field-label" style="margin-top:9px">Engineering disposition</label>'
+      +'<textarea class="field-input" rows="2" placeholder="Engineering instruction for this finding" oninput="gveEng(\''+id+'\',this.value)">'+e(ev.s.eng||'')+'</textarea>';
+  }
+  if(ev.res.action!=='ACCEPT'){
+    var q=ev.s.qc||'';
+    var t=(g().reworkTimestamps||{})[id];
+    h+='<div class="gve-qc"><span class="gve-qc-l">QC after rework</span>'
+      +'<button class="gve-btn'+(q==='pass'?' on-ok':'')+'" onclick="gveQC(\''+id+'\',\'pass\')">Pass</button>'
+      +'<button class="gve-btn'+(q==='fail'?' on-bad':'')+'" onclick="gveQC(\''+id+'\',\'fail\')">Fail</button>'
+      +(t && typeof fmtStamp==='function' ? '<span class="gve-note" style="margin:0">&#128337; '+e(fmtStamp(t))+'</span>' : '')
+      +'</div>';
+    if(q==='fail') h+='<div class="gve-note" style="color:#dc2626;font-weight:700">Rework failed — re-evaluate this area, or flag it abnormal for Engineering.</div>';
+  }
+  return h+'</div>';
+}
+function ptInner(p, ev, std){
+  var s=ptState(p.id), M=g().meas, v=std ? std.size.variants[current.gvScenario] : null, h='';
+  h+='<div class="gve-pt-head"><div><div class="gve-pt-label">'+e(p.label)+'</div>'
+    +(p.hint?'<div class="gve-pt-hint">'+e(p.hint)+'</div>':'')+'</div><span id="gve-chip-'+p.id+'">'+chipHTML(ev)+'</span></div>';
+  if(p.meas){
+    h+='<div class="gve-meas">'+p.meas.map(function(m){
+      var mn=v&&m.min?v[m.min]:'', mx=v&&m.max?v[m.max]:'';
+      var lim = (mn||mx) ? (mn&&mx ? mn+' – '+mx : mn ? 'min '+mn : 'max '+mx) : '0.000';
+      return '<div><label class="field-label">'+e(m.l)+'</label><input class="field-input" inputmode="decimal" placeholder="'+e(lim)+'" value="'+e(M[m.k]||'')
+        +'" oninput="gveMeas(\''+m.k+'\',\''+p.id+'\',this.value)"/></div>'; }).join('')+'</div>';
+  }
+  var opts = p.mode==='nc'    ? [['good','Good condition','ok'],['buff','Buffing required','warn'],['severe','Severe damage','bad']]
+           : p.mode==='studs' ? [['good','Good / fit for function','ok'],['polish','Gentle polish','warn'],['damaged','Damaged','bad']]
+           :                    [['good','Good condition','ok'],['damaged','Damaged','bad']];
+  h+='<div class="gve-btns">'+opts.map(function(o){
+      return '<button class="gve-btn'+(s.st===o[0]?' on-'+o[2]:'')+'" onclick="gveSt(\''+p.id+'\',\''+o[0]+'\')">'+e(o[1])+'</button>'; }).join('')+'</div>';
+  if(s.st && s.st!=='good'){
+    var needDepth = !p.mode || (p.mode==='studs' && s.st==='damaged');
+    h+='<div class="gve-detail">';
+    h+='<div'+(needDepth?'':' class="full"')+'><label class="field-label">Defect type'+(p.mode?' (optional)':'')+'</label><select class="field-input" onchange="gveType(\''+p.id+'\',this.value)"><option value="">Select…</option>'
+      +G.DEFECT_TYPES.map(function(t){ return '<option value="'+t[0]+'"'+(s.type===t[0]?' selected':'')+'>'+e(t[1])+'</option>'; }).join('')+'</select></div>';
+    if(needDepth) h+='<div><label class="field-label">Approx. depth (in)</label><input class="field-input" inputmode="decimal" placeholder="0.000" value="'+e(s.depth||'')+'" oninput="gveDepth(\''+p.id+'\',this.value)"/></div>';
+    h+='<div class="full"><input class="field-input" placeholder="Location / description of the finding" value="'+e(s.note||'')+'" oninput="gveNote(\''+p.id+'\',this.value)"/></div>';
+    h+='<label class="gve-abn full"><input type="checkbox"'+(s.abnormal?' checked':'')+' onchange="gveAbn(\''+p.id+'\',this.checked)"/> Abnormal finding — request Engineering review</label>';
+    h+='</div>';
+    if(typeof bfPhotoBtns==='function') h+=bfPhotoBtns('gve_'+p.id);
+  }
+  h+='<div id="gve-disp-'+p.id+'">'+dispHTML(ev)+'</div>';
+  return h;
+}
+
+function evalHTML(a){
+  var r=current, s=g(), h='';
+  if(!a.known){
+    return '<div class="card"><div class="section-title">Critical Areas</div><div class="gve-note" style="font-size:12.5px">Identify the valve first — the critical areas and their depth limits load once the part number is recognised, or the size and configuration are selected.</div></div>';
+  }
+  G.COMPONENTS.forEach(function(c){
+    var cs=s.comp[c.id]||{};
+    var pk = c.pnKey||c.replaceKey, stdPN = pk && a.fromVar ? a.fromVar[pk] : '';
+    h+='<div class="card"><div class="section-title">'+e(c.n+'. '+c.title)+'</div>';
+    if(c.snpn){
+      h+='<div class="gve-snpn"><div><label class="field-label">Serial no.</label><input class="field-input" placeholder="SN" value="'+e(cs.sn||'')+'" oninput="gveComp(\''+c.id+'\',\'sn\',this.value)"/></div>'
+        +'<div><label class="field-label">Part no.</label><input class="field-input" placeholder="'+e(stdPN||'PN')+'" value="'+e(cs.pn||'')+'" oninput="gveComp(\''+c.id+'\',\'pn\',this.value)"/></div></div>';
+      var mk=(r.photos||{})['gve_mark_'+c.id]||[];
+      h+='<div style="margin:-4px 0 10px"><button class="gve-scan-sm" onclick="gveScan(\'comp\',\''+c.id+'\')">'+(G.CAM_ICON||'')+' Scan SN / PN marking</button>'
+        +'<div class="photo-thumbs" id="photo-thumbs-gve_mark_'+c.id+'" style="margin-top:6px">'+mk.map(function(p,i){ return '<div class="photo-thumb"><img src="'+p.src+'"/><button class="photo-thumb-del" onclick="removePhoto(\'gve_mark_'+c.id+'\','+i+')">&#x2715;</button></div>'; }).join('')+'</div></div>';
+    }
+    c.points.forEach(function(p){
+      var ev=evFor(a,p.id);
+      h+='<div class="gve-pt '+ptClass(ev)+'" id="gve-pt-'+p.id+'">'+ptInner(p,ev,a.std)+'</div>';
+    });
+    h+='</div>';
+  });
+  return h;
+}
+
+/* ── outcome, parts, testing ──────────────────────────────────────────── */
+function outcomeHTML(a){
+  var o=G.outcome(a,current);
+  var h='<div class="gve-out '+o.tone+'"><div class="gve-out-k">Valve disposition</div><div class="gve-out-t">'+e(o.title)+'</div>'
+    +'<div class="gve-out-d">'+e(o.text)+'</div>';
+  if(o.pnChange) h+='<div class="gve-pnchg">Re-identify: <b>'+e(o.pnChange.from)+'</b><span class="cfg">'+e(o.pnChange.fromCfg)+'</span> &rarr; <b>'+e(o.pnChange.to)+'</b><span class="cfg">'+e(o.pnChange.toCfg)+'</span></div>';
+  (o.lines||[]).forEach(function(l){ h+='<div class="gve-out-l">&bull; '+e(l)+'</div>'; });
+  if(o.cwr) h+='<div class="gve-cwr"><b>CWR required.</b> '+e(o.cwr)+'</div>';
+  if(a.nameplate && a.nameplate.change) h+='<div class="gve-np"><b>Name plate:</b> '+e(a.nameplate.text)+'</div>';
+  if(a.route.type!=='none' && G.files){
+    (a.sows||[]).forEach(function(x){
+      if(x.meta) h+=G.files.linkHTML(x.meta, 'Scope of work — '+x.label);
+      else h+='<div class="gve-out-l" style="color:#d97706">&bull; No SOW file set for '+e(x.label)+' on this size — Engineering can add it in Settings.</div>';
+    });
+    if(a.sowNext && a.sowNext.meta) h+=G.files.linkHTML(a.sowNext.meta, 'If defects remain — '+a.sowNext.label);
+  }
+  return h+'</div>';
+}
+function partsTable(rows, editable){
+  var groups=[['component','Components'],['condition','Based on condition (not consumables)'],['consumable','Consumables'],['manual','Added by the inspector']];
+  var h='<table class="gve-tbl"><thead><tr><th>Part no.</th><th>Description</th><th>Qty</th><th>Reason</th></tr></thead><tbody>';
+  var any=false;
+  groups.forEach(function(gr){
+    var list=rows.filter(function(x){ return x.kind===gr[0]; }); if(!list.length) return; any=true;
+    h+='<tr class="grp"><td colspan="4">'+e(gr[1])+'</td></tr>';
+    list.forEach(function(x){
+      h+='<tr><td class="pn">'+(x.pn?e(x.pn):'<span class="gve-missing">PN not set</span>')+'</td><td>'+e(x.desc)+'</td><td>'+e(x.qty)+'</td><td class="why">'+e(x.why)+'</td></tr>';
+    });
+  });
+  if(!any) h+='<tr><td colspan="4" class="why">No parts listed yet.</td></tr>';
+  return h+'</tbody></table>';
+}
+function summaryHTML(a){
+  if(!a.known) return '';
+  var s=g(), to=a.toVar||{}, h='';
+  h+='<div class="card"><div class="section-title">Parts to Replace</div>';
+  if(a.route.type!=='none') h+='<div class="gve-note" style="margin:0 0 8px">Parts are for the configuration leaving the shop: <b>'+e(OS_LABEL[a.toOS])+'</b>.</div>';
+  h+=partsTable(a.parts);
+  var cond=to.condition||[];
+  if(cond.length){
+    var studsRep=a.points.some(function(ev){ return ev.comp.id==='studs' && ev.res && ev.res.action==='REPLACE'; });
+    h+='<div class="spare-sub-h" style="margin-top:14px">Based-on-condition parts <span class="sub-hint">— mark any found damaged</span></div>';
+    cond.forEach(function(cp){
+      var key=cp.pn||cp.description, on=(s.small||{})[key]==='replace', auto=studsRep&&/stud|nut/i.test(cp.description||'');
+      h+='<div class="gve-small"><span class="d">'+e(cp.description)+' <span class="p">'+e(cp.pn)+' &times;'+e(cp.qty)+'</span></span>'
+        +(auto ? '<span class="gve-chip major">AUTO — STUDS</span>' :
+          '<button class="gve-btn'+(!on?' on-ok':'')+'" onclick="gveSmall(\''+e(key).replace(/'/g,"\\'")+'\',\'\')">Good</button>'
+          +'<button class="gve-btn'+(on?' on-bad':'')+'" onclick="gveSmall(\''+e(key).replace(/'/g,"\\'")+'\',\'replace\')">Replace</button>')
+        +'</div>';
+    });
+  }
+  h+='</div>';
+  h+=testingHTML(a.std, a);
+  if(a.std.advisory && a.std.advisory.general) h+='<div class="card"><div class="section-title">Redress Advisory</div><div class="gve-out-d" style="margin:0">'+e(a.std.advisory.general)+'</div></div>';
+  return h;
+}
+function testingHTML(std, a){
+  var tp=G.testPlan(std, a);
+  return '<div class="card"><div class="section-title">Testing Requirements <span class="sub-hint" style="text-transform:none;font-weight:600;letter-spacing:0">— '+e(tp.basis)+'</span></div>'
+    +'<div class="gve-kv">'+tp.rows.map(function(x){ return '<div>'+e(x[0])+'</div><div>'+e(x[1])+'</div>'; }).join('')+'</div>'
+    +(tp.notes?'<div class="gve-note">'+e(tp.notes)+'</div>':'')
+    +'<div class="gve-note">Standards rev '+e(std.rev)+(std.approvedBy?' · approved by '+e(std.approvedBy):'')+'</div></div>';
+}
+
+/* ── whole form ───────────────────────────────────────────────────────── */
+function renderForm(){
+  G.setFormRef(current);
+  var r=current, s=g(), a=G.analyse(r), d0=dispFor(r.disposition=a.disp), h='';
+  document.getElementById('form-title').textContent=formTypeLabel(r);
+  h+='<div id="eq-hero-slot">'+equipHeroHTML(r)+'</div>';
+  h+='<div class="card"><div class="section-title">Valve Identification</div>';
+  h+='<div class="report-id-badge">Report ID: <strong>'+e(r.id)+'</strong></div>';
+  h+='<div class="gve-scan-row" style="margin-top:0"><button class="gve-scan-btn" onclick="gveScan(\'plate\')">'+(G.CAM_ICON||'')+' Scan nameplate</button>'
+    +'<span class="gve-note" style="margin:0;flex:1;min-width:180px">Fills serial number, assembly number, rev and size from a photo of the nameplate.</span></div>';
+  h+='<label class="field-label" style="margin-top:10px">Received from</label><div id="gve-recv">'+recvHTML()+'</div>';
+  h+='<div class="header-grid" style="margin-top:12px">';
+  var f=function(lbl,k,handler,ph){ return '<div><label class="field-label">'+lbl+'</label><input class="field-input" value="'+e(r.header[k]||'')+'" placeholder="'+(ph||'—')+'" oninput="'+handler+'"/></div>'; };
+  h+=f('Top level part no.','partNo',"gvePN('partNo',this.value)",'e.g. P150013');
+  h+=f('Part rev','partRev',"setHeader('partRev',this.value)");
+  h+=f('Assy level part no.','assyPN',"gvePN('assyPN',this.value)");
+  h+=f('Part rev','assyRev',"setHeader('assyRev',this.value)");
+  h+=f('Serial / batch no.','serialNo',"setHeader('serialNo',this.value)");
+  h+=f('Service order no.','so',"setHeader('so',this.value)");
+  h+=f('Service notification no.','notification',"setHeader('notification',this.value)");
+  h+=f('Equipment no.','equipmentNo',"setHeader('equipmentNo',this.value)");
+  h+='</div>';
+  h+='<div style="margin-top:10px"><label class="field-label">Equipment description</label><input class="field-input" id="gve-desc" value="'+e(r.header.sizeDesc||'')+'" oninput="setHeader(\'sizeDesc\',this.value)"/></div>';
+  h+='<div id="gve-detect">'+detectHTML()+'</div>';
+  h+='<label class="gve-abn" style="margin-top:10px"><input type="checkbox"'+(s.prevHWR?' checked':'')+' onchange="gvePrevHWR(this.checked)"/> Valve was hot-weld repaired before (HWR) — a further weld repair follows the CWR SOW</label>';
+  h+='<div style="margin-top:10px"><label class="field-label">General note — current nameplate details</label><textarea class="field-input" rows="2" oninput="gveG(\'nameplate\',this.value)">'+e(s.nameplate||'')+'</textarea>'+(typeof bfPhotoBtns==='function'?bfPhotoBtns('gve_nameplate'):'')+'</div>';
+  h+='</div>';
+  h+='<div class="disp-banner" id="disp-banner" style="background:'+d0.bg+';border-color:'+d0.border+';border-left-color:'+d0.color+'"><div class="disp-label" style="color:'+d0.color+'">'+d0.label+'</div><div class="disp-desc" style="color:'+d0.color+'">'+d0.desc+'</div></div>';
+  h+='<div id="gve-outcome">'+outcomeHTML(a)+'</div>';
+  h+='<div id="gve-eval">'+evalHTML(a)+'</div>';
+  h+='<div id="gve-summary">'+summaryHTML(a)+'</div>';
+  h+='<div class="card"><div class="section-title">Additional Parts <span class="sub-hint" style="text-transform:none;font-weight:600;letter-spacing:0">— anything not listed above</span></div>'+(typeof renderSparesTable==='function'?renderSparesTable():'')+'</div>';
+  h+='<div class="card"><div class="section-title">Unusual Findings &amp; Inspector Notes</div>'
+    +'<textarea class="field-input" rows="3" placeholder="Anything unusual about this valve" oninput="gveG(\'notes\',this.value)">'+e(s.notes||'')+'</textarea>'
+    +'<label class="gve-abn" style="margin-top:10px"><input type="checkbox"'+(s.engRequest?' checked':'')+' onchange="gveEngReq(this.checked)"/> Request Engineering review for this valve</label>'
+    +'<div id="gve-engbox" style="display:'+(s.engRequest?'block':'none')+';margin-top:10px">'
+      +'<label class="field-label">Engineering remarks</label><textarea class="field-input" rows="3" placeholder="Engineering remarks and instruction" oninput="gveG(\'engRemarks\',this.value);gveStatus()">'+e(s.engRemarks||'')+'</textarea>'
+    +'</div><div class="gve-note">'+e((a.std&&a.std.advisory.engPolicy)||G.liveStd().advisory.engPolicy)+'</div></div>';
+  h+='<div class="card"><div class="section-title">Sign-off</div><div class="header-grid">'
+    +'<div><label class="field-label">Inspected by</label><input class="field-input" value="'+e(r.inspector||'')+'" oninput="setInspector(this.value)"/></div>'
+    +'<div><label class="field-label">Date</label><input class="field-input" type="date" value="'+e(s.inspDate||'')+'" onchange="gveG(\'inspDate\',this.value)"/></div>'
+    +'<div><label class="field-label">Disposed by (Engineering, if involved)</label><input class="field-input" placeholder="Automatic when no Engineering review" value="'+e(s.engBy||'')+'" oninput="gveG(\'engBy\',this.value)"/></div>'
+    +'<div><label class="field-label">Date</label><input class="field-input" type="date" value="'+e(s.engDate||'')+'" onchange="gveG(\'engDate\',this.value)"/></div>'
+    +'<div><label class="field-label">Reviewed by</label><input class="field-input" value="'+e(s.rev1||'')+'" oninput="gveG(\'rev1\',this.value)"/></div>'
+    +'<div><label class="field-label">Date</label><input class="field-input" type="date" value="'+e(s.rev1Date||'')+'" onchange="gveG(\'rev1Date\',this.value)"/></div>'
+    +'<div><label class="field-label">Reviewed by</label><input class="field-input" value="'+e(s.rev2||'')+'" oninput="gveG(\'rev2\',this.value)"/></div>'
+    +'<div><label class="field-label">Date</label><input class="field-input" type="date" value="'+e(s.rev2Date||'')+'" onchange="gveG(\'rev2Date\',this.value)"/></div>'
+    +'</div></div>';
+  h+='<button class="save-full-btn" onclick="saveReport()">Save &amp; Complete Report</button>';
+  document.getElementById('form-body').innerHTML=h;
+  updateProgress();
+}
+
+/* ── refresh helpers ──────────────────────────────────────────────────── */
+function status(a){
+  a=a||G.analyse(current);
+  current.disposition=a.disp;
+  updateProgress(); updateDispositionBanner();
+  set('gve-outcome', outcomeHTML(a));
+  set('gve-summary', summaryHTML(a));
+  return a;
+}
+function refreshPoint(id, full){
+  var a=G.analyse(current), ev=evFor(a,id);
+  if(ev){
+    var box=document.getElementById('gve-pt-'+id);
+    if(box){
+      box.className='gve-pt '+ptClass(ev);
+      if(full) box.innerHTML=ptInner(ev.pt,ev,a.std);
+      else { set('gve-chip-'+id, chipHTML(ev)); set('gve-disp-'+id, dispHTML(ev)); }
+    }
+  }
+  status(a);
+}
+function refreshAll(){
+  var a=G.analyse(current);
+  set('gve-detect', detectHTML());
+  set('gve-eval', evalHTML(a));
+  document.getElementById('form-title').textContent=formTypeLabel(current);
+  if(typeof refreshEquipHero==='function') refreshEquipHero();
+  status(a);
+}
+function applyVariant(size, os, src, pn){
+  var r=current, s=g();
+  var changed = r.gvSize!==size || r.gvScenario!==os;
+  r.gvSize=size; r.gvScenario=os; s.variantSrc=src; s.detectedPN=pn||'';
+  updateDesc();
+  return changed;
+}
+/* Equipment description, built from the identified size and configuration
+   plus model and material class read from the nameplate. Kept up to date
+   automatically until the inspector types their own description. */
+function descFor(size, os, plate){
+  var std=G.liveStd(), p=plate||{}, head='Gate Valve';
+  if(size && std.sizes[size]) head+=' '+std.sizes[size].label;
+  else if(p.sizeText) head+=' '+p.sizeText+'"'+(p.pressure?' – '+Math.round(p.pressure/1000)+'K':'');
+  var parts=[head];
+  if(p.model) parts.push('Model '+p.model);
+  if(p.matClass) parts.push('Matl '+p.matClass);
+  return parts.join(', ')+(os?' — '+OS_LABEL[os]:'');
+}
+function updateDesc(){
+  var r=current, s=g();
+  if(r.header.sizeDesc && r.header.sizeDesc!==s.autoDesc) return;
+  if(!r.gvSize && !(s.plate&&(s.plate.sizeText||s.plate.model))) return;
+  var desc=descFor(r.gvSize, r.gvScenario, s.plate);
+  r.header.sizeDesc=desc; s.autoDesc=desc;
+  var di=document.getElementById('gve-desc'); if(di) di.value=desc;
+}
+
+/* ── handlers ─────────────────────────────────────────────────────────── */
+window.startGVEval = function(){
+  current={ id:genId(), equipType:'GATE_VALVE', formType:'GATE_VALVE', gvSize:'', gvScenario:'',
+    createdAt:new Date().toISOString(), header:{}, findings:{}, comments:{}, photos:{}, itemDispositions:{},
+    reworkFindings:{}, reworkComments:{}, reworkPhotos:{}, bfState:null, wecoState:null, crossState:null,
+    adapterFlowState:null, spares:[], engineeringNotes:'', inspector:((typeof spConfig!=='undefined'&&spConfig.userName)||''),
+    engineerName:'', disposition:'incomplete', gvEval:G.newEval() };
+  renderForm(); showView('form');
+};
+window.gvePN = function(field, v){
+  setHeader(field, v);
+  var s=g();
+  var hit=G.detect(current.header.partNo)||G.detect(current.header.assyPN);
+  if(hit){
+    if(applyVariant(hit.size, hit.os, 'pn', hit.pn) || s.detectedPN!==hit.pn){ s.detectedPN=hit.pn; refreshAll(); toast('Identified '+G.liveStd().sizes[hit.size].label+' · '+OS_LABEL[hit.os]); }
+    else set('gve-detect', detectHTML());
+  } else if(s.variantSrc==='pn'){
+    applyVariant('', '', '', ''); refreshAll();
+  } else set('gve-detect', detectHTML());
+};
+window.gveManual = function(which, v){
+  var r=current;
+  var size = which==='size' ? v : r.gvSize, os = which==='os' ? v : r.gvScenario;
+  applyVariant(size, os, 'manual', '');
+  refreshAll();
+};
+window.gveRecv = function(v){ var s=g(); s.receivedFrom = s.receivedFrom===v ? '' : v; set('gve-recv', recvHTML()); };
+window.gveG = function(k, v){ g()[k]=v; };
+window.gvePrevHWR = function(on){ g().prevHWR=!!on; status(); };
+window.gveStatus = function(){ status(); };
+window.gveEngReq = function(on){ g().engRequest=!!on; var b=document.getElementById('gve-engbox'); if(b) b.style.display=on?'block':'none'; status(); };
+window.gveComp = function(cid, k, v){ var s=g(); if(!s.comp[cid]) s.comp[cid]={}; s.comp[cid][k]=v; };
+window.gveSt = function(id, v){
+  var s=ptState(id);
+  if(s.st===v) { s.st=''; } else s.st=v;
+  if(s.st!=='damaged' || !s.st){ s.eng=''; }
+  if(s.st==='good' || !s.st){ s.type=''; s.depth=''; s.abnormal=false; }
+  s.qc=''; stampRework(g(), id, '');
+  refreshPoint(id, true);
+};
+window.gveType  = function(id, v){ ptState(id).type=v; ptState(id).qc=''; refreshPoint(id); };
+window.gveDepth = function(id, v){ ptState(id).depth=v; refreshPoint(id); };
+window.gveNote  = function(id, v){ ptState(id).note=v; };
+window.gveAbn   = function(id, on){ ptState(id).abnormal=!!on; refreshPoint(id); };
+window.gveEng   = function(id, v){ ptState(id).eng=v; var a=G.analyse(current); set('gve-chip-'+id, chipHTML(evFor(a,id))); status(a); };
+window.gveMeas  = function(k, id, v){ g().meas[k]=v; refreshPoint(id); };
+window.gveQC    = function(id, v){
+  var s=ptState(id); s.qc = s.qc===v ? '' : v; stampRework(g(), id, s.qc); refreshPoint(id);
+};
+window.gveSmall = function(key, v){ var s=g(); if(!s.small) s.small={}; if(v) s.small[key]=v; else delete s.small[key]; status(); };
+
+/* ── preview ──────────────────────────────────────────────────────────── */
+function recvText(s){
+  var x=G.RECEIVED.filter(function(r){ return r[0]===s.receivedFrom; })[0];
+  return x ? (x[0]==='other' ? 'Others — '+(s.receivedOther||'') : x[1]) : '—';
+}
+function findingText(ev, M){
+  var s=ev.s, parts=[];
+  if(ev.pt.meas) ev.pt.meas.forEach(function(m){ if(M[m.k]) parts.push(m.l.replace(' (in)','')+': '+M[m.k]+' in'); });
+  if(!s.st) parts.push('Not evaluated');
+  else if(s.st==='good') parts.push('Good condition');
+  else {
+    var lbl = s.st==='buff'?'Buffing required':s.st==='severe'?'Severe damage':s.st==='polish'?'Gentle polish required':'Damaged';
+    parts.push(lbl+(s.type?' — '+typeLabel(s.type):'')+(s.depth?', approx. depth '+s.depth+' in':''));
+    if(s.note) parts.push(s.note);
+    if(s.abnormal) parts.push('Flagged abnormal by the inspector');
+  }
+  return parts;
+}
+function pvPhotos(list, lbl){
+  list=list||[]; if(!list.length) return '';
+  return '<div class="preview-photo-row">'+list.map(function(p,i){ return '<div class="preview-photo-thumb"><img src="'+p.src+'"/><div class="preview-photo-num">'+e(lbl)+' '+(i+1)+'</div></div>'; }).join('')+'</div>';
+}
+function previewHTML(r){
+  var a=G.analyse(r), s=r.gvEval, std=a.std, h='';
+  h+=equipHeroHTML(r);
+  h+='<div class="preview-header-card"><div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
+    +'<div style="font-size:11px;color:var(--text3)">FRAC Evaluation Report · '+fmtDate(r.createdAt)+'</div><div class="preview-report-id">'+e(r.id)+'</div></div>'
+    +'<div class="preview-meta-grid">'+[['Received from',recvText(s)],['Top level PN',(r.header.partNo||'')+(r.header.partRev?' rev '+r.header.partRev:'')],
+      ['Assy level PN',(r.header.assyPN||'')+(r.header.assyRev?' rev '+r.header.assyRev:'')],['Serial / batch',r.header.serialNo],['Service order',r.header.so],
+      ['Notification',r.header.notification],['Description',r.header.sizeDesc],['Inspector',r.inspector],['Standards rev',std?std.rev:'']]
+      .filter(function(x){ return x[1]; }).map(function(x){ return '<div class="preview-meta-item"><span class="preview-meta-key">'+e(x[0])+': </span><span class="preview-meta-val">'+e(x[1])+'</span></div>'; }).join('')
+    +'</div>'+(s.nameplate?'<div style="font-size:12px;color:var(--text2);margin-top:8px;white-space:pre-wrap"><b>Nameplate:</b> '+e(s.nameplate)+'</div>':'')
+    +pvPhotos((r.photos||{}).gve_nameplate,'Nameplate')+'</div>';
+  var d=dispFor(a.disp)||dispFor('incomplete');
+  h+='<div class="disp-banner" style="background:'+d.bg+';border-color:'+d.border+';border-left-color:'+d.color+';margin-bottom:12px"><div class="disp-label" style="color:'+d.color+'">'+d.label+'</div><div class="disp-desc" style="color:'+d.color+'">'+d.desc+'</div></div>';
+  h+=outcomeHTML(a);
+  if(a.known){
+    G.COMPONENTS.forEach(function(c){
+      var cs=s.comp[c.id]||{};
+      h+='<div class="card"><div class="section-title">'+e(c.n+'. '+c.title)+((cs.sn||cs.pn)?' <span style="text-transform:none;font-weight:600;letter-spacing:0;color:var(--text3)">SN '+e(cs.sn||'—')+' · PN '+e(cs.pn||'—')+'</span>':'')+'</div>'
+        +pvPhotos((r.photos||{})['gve_mark_'+c.id],'Marking');
+      a.points.filter(function(ev){ return ev.comp===c; }).forEach(function(ev){
+        var photos=(r.photos||{})['gve_'+ev.pt.id]||[];
+        var A=ev.res?ACTIONS[ev.res.action]:null;
+        h+='<div class="preview-item-row" style="padding:8px 0;border-bottom:1px solid var(--border)">'
+          +'<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:12.5px;color:var(--text)">'+e(ev.pt.label)+'</b>'+chipHTML(ev)+'</div>'
+          +'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+findingText(ev,s.meas||{}).map(e).join(' · ')+'</div>'
+          +(A&&ev.res.action!=='ACCEPT'?'<div class="gve-disp t-'+A.tone+'" style="margin-top:6px"><span class="gve-act">'+e(A.label)+'</span> — '+e(ev.res.text)
+            +(ev.s.eng&&ev.res.action==='ENGINEERING'?'<div style="margin-top:4px"><b>Engineering:</b> '+e(ev.s.eng)+'</div>':'')
+            +'<div style="margin-top:4px;font-size:11px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():'Pending')
+            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' · '+e(fmtStamp(s.reworkTimestamps[ev.pt.id])):'')+'</div></div>':'')
+          +(photos.length?'<div class="preview-photo-row">'+photos.map(function(p,i){ return '<div class="preview-photo-thumb"><img src="'+p.src+'"/><div class="preview-photo-num">Photo '+(i+1)+'</div></div>'; }).join('')+'</div>':'')
+          +'</div></div>';
+      });
+      h+='</div>';
+    });
+    h+='<div class="card"><div class="section-title">Parts to Replace</div>'+partsTable(a.parts)+'</div>';
+    h+=testingHTML(std, a);
+  }
+  if(s.notes) h+='<div class="card"><div class="section-title">Unusual Findings &amp; Inspector Notes</div><div style="font-size:13px;color:var(--text2);white-space:pre-wrap">'+e(s.notes)+'</div></div>';
+  if(s.engRequest||s.engRemarks) h+='<div class="card"><div class="section-title">Engineering Remarks</div><div style="font-size:13px;color:var(--text2);white-space:pre-wrap">'+e(s.engRemarks||'Requested — remarks outstanding')+'</div></div>';
+  return h;
+}
+
+/* ── print: FRAC EVALUATION REPORT layout ─────────────────────────────── */
+function printDoc(r){
+  var a=G.analyse(r), s=r.gvEval, std=a.std, o=G.outcome(a,r);
+  var logoEl=document.querySelector('#view-home img'), logo=logoEl?logoEl.src:'';
+  var B='border:1px solid #9ca3af;padding:5px 7px;vertical-align:top;';
+  var TH='background:#252963;color:#fff;font-weight:700;'+B;
+  var LB='background:#f3f4f6;font-weight:700;width:30%;'+B;
+  var box=function(on){ return on?'&#9746;':'&#9744;'; };
+  var h='<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>FRAC Evaluation Report '+e(r.id)+'</title><style>'
+    +'body{font-family:Arial,sans-serif;font-size:11px;color:#111;margin:22px}table{width:100%;border-collapse:collapse;margin-bottom:10px}'
+    +'.cls{font-size:9px;color:#6b7280;text-align:right;margin-bottom:4px}h3{font-size:12px;color:#252963;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.05em}'
+    +'img.ph{width:88px;height:66px;object-fit:cover;border:1px solid #d1d5db;border-radius:3px;margin:2px}'
+    +'.act{font-weight:700}.tag{font-size:9px;color:#6b7280}tr{page-break-inside:avoid}'
+    +'@media print{body{margin:10px}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>';
+  h+='<div class="cls">TechnipFMC | Internal</div>';
+  h+='<table><tr><td style="'+B+'width:28%;text-align:center">'+(logo?'<img src="'+logo+'" style="height:34px"/>':'TechnipFMC')+'</td>'
+    +'<td style="'+B+'text-align:center;font-size:16px;font-weight:800;color:#252963">FRAC EVALUATION REPORT</td>'
+    +'<td style="'+B+'width:30%;padding:0"><table style="margin:0"><tr><td style="'+LB+'width:45%">DATE</td><td style="'+B+'">'+e(s.inspDate||fmtDate(r.createdAt))+'</td></tr>'
+    +'<tr><td style="'+LB+'">SN NUMBER</td><td style="'+B+'">'+e(r.header.serialNo||'')+'</td></tr>'
+    +'<tr><td style="'+LB+'">REPORT ID</td><td style="'+B+'">'+e(r.id)+'</td></tr></table></td></tr></table>';
+  h+='<table>'
+    +'<tr><td style="'+LB+'">RECEIVED FROM</td><td style="'+B+'" colspan="3">'+G.RECEIVED.map(function(x){ return x[1]+' '+box(s.receivedFrom===x[0]); }).join('&nbsp;&nbsp; ')+(s.receivedFrom==='other'&&s.receivedOther?' ('+e(s.receivedOther)+')':'')+'</td></tr>'
+    +'<tr><td style="'+LB+'">TOP LEVEL PART NO</td><td style="'+B+'">'+e(r.header.partNo||'')+'</td><td style="'+LB+'width:14%">PART REV</td><td style="'+B+'width:16%">'+e(r.header.partRev||'')+'</td></tr>'
+    +'<tr><td style="'+LB+'">ASSY LEVEL PART NO</td><td style="'+B+'">'+e(r.header.assyPN||'')+'</td><td style="'+LB+'">PART REV</td><td style="'+B+'">'+e(r.header.assyRev||'')+'</td></tr>'
+    +'<tr><td style="'+LB+'">TECHNIPFMC SERIAL / BATCH NO</td><td style="'+B+'" colspan="3">'+e(r.header.serialNo||'')+'</td></tr>'
+    +'<tr><td style="'+LB+'">SERVICE ORDER NUMBER</td><td style="'+B+'" colspan="3">'+e(r.header.so||'')+'</td></tr>'
+    +'<tr><td style="'+LB+'">SERVICE NOTIFICATION NO</td><td style="'+B+'" colspan="3">'+e(r.header.notification||'')+'</td></tr>'
+    +'<tr><td style="'+LB+'">EQUIPMENT DESCRIPTION</td><td style="'+B+'" colspan="3">'+e(r.header.sizeDesc||'')
+      +(a.known?' <span class="tag">(identified as '+e(std.size.label)+' · '+e(OS_LABEL[r.gvScenario])+(s.variantSrc==='pn'?' from PN '+e(s.detectedPN):', selected manually')+')</span>':'')+'</td></tr></table>';
+  var dcol = o.tone==='ok'?'#15803d':o.tone==='minor'?'#b45309':o.tone==='major'?'#b91c1c':'#4b5563';
+  h+='<div style="border:1px solid '+dcol+';border-left:5px solid '+dcol+';padding:8px 10px;margin-bottom:10px">'
+    +'<div style="font-size:9px;font-weight:700;color:#6b7280;letter-spacing:.06em">VALVE DISPOSITION</div>'
+    +'<div style="font-size:13px;font-weight:800;color:'+dcol+'">'+e(o.title)+'</div><div>'+e(o.text)+'</div>'
+    +(o.pnChange?'<div style="margin-top:4px"><b>Re-identify:</b> '+e(o.pnChange.from)+' ('+e(o.pnChange.fromCfg)+') &rarr; <b>'+e(o.pnChange.to)+'</b> ('+e(o.pnChange.toCfg)+')</div>':'')
+    +(o.lines||[]).map(function(l){ return '<div style="color:#b45309">&bull; '+e(l)+'</div>'; }).join('')
+    +(o.cwr ? '<div style="margin-top:4px;color:#7e22ce"><b>CWR required.</b> '+e(o.cwr)+'</div>' : '')
+    +(a.nameplate && a.nameplate.change ? '<div style="margin-top:4px"><b>Name plate:</b> '+e(a.nameplate.text)+'</div>' : '')
+    +(a.route.type!=='none' && G.files ? (a.sows||[]).map(function(x){ return x.meta ? G.files.printLink(x.meta,'Scope of work — '+x.label) : '<div style="margin-top:4px;color:#b45309">SOW for '+e(x.label)+' not set</div>'; }).join('')
+        +(a.sowNext && a.sowNext.meta ? G.files.printLink(a.sowNext.meta,'If defects remain — '+a.sowNext.label) : '') : '')
+    +'</div>';
+
+  h+='<table><thead><tr><th style="'+TH+'width:15%">Finding #</th><th style="'+TH+'width:15%">Requirements</th><th style="'+TH+'width:23%">Inspection Findings</th><th style="'+TH+'width:20%">Photos</th><th style="'+TH+'">Engineering Disposition</th></tr></thead><tbody>';
+  h+='<tr><td style="'+B+'font-weight:700">General Note</td><td style="'+B+'">Current name plate details</td><td style="'+B+'white-space:pre-wrap">'+e(s.nameplate||'')+'</td>'
+    +'<td style="'+B+'">'+((r.photos||{}).gve_nameplate||[]).map(function(p){ return '<img class="ph" src="'+p.src+'"/>'; }).join('')+'</td>'
+    +'<td style="'+B+'">'+(a.known&&a.nameplate ? (a.nameplate.change?'<span class="act">Change name plate</span> — ':'')+e(a.nameplate.text)+'<div class="tag">Auto — Standards rev '+e(std.rev)+'</div>' : '')+'</td></tr>';
+  if(a.known){
+    G.COMPONENTS.forEach(function(c){
+      var evs=a.points.filter(function(ev){ return ev.comp===c; }), cs=s.comp[c.id]||{};
+      evs.forEach(function(ev,i){
+        var photos=(r.photos||{})['gve_'+ev.pt.id]||[], A=ev.res?ACTIONS[ev.res.action]:null, disp='';
+        if(ev.pending) disp='<span class="tag">Depth or defect type not recorded</span>';
+        else if(A){
+          disp='<span class="act">'+e(A.label)+'</span>'+(ev.res.action!=='ACCEPT'?' — '+e(ev.res.text):'');
+          if(ev.s.eng && ev.res.action==='ENGINEERING') disp+='<div><b>Engineering:</b> '+e(ev.s.eng)+'</div>';
+          if(ev.res.action!=='ACCEPT') disp+='<div style="margin-top:3px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():'Pending')
+            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+')':'')+'</div>';
+          disp+='<div class="tag">'+(ev.res.src==='abnormal'?'Inspector flag':ev.res.src==='type'?'Defect type rule':'Auto — Standards rev '+e(std.rev))+'</div>';
+        }
+        h+='<tr>';
+        if(i===0) h+='<td style="'+B+'font-weight:700" rowspan="'+evs.length+'">'+e(c.n+'. '+c.title)+(c.snpn?'<div style="font-weight:400;margin-top:4px">SN: '+e(cs.sn||'')+'<br>PN: '+e(cs.pn||'')+'</div>':'')
+          +((r.photos||{})['gve_mark_'+c.id]||[]).map(function(p){ return '<img class="ph" style="width:70px;height:52px" src="'+p.src+'"/>'; }).join('')+'</td>';
+        h+='<td style="'+B+'">'+e(ev.pt.label)+(ev.pt.hint?'<div class="tag">'+e(ev.pt.hint)+'</div>':'')+'</td>'
+          +'<td style="'+B+'">'+findingText(ev,s.meas||{}).map(e).join('<br>')+'</td>'
+          +'<td style="'+B+'">'+photos.map(function(p){ return '<img class="ph" src="'+p.src+'"/>'; }).join('')+'</td>'
+          +'<td style="'+B+'">'+disp+'</td></tr>';
+      });
+    });
+  }
+  var pl=function(kind){ var ks=[].concat(kind), l=a.parts.filter(function(x){ return ks.indexOf(x.kind)!==-1; });
+    return l.length ? l.map(function(x){ return (x.pn?'<b>'+e(x.pn)+'</b>':'<span style="color:#b91c1c">PN not set</span>')+' — '+e(x.desc)+' &times;'+e(x.qty)+' <span class="tag">'+e(x.why)+'</span>'; }).join('<br>') : '—'; };
+  h+='<tr><td style="'+B+'font-weight:700" colspan="2">Based on condition and damaged parts (not consumables)</td><td style="'+B+'" colspan="3">'+pl(['component','condition','manual'])+'</td></tr>';
+  h+='<tr><td style="'+B+'font-weight:700" colspan="2">Consumables'+(a.known?' <span class="tag">('+e(OS_LABEL[a.toOS])+')</span>':'')+'</td><td style="'+B+'" colspan="3">'+pl('consumable')+'</td></tr>';
+  h+='<tr><td style="'+B+'font-weight:700" colspan="2">Unusual findings and inspector notes</td><td style="'+B+'white-space:pre-wrap" colspan="3">'+e(s.notes||'')+'</td></tr>';
+  h+='<tr><td style="'+B+'font-weight:700" colspan="2">Engineering remarks</td><td style="'+B+'white-space:pre-wrap" colspan="3">'+e(s.engRemarks||(s.engRequest?'Requested — outstanding':'Not required — dispositioned automatically to Gate Valve Standards rev '+(std?std.rev:'')))+'</td></tr>';
+  h+='</tbody></table>';
+  if(std){
+    var tp=G.testPlan(std, a);
+    h+='<h3>Testing requirements — '+e(tp.basis)+'</h3><table>'
+      +tp.rows.map(function(x){ return '<tr><td style="'+LB+'">'+e(x[0])+'</td><td style="'+B+'">'+e(x[1])+'</td></tr>'; }).join('')
+      +'</table>';
+    if(std.advisory&&std.advisory.general) h+='<div style="margin-bottom:10px"><b>Advisory:</b> '+e(std.advisory.general)+'</div>';
+  }
+  var disposedBy = a.engInvolved ? (s.engBy||'Engineering — name outstanding') : 'Automatic — Gate Valve Standards rev '+(std?std.rev:'')+(std&&std.approvedBy?' (approved by '+std.approvedBy+')':'');
+  h+='<table><tr><td style="'+LB+'width:14%">Inspected By</td><td style="'+B+'">'+e(r.inspector||'')+'</td><td style="'+LB+'width:8%">Date</td><td style="'+B+'width:12%">'+e(s.inspDate||'')+'</td>'
+    +'<td style="'+LB+'width:14%">Disposed By</td><td style="'+B+'">'+e(disposedBy)+'</td><td style="'+LB+'width:8%">Date</td><td style="'+B+'width:12%">'+e(s.engDate||(a.engInvolved?'':String(r.savedAt||r.createdAt||'').slice(0,10)))+'</td></tr>'
+    +'<tr><td style="'+LB+'">Reviewed By</td><td style="'+B+'">'+e(s.rev1||'')+'</td><td style="'+LB+'">Date</td><td style="'+B+'">'+e(s.rev1Date||'')+'</td>'
+    +'<td style="'+LB+'">Reviewed By</td><td style="'+B+'">'+e(s.rev2||'')+'</td><td style="'+LB+'">Date</td><td style="'+B+'">'+e(s.rev2Date||'')+'</td></tr></table>';
+  h+='<div class="cls">TechnipFMC | Internal &nbsp;·&nbsp; '+e(r.id)+' &nbsp;·&nbsp; Gate Valve Standards rev '+e(std?std.rev:'—')+'</div>';
+  h+='<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script></body></html>';
+  return h;
+}
+function print(r){
+  var html=printDoc(r);
+  if(typeof tokenValid==='function' && tokenValid() && spConfig.pdfFolder){
+    try{
+      var fname=r.id+'_'+String(r.savedAt||r.createdAt||'').slice(0,10)+'_v'+Date.now()+'.html';
+      var rd=new FileReader();
+      rd.onload=function(ev){ msUploadPrintFile(spConfig.pdfFolder,fname,ev.target.result,function(ok){ if(ok) toast('✅ Print report saved to SharePoint PDF Reports'); }); };
+      rd.readAsArrayBuffer(new Blob([html],{type:'text/html'}));
+    }catch(x){}
+  }
+  try{
+    var url=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+    var win=window.open(url,'_blank');
+    if(!win){
+      var fr=document.getElementById('_print_frame'); if(fr) fr.parentNode.removeChild(fr);
+      fr=document.createElement('iframe'); fr.id='_print_frame';
+      fr.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:9999;background:#fff';
+      document.body.appendChild(fr); fr.src=url;
+    }
+    setTimeout(function(){ URL.revokeObjectURL(url); },30000);
+  }catch(err){ toast('⚠ Print failed: '+err.message); }
+}
+
+G.renderForm=renderForm; G.previewHTML=previewHTML; G.printDoc=printDoc; G.print=print;
+G.refreshAll=refreshAll; G.descFor=descFor; G.updateDesc=updateDesc; G.partsTable=partsTable; G.testingHTML=testingHTML;
+})();
+
+</script>
+
+<!-- ══ GATE VALVE EVALUATION — nameplate scan ══ -->
+<script>
+/* ═══ GATE VALVE EVALUATION — nameplate and marking scan (OCR) ════════════
+   Reads a photo of the valve nameplate (or a component's stamped marking)
+   and proposes serial number, assembly / part number, rev and size. The
+   inspector always reviews the values before they are applied.
+   Text recognition runs on the device with Tesseract.js. It is loaded on the
+   first scan only: from ./ocr/ next to index.html if that folder exists
+   (fully offline), otherwise from the jsDelivr CDN (needs internet the first
+   time on each device; the browser caches it afterwards).
+   ═══════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var G = window.GVEval; if(!G) return;
+var e = G.e;
+var TESS_VER = '5.1.1';
+var LOCAL = 'ocr/';
+var CDN = 'https://cdn.jsdelivr.net/npm/tesseract.js@'+TESS_VER+'/dist/tesseract.min.js';
+
+/* ── parsing (pure, unit-tested) ──────────────────────────────────────── */
+var SIZE_MAP = { '3-1/16':'3_1_16_15K', '5-1/8':'5_1_8_15K', '7-1/16':'7_1_16_15K' };
+var PRESSURES = [2000,3000,5000,10000,15000,20000];
+
+function clean(t){
+  return String(t||'').replace(/[‐-―]/g,'-').replace(/[|]/g,' ').replace(/[ \t]+/g,' ');
+}
+/* OCR confuses O/0 and I/l/1 inside numbers. Only applied to tokens that
+   are already mostly digits. (No look-behind regex: older iOS lacks it.) */
+function fixDigits(tok){
+  var d = (tok.match(/\d/g)||[]).length;
+  return d >= 4 ? tok.replace(/[Oo]/g,'0').replace(/[Il|]/g,'1') : tok;
+}
+function uniq(a){ var s={}, o=[]; a.forEach(function(x){ if(x && !s[x]){ s[x]=1; o.push(x); } }); return o; }
+function count(list, v){ return list.filter(function(x){ return x===v; }).length; }
+function best(list){
+  /* most frequent, then longest — two OCR passes vote */
+  var u = uniq(list);
+  u.sort(function(a,b){ return (count(list,b)-count(list,a)) || (b.length-a.length); });
+  return u;
+}
+
+function pnCandidates(text){
+  var out = [];
+  var re = /\b[Pp][\s_]?([0-9Oo]{6,11})(-[0-9Oo]{3,4})?\b/g, m;
+  while((m = re.exec(text))){ out.push(('P'+fixDigits(m[1])+(m[2]?fixDigits(m[2]):'')).replace(/[Oo]/g,'0')); }
+  var re2 = /\b(\d{2}-\d{3}-\d{3})\b/g;           /* legacy 90-139-067 style */
+  while((m = re2.exec(text))){ out.push(m[1]); }
+  return out;
+}
+function snCandidates(text, pns){
+  var out = [], m;
+  var re = /\b([0-9Oo]{6,12}-[0-9Oo]{1,3})\b/g;    /* 301056219-3 style */
+  while((m = re.exec(text))){ out.push(fixDigits(m[1]).replace(/[Oo]/g,'0')); }
+  /* token on the line above a "Serial" label */
+  var lines = text.split(/\n/);
+  lines.forEach(function(l, i){
+    if(/seri?al|s\/n\b|\bsn\b/i.test(l) && i>0){
+      var prev = lines[i-1].split(/\s+/).filter(function(t){ return /\d{5,}/.test(t); });
+      if(prev[0]) out.push(fixDigits(prev[0].replace(/^[^\w]+|[^\w]+$/g,'')));
+      var after = l.match(/(?:serial(?:\s*(?:no\.?|number))?|s\/n|\bsn)\s*[:.#]?\s*([A-Z0-9-]{5,})/i);
+      if(after) out.push(fixDigits(after[1]));
+    }
+  });
+  var bare = {}; (pns||[]).forEach(function(p){ bare[p.replace(/^P/,'')] = 1; });
+  return out.filter(function(s){ return (s.match(/\d/g)||[]).length>=4 && !/^P\d/.test(s) && !bare[s] && !/^\d{2}-\d{3}-\d{3}$/.test(s); });
+}
+
+function parsePlate(raw){
+  var text = clean(raw), m, r = { raw:String(raw||'') };
+  var pns = pnCandidates(text);
+  r.pnList = best(pns);
+  r.assyPN = r.pnList[0] || '';
+  r.snList = best(snCandidates(text, pns));
+  r.serial = r.snList[0] || '';
+  /* rev: a single capital right after the assembly number on the same line */
+  if(r.assyPN){
+    var lineRe = new RegExp(r.assyPN.replace(/^P/,'P[\\s_]?')+'\\s*[-_—>]*\\s*([A-Z]{1,2})\\b');
+    var rm = text.match(lineRe); if(rm && !/^(PSI|PSL|PRL)$/.test(rm[1])) r.rev = rm[1];
+  }
+  var sizes = []; var sre = /\b(\d{1,2})\s*-\s*(\d{1,2})\s*\/\s*(\d{1,2})\b/g;
+  while((m = sre.exec(text))){ sizes.push(m[1]+'-'+m[2]+'/'+m[3]); }
+  sizes = best(sizes.filter(function(s){ return SIZE_MAP[s]; }));
+  r.sizeText = sizes[0] || '';
+  r.sizeKey = SIZE_MAP[r.sizeText] || '';
+  var ps = []; var pre = /\b(\d{1,2}[,.]?\d{3})\s*PSI\b/gi;
+  while((m = pre.exec(text))){ var p = parseInt(m[1].replace(/[,.]/g,''),10); if(PRESSURES.indexOf(p)!==-1) ps.push(String(p)); }
+  r.pressure = best(ps)[0] || '';
+  m = text.match(/\bM\s?(\d{2,4})\b/); r.model = m ? 'M'+m[1] : '';
+  m = text.match(/\b(0[1-9]|1[0-2])\s*\/\s*(\d{2}|\d{4})\b/); r.mfgDate = m ? m[1]+'/'+m[2] : '';
+  m = text.match(/\b([A-HX]{2})\s*-\s*(\d)(?:[,.](\d))?\b/); r.matClass = m ? m[1]+'-'+m[2]+(m[3]?'.'+m[3]:'') : '';
+  m = text.match(/\b6A\s*-?\s*(\d{1,2})\s*(ST|ND|RD|TH)\b/i); r.spec = m ? 'API 6A '+m[1]+m[2].toLowerCase()+' ed.' : '';
+  return r;
+}
+function plateSummary(r){
+  var parts = [];
+  if(r.sizeText) parts.push('Size '+r.sizeText);
+  if(r.pressure) parts.push(Number(r.pressure).toLocaleString('en-US')+' psi');
+  if(r.model) parts.push('Model '+r.model);
+  if(r.matClass) parts.push('Matl '+r.matClass);
+  if(r.spec) parts.push(r.spec);
+  if(r.mfgDate) parts.push('Mfg '+r.mfgDate);
+  if(r.serial) parts.push('SN '+r.serial);
+  if(r.assyPN) parts.push('Assy '+r.assyPN+(r.rev?' rev '+r.rev:''));
+  return parts.join(' · ');
+}
+
+/* ── image preparation: grey, contrast-stretched, 1600–2200 px wide ───── */
+function prepare(file){
+  return new Promise(function(res, rej){
+    var url = URL.createObjectURL(file), img = new Image();
+    img.onload = function(){
+      try{
+        var w = img.naturalWidth, h = img.naturalHeight, long = Math.max(w,h);
+        var k = long > 2200 ? 2200/long : (long < 1600 ? 1600/long : 1);
+        w = Math.round(w*k); h = Math.round(h*k);
+        var c = document.createElement('canvas'); c.width = w; c.height = h;
+        var x = c.getContext('2d'); x.drawImage(img, 0, 0, w, h);
+        var d = x.getImageData(0, 0, w, h), p = d.data, hist = new Array(256).fill(0), i, n = w*h;
+        for(i=0;i<p.length;i+=4){ var g = (p[i]*0.299 + p[i+1]*0.587 + p[i+2]*0.114)|0; p[i]=g; hist[g]++; }
+        var lo = 0, hi = 255, acc = 0, cut = n*0.02;
+        for(acc=0, lo=0; lo<255 && (acc+=hist[lo]) < cut; lo++);
+        for(acc=0, hi=255; hi>0 && (acc+=hist[hi]) < cut; hi--);
+        var span = Math.max(1, hi-lo);
+        for(i=0;i<p.length;i+=4){ var v = Math.max(0, Math.min(255, ((p[i]-lo)*255/span)|0)); p[i]=p[i+1]=p[i+2]=v; }
+        x.putImageData(d, 0, 0);
+        URL.revokeObjectURL(url); res(c);
+      }catch(err){ URL.revokeObjectURL(url); rej(err); }
+    };
+    img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error('The photo could not be opened')); };
+    img.src = url;
+  });
+}
+
+/* ── Tesseract loader ─────────────────────────────────────────────────── */
+var worker = null, starting = null, source = '', onProgress = null;
+function loadScript(src){
+  return new Promise(function(res, rej){
+    var s = document.createElement('script'); s.src = src; s.async = true;
+    s.onload = function(){ window.Tesseract ? res() : (s.remove(), rej(new Error('not loaded'))); };
+    s.onerror = function(){ s.remove(); rej(new Error('not reachable')); };
+    document.head.appendChild(s);
+  });
+}
+function getWorker(){
+  if(worker) return Promise.resolve(worker);
+  if(starting) return starting;
+  var logger = function(m){ if(onProgress) onProgress(m); };
+  starting = (window.Tesseract ? Promise.resolve('preloaded') :
+      loadScript(LOCAL+'tesseract.min.js').then(function(){ return 'local'; })
+        .catch(function(){ return loadScript(CDN).then(function(){ return 'cdn'; }); }))
+    .then(function(src){
+      source = src;
+      var opts = { logger:logger };
+      if(src==='local'){ opts.workerPath = LOCAL+'worker.min.js'; opts.corePath = LOCAL+'core'; opts.langPath = LOCAL+'lang'; }
+      return window.Tesseract.createWorker('eng', 1, opts);
+    })
+    .then(function(w){ worker = w; starting = null; return w; })
+    .catch(function(err){ starting = null; throw err; });
+  return starting;
+}
+function readText(canvas){
+  return getWorker().then(function(w){
+    var out = [];
+    return w.setParameters({ tessedit_pageseg_mode:'6', preserve_interword_spaces:'1' })
+      .then(function(){ return w.recognize(canvas); })
+      .then(function(r){ out.push(r.data.text); return w.setParameters({ tessedit_pageseg_mode:'3' }); })
+      .then(function(){ return w.recognize(canvas); })
+      .then(function(r){ out.push(r.data.text); return out.join('\n'); });
+  });
+}
+
+/* ── modal ────────────────────────────────────────────────────────────── */
+var css = ''
+ +'.gvo-ov{position:fixed;inset:0;z-index:9000;background:rgba(8,6,20,.62);display:flex;align-items:flex-end;justify-content:center;padding:0}'
+ +'@media(min-width:640px){.gvo-ov{align-items:center;padding:20px}}'
+ +'.gvo-box{background:var(--bg2);color:var(--text);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;padding:18px 18px 22px;border:1px solid var(--border);box-shadow:0 20px 60px rgba(0,0,0,.35)}'
+ +'@media(min-width:640px){.gvo-box{border-radius:16px}}'
+ +'.gvo-h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}'
+ +'.gvo-t{font-size:15px;font-weight:800}'
+ +'.gvo-x{width:34px;height:34px;border-radius:50%;background:var(--bg3);color:var(--text2);font-size:16px;font-weight:700;border:1px solid var(--border)}'
+ +'.gvo-tips{font-size:12px;color:var(--text2);line-height:1.55;margin:0 0 12px;padding-left:18px}'
+ +'.gvo-pick{display:grid;grid-template-columns:1fr 1fr;gap:8px}'
+ +'.gvo-pick label{display:flex;align-items:center;justify-content:center;gap:7px;padding:13px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid var(--btn-idle-border);background:var(--btn-idle-bg);color:var(--btn-idle-color)}'
+ +'.gvo-pick label.pri{background:var(--brand);border-color:var(--brand);color:#fff}'
+ +'.gvo-pick input{display:none}'
+ +'.gvo-img{width:100%;max-height:200px;object-fit:contain;border-radius:10px;background:#000;margin-bottom:12px}'
+ +'.gvo-bar{height:6px;border-radius:999px;background:var(--bg3);overflow:hidden;margin:8px 0 6px}'
+ +'.gvo-bar div{height:100%;background:var(--brand);width:0;transition:width .25s}'
+ +'.gvo-st{font-size:12px;color:var(--text3)}'
+ +'.gvo-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}'
+ +'.gvo-grid .full{grid-column:1/-1}'
+ +'.gvo-msg{font-size:12px;line-height:1.5;padding:9px 11px;border-radius:9px;margin:10px 0;border:1px solid var(--border);background:var(--bg3);color:var(--text2)}'
+ +'.gvo-msg.ok{border-color:rgba(22,163,74,.45);background:rgba(22,163,74,.08)}'
+ +'.gvo-msg.warn{border-color:rgba(245,158,11,.5);background:rgba(245,158,11,.08)}'
+ +'.gvo-msg.bad{border-color:rgba(220,38,38,.45);background:rgba(220,38,38,.07);color:#dc2626}'
+ +'.gvo-alt{font-size:11px;color:var(--text3);margin-top:3px}'
+ +'.gvo-alt button{font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:1px 6px;margin:2px 3px 0 0;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2)}'
+ +'.gvo-raw{margin-top:10px;font-size:11px;color:var(--text3)}'
+ +'.gvo-raw pre{white-space:pre-wrap;font-size:10.5px;max-height:160px;overflow:auto;background:var(--bg3);padding:8px;border-radius:8px;margin-top:6px}'
+ +'.gvo-acts{display:flex;gap:8px;margin-top:14px}'
+ +'.gvo-acts button{flex:1;padding:12px;border-radius:10px;font-size:13px;font-weight:800}'
+ +'.gvo-apply{background:var(--brand);color:#fff}'
+ +'.gvo-cancel{background:var(--bg3);color:var(--text2);border:1px solid var(--border)}'
+ +'.gve-scan-btn{display:inline-flex;align-items:center;gap:7px;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:800;background:var(--brand);color:#fff;border:none}'
+ +'.gve-scan-sm{display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:8px;font-size:11.5px;font-weight:700;border:1px solid var(--btn-idle-border);background:var(--btn-idle-bg);color:var(--btn-idle-color)}'
+ +'.gve-scan-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 4px}'
+ +'@media(max-width:479px){.gvo-grid{grid-template-columns:1fr}}';
+var stEl = document.createElement('style'); stEl.textContent = css; document.head.appendChild(stEl);
+
+var CAM = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>';
+G.CAM_ICON = CAM;
+
+var S = null;   /* scan session: { kind:'plate'|'comp', cid, file, photo, res } */
+function box(){ return document.getElementById('gvo-box'); }
+function open(html){
+  var ov = document.getElementById('gvo-ov');
+  if(!ov){ ov = document.createElement('div'); ov.id = 'gvo-ov'; ov.className = 'gvo-ov';
+    ov.innerHTML = '<div class="gvo-box" id="gvo-box"></div>';
+    ov.addEventListener('click', function(ev){ if(ev.target===ov) gveScanClose(); });
+    document.body.appendChild(ov); }
+  ov.style.display = 'flex'; box().innerHTML = html;
+}
+function head(t){ return '<div class="gvo-h"><div class="gvo-t">'+e(t)+'</div><button class="gvo-x" onclick="gveScanClose()" aria-label="Close">&#x2715;</button></div>'; }
+function title(){ if(S.kind==='plate') return 'Scan nameplate'; var c = G.COMPONENTS.filter(function(x){ return x.id===S.cid; })[0]; return 'Scan marking — '+(c?c.title:''); }
+
+function stepPick(){
+  var tips = S.kind==='plate'
+    ? '<li>Fill the frame with the nameplate and hold the phone square to it.</li><li>Tilt slightly to avoid glare from the steel plate.</li><li>Wipe off grease or paint over the serial and assembly numbers.</li>'
+    : '<li>Get close to the stamped serial and part number.</li><li>Light from the side shows stamped characters best.</li>';
+  open(head(title())+'<ul class="gvo-tips">'+tips+'<li>You check every value before it goes on the report.</li></ul>'
+    +'<div class="gvo-pick"><label class="pri">'+CAM+' Take photo<input type="file" accept="image/*" capture="environment" onchange="gveScanFile(this)"/></label>'
+    +'<label>Choose photo<input type="file" accept="image/*" onchange="gveScanFile(this)"/></label></div>');
+}
+function stepWork(status, pct){
+  var b = box(); if(!b) return;
+  var st = b.querySelector('.gvo-st'), bar = b.querySelector('.gvo-bar div');
+  if(st) st.textContent = status; if(bar) bar.style.width = Math.round((pct||0)*100)+'%';
+}
+var STATUS = { 'loading tesseract core':'Loading the text reader…', 'initializing tesseract':'Starting the text reader…',
+  'loading language traineddata':'Loading English text model…', 'initializing api':'Starting the text reader…', 'recognizing text':'Reading the text…' };
+
+window.gveScan = function(kind, cid){
+  if(!current || !current.gvEval) return;
+  S = { kind:kind, cid:cid||'' };
+  stepPick();
+};
+window.gveScanClose = function(){ var ov = document.getElementById('gvo-ov'); if(ov) ov.style.display = 'none'; S = null; onProgress = null; };
+window.gveScanFile = function(input){
+  var f = input.files && input.files[0]; input.value = '';
+  if(!f || !S) return;
+  S.file = f;
+  var preview = URL.createObjectURL(f);
+  open(head(title())+'<img class="gvo-img" src="'+preview+'" alt="Photo"/><div class="gvo-bar"><div></div></div><div class="gvo-st">Preparing the photo…</div>');
+  var pass = 0, sess = S;
+  onProgress = function(m){
+    if(S!==sess) return;
+    if(m.status==='recognizing text'){ if(m.progress===0) pass++; stepWork('Reading the text… pass '+Math.max(1,pass)+' of 2', (Math.max(0,pass-1)+m.progress)/2); }
+    else stepWork(STATUS[m.status] || m.status, m.progress);
+  };
+  if(typeof compressImage==='function') compressImage(f, function(ev){ sess.photo = ev.target.result; });
+  prepare(f).then(function(canvas){
+    stepWork(worker ? 'Reading the text…' : 'Loading the text reader (first scan on this device can take a minute)…', 0);
+    return readText(canvas);
+  }).then(function(text){
+    URL.revokeObjectURL(preview);
+    if(S!==sess) return;
+    sess.res = parsePlate(text);
+    stepReview();
+  }).catch(function(err){
+    URL.revokeObjectURL(preview);
+    if(S!==sess) return;
+    var offline = !window.Tesseract;
+    open(head(title())+'<div class="gvo-msg bad">'+(offline
+      ? 'The text reader could not be loaded. The first scan on a device needs an internet connection; after that it works offline.'
+      : 'The photo could not be read: '+e(err && err.message || err))+'</div>'
+      +'<div class="gvo-acts"><button class="gvo-cancel" onclick="gveScanClose()">Close</button><button class="gvo-apply" onclick="gveScan(\''+sess.kind+'\',\''+sess.cid+'\')">Try again</button></div>');
+  });
+};
+
+function field(id, label, val, alts, full){
+  var h = '<div'+(full?' class="full"':'')+'><label class="field-label">'+e(label)+'</label><input class="field-input" id="gvo-'+id+'" value="'+e(val||'')+'"/>';
+  var other = (alts||[]).filter(function(a){ return a!==val; }).slice(0,4);
+  if(other.length) h += '<div class="gvo-alt">Also read: '+other.map(function(a){
+      return '<button onclick="document.getElementById(\'gvo-'+id+'\').value=\''+e(a)+'\'">'+e(a)+'</button>'; }).join('')+'</div>';
+  return h+'</div>';
+}
+function stepReview(){
+  var r = S.res, h = head(title());
+  if(S.photo) h += '<img class="gvo-img" src="'+S.photo+'" alt="Photo"/>';
+  var found = !!(r.serial || r.assyPN);
+  if(S.kind==='plate'){
+    var hit = r.assyPN ? G.detect(r.assyPN) : null, std = G.liveStd();
+    var msg = !found ? '<div class="gvo-msg bad">No serial or assembly number could be read. Type them in, or retake the photo closer and without glare.</div>'
+      : hit ? '<div class="gvo-msg ok">Assembly number recognised: <b>'+e(std.sizes[hit.size].label)+' · '+e(G.OS_LABEL[hit.os])+'</b>.</div>'
+      : r.assyPN ? '<div class="gvo-msg warn">Assembly number '+e(r.assyPN)+' is not in the Gate Valve standards.'
+          +(r.sizeKey ? ' Size <b>'+e(r.sizeText)+'</b> from the plate will be selected — choose the configuration on the form.' : ' Select size and configuration on the form.')
+          +' Engineering can add this number in Settings.</div>'
+      : '<div class="gvo-msg warn">Assembly number not read — check the value below.</div>';
+    h += msg+'<div class="gvo-grid">'
+      + field('sn','Serial number', r.serial, r.snList)
+      + field('pn','Assembly number', r.assyPN, r.pnList)
+      + field('rev','Rev', r.rev||'')
+      + '<div><label class="field-label">Size</label><select class="field-input" id="gvo-size"><option value="">Not read</option>'
+      + G.SIZE_KEYS.map(function(k){ return '<option value="'+k+'"'+(r.sizeKey===k?' selected':'')+'>'+e(std.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
+      + '<div class="full"><label class="field-label">Equipment description</label><input class="field-input" id="gvo-desc" value="'+e(S.autoDesc = G.descFor(hit?hit.size:r.sizeKey, hit?hit.os:'', plateOf(r)))+'"/>'
+      + '<div class="gvo-alt">'+(hit?'':'The configuration is added when it is selected on the form.')+'</div></div>'
+      + '<div class="full"><label class="field-label">Nameplate details (General note)</label><textarea class="field-input" id="gvo-note" rows="2">'+e(plateSummary(r))+'</textarea></div>'
+      + '</div>';
+  } else {
+    var c = G.COMPONENTS.filter(function(x){ return x.id===S.cid; })[0];
+    if(!found) h += '<div class="gvo-msg bad">No serial or part number could be read. Type them in, or retake the photo closer with side lighting.</div>';
+    h += '<div class="gvo-grid">'+field('sn','Serial number', r.serial, r.snList)+field('pn','Part number', r.assyPN, r.pnList)+'</div>';
+  }
+  h += '<label class="gve-abn" style="margin-top:10px"><input type="checkbox" id="gvo-att" checked/> Attach the photo to the report</label>';
+  h += '<details class="gvo-raw"><summary>Text read from the photo</summary><pre>'+e(r.raw.trim())+'</pre></details>';
+  h += '<div class="gvo-acts"><button class="gvo-cancel" onclick="gveScan(\''+S.kind+'\',\''+S.cid+'\')">Retake</button><button class="gvo-apply" onclick="gveScanApply()">Apply</button></div>';
+  open(h);
+}
+function plateOf(r){ return { sizeText:r.sizeText||'', pressure:r.pressure?Number(r.pressure):0, model:r.model||'', matClass:r.matClass||'' }; }
+function val(id){ var el = document.getElementById('gvo-'+id); return el ? String(el.value||'').trim() : ''; }
+
+window.gveScanApply = function(){
+  if(!S || !current || !current.gvEval) return;
+  var s = current.gvEval, att = (document.getElementById('gvo-att')||{}).checked;
+  if(S.kind==='plate'){
+    var sn = val('sn'), pn = val('pn'), rev = val('rev'), size = val('size'), note = val('note'), desc = val('desc');
+    s.plate = plateOf(S.res);
+    if(desc && desc!==S.autoDesc){ current.header.sizeDesc = desc; s.autoDesc = ''; }   /* typed by the inspector — keep as is */
+    else if(desc && (!current.header.sizeDesc || current.header.sizeDesc===s.autoDesc)){ current.header.sizeDesc = desc; s.autoDesc = desc; }
+    if(sn) current.header.serialNo = sn;
+    if(rev) current.header.assyRev = rev;
+    if(note) s.nameplate = s.nameplate && s.nameplate!==note && s.nameplate.indexOf(note)===-1 ? s.nameplate+'\n'+note : note;
+    if(att && S.photo){ if(!current.photos) current.photos = {}; (current.photos.gve_nameplate = current.photos.gve_nameplate||[]).push({ src:S.photo, name:'Nameplate' }); }
+    if(pn) gvePN('assyPN', pn);
+    if(!current.gvScenario && size && current.gvSize!==size) gveManual('size', size);
+    G.updateDesc();
+  } else {
+    var c = s.comp[S.cid] || (s.comp[S.cid] = {});
+    if(val('sn')) c.sn = val('sn');
+    if(val('pn')) c.pn = val('pn');
+    if(att && S.photo){ if(!current.photos) current.photos = {}; (current.photos['gve_mark_'+S.cid] = current.photos['gve_mark_'+S.cid]||[]).push({ src:S.photo, name:'Marking' }); }
+  }
+  var y = window.scrollY;
+  gveScanClose();
+  G.renderForm(); window.scrollTo(0, y);
+  toast('✓ Values applied — check them on the form');
+};
+
+G.parsePlate = parsePlate; G.plateSummary = plateSummary; G._ocrPrepare = prepare; G._ocrSource = function(){ return source; };
+})();
+
+</script>
+
+<!-- ══ GATE VALVE ENGINEERING STANDARDS — settings ══ -->
+<script>
+/* ═══ GATE VALVE ENGINEERING STANDARDS — Settings editor (Engineering only) ═══
+   Edits the standards used by the automatic gate valve disposition: valve and
+   component part numbers, spares and consumables per configuration, depth
+   criteria, testing requirements and advisories. Reached from Settings, which
+   is behind the admin password. Saved to localStorage and, when connected,
+   published to SharePoint so every device uses the same revision.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var G = window.GVEval; if(!G) return;
+var e = G.e, num = G.num, OS_LABEL = G.OS_LABEL, ACTIONS = G.ACTIONS;
+var SP_FILE = '_gv_standards.json';
+
+var D = null, dirty = false, tab = 'valves', size = G.SIZE_KEYS[0], vos = 'NORMAL', note = '';
+
+/* ── styles ───────────────────────────────────────────────────────────── */
+var css = ''
+ +'.gvs-body{max-width:900px}'
+ +'.gvs-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 14px}'
+ +'.gvs-tab{padding:8px 13px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid var(--btn-idle-border);background:var(--btn-idle-bg);color:var(--btn-idle-color)}'
+ +'.gvs-tab.on{background:var(--brand);border-color:var(--brand);color:#fff}'
+ +'.gvs-pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}'
+ +'.gvs-pill{padding:6px 11px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid var(--border2);background:var(--bg3);color:var(--text2)}'
+ +'.gvs-pill.on{background:var(--brand-dk);border-color:var(--brand-dk);color:#fff}'
+ +'.gvs-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}'
+ +'.gvs-tbl{width:100%;border-collapse:collapse;font-size:12px;min-width:520px}'
+ +'.gvs-tbl th{background:var(--brand-dk);color:#fff;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:7px 8px;text-align:left}'
+ +'.gvs-tbl td{border-bottom:1px solid var(--border);padding:5px 6px;vertical-align:top;color:var(--text)}'
+ +'.gvs-tbl td.k{font-weight:700;color:var(--text2);white-space:nowrap;padding-top:12px}'
+ +'.gvs-tbl tr.sec td{background:var(--bg3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);padding:6px 8px}'
+ +'.gvs-tbl .field-input{padding:6px 8px;font-size:12px}'
+ +'.gvs-tbl textarea.field-input{min-height:52px}'
+ +'.gvs-del{width:30px;height:30px;border-radius:7px;border:1px solid rgba(220,38,38,.3);background:rgba(220,38,38,.08);color:#dc2626;font-weight:800}'
+ +'.gvs-add{margin-top:8px;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;border:1px dashed var(--border2);background:none;color:var(--brand)}'
+ +'.gvs-route{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:12px;font-size:11.5px}'
+ +'.gvs-node{padding:7px 10px;border-radius:9px;border:1px solid var(--border2);background:var(--bg3);line-height:1.35}'
+ +'.gvs-node b{display:block;font-size:12px;color:var(--text)}.gvs-node span{font-family:ui-monospace,Menlo,monospace;color:var(--text3);font-size:11px}'
+ +'.gvs-node.hw{border-color:rgba(220,38,38,.4);background:rgba(220,38,38,.06)}'
+ +'.gvs-arrow{color:var(--text3);font-weight:800}'
+ +'.gvs-warn{margin-top:10px;padding:9px 11px;border-radius:9px;border:1px solid rgba(220,38,38,.4);background:rgba(220,38,38,.06);color:#dc2626;font-size:12px;font-weight:600;line-height:1.5}'
+ +'.gvs-ok{color:#16a34a;font-weight:700}'
+ +'.gvs-tip{font-size:11px;color:var(--text3);line-height:1.5;margin:-4px 0 10px}'
+ +'.gvs-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}'
+ +'.gvs-grid .full{grid-column:1/-1}'
+ +'.gvs-dirty{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:rgba(245,158,11,.16);color:#d97706;font-size:10px;font-weight:800;letter-spacing:.04em}'
+ +'.gvs-check{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text);padding:4px 0;cursor:pointer}'
+ +'.gvs-check input{width:16px;height:16px;accent-color:var(--brand)}'
+ +'.gvs-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:2px 12px}'
+ +'.gvs-btns{display:flex;gap:8px;flex-wrap:wrap}'
+ +'.gvs-log{font-size:11.5px;color:var(--text2);border-top:1px solid var(--border);padding:6px 0}'
+ +'.gvs-log b{color:var(--text)}'
+ +'.gvs-test{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px;align-items:end}'
+ +'.gvs-test-out{margin-top:10px}'
+ +'.gvs-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}'
+ +'.gvs-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 4px 4px 9px;border-radius:999px;background:var(--bg3);border:1px solid var(--border2);font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--text)}'
+ +'.gvs-chip button{width:20px;height:20px;border-radius:50%;border:none;background:rgba(220,38,38,.12);color:#dc2626;font-weight:800;font-size:12px;line-height:1}'
+ +'.gvs-addpn{display:flex;gap:5px}.gvs-addpn input{min-width:0}'
+ +'.gvs-addpn button{padding:0 10px;border-radius:8px;font-size:12px;font-weight:800;background:var(--brand);color:#fff;border:none;white-space:nowrap}'
+ +'.gvs-ibom{font-size:11px;color:var(--text2);line-height:1.45}.gvs-ibom b{font-family:ui-monospace,Menlo,monospace}'
+ +'.gvs-link{background:none;border:none;padding:0;color:var(--brand);font-weight:700;font-size:11px;text-decoration:underline;cursor:pointer}'
+ +'.gvs-sow{border:1px solid var(--border);border-radius:11px;padding:12px;margin-bottom:10px;background:var(--bg3)}'
+ +'.gvs-sow-h{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline}'
+ +'.gvs-sow-t{font-size:13px;font-weight:800;color:var(--text)}'
+ +'.gvs-sow-pn{font-size:11px;color:var(--text3)}.gvs-sow-pn b{font-family:ui-monospace,Menlo,monospace;color:var(--text2)}'
+ +'.gvs-tag{display:inline-block;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:999px;letter-spacing:.04em}'
+ +'.gvs-tag.sp{background:rgba(22,163,74,.14);color:#16a34a}.gvs-tag.loc{background:rgba(245,158,11,.16);color:#d97706}'
+ +'.gvs-map td select{min-width:220px}'
+ +'@media(max-width:560px){.gvs-grid,.gvs-test{grid-template-columns:1fr}}';
+var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+
+/* ── view + settings card (built here so index.html needs no markup) ─── */
+function topbarLogo(){
+  var img = document.querySelector('#view-settings .topbar img');
+  return img ? '<img src="'+img.src+'" class="'+(img.className||'')+'" style="'+(img.getAttribute('style')||'')+'" alt=""/>' : '';
+}
+var view = document.createElement('div');
+view.id = 'view-gvstd'; view.className = 'hidden';
+view.innerHTML = '<div class="topbar"><button class="topbar-back" onclick="gvsBack()">&larr; Settings</button>'+topbarLogo()
+  +'<div class="topbar-title">Gate Valve Standards</div>'
+  +'<button class="theme-btn" onclick="toggleTheme()" title="Toggle theme">&#127769;</button>'
+  +'<button class="topbar-action btn-save" onclick="gvsSave()">Save</button></div>'
+  +'<div class="settings-body gvs-body" id="gvs-body"></div>';
+var anchor = document.getElementById('view-form');
+if(anchor && anchor.parentNode) anchor.parentNode.insertBefore(view, anchor); else document.body.appendChild(view);
+
+var card = document.createElement('div');
+card.className = 'settings-card'; card.id = 'gvs-card';
+card.innerHTML = '<div class="settings-card-header">'
+  +'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M9 8V4h6v4M12 4V2"/></svg>'
+  +' Gate Valve Engineering Standards</div>'
+  +'<div class="settings-card-sub">Depth criteria, part numbers, spares and consumables, testing requirements and advisories used for the automatic gate valve disposition. Engineering only.</div>'
+  +'<div class="info-grid" id="gvs-info"></div>'
+  +'<div class="settings-actions"><button class="settings-btn-connect" onclick="gvsOpen()">Open standards editor</button></div>';
+var sb = document.querySelector('#view-settings .settings-body');
+if(sb){ var first = sb.querySelector('.settings-card'); if(first && first.nextSibling) sb.insertBefore(card, first.nextSibling); else sb.appendChild(card); }
+
+function infoRows(){
+  var s = G.liveStd(), pnSet = 0, pnAll = 0, dimSet = 0, dimAll = 0;
+  G.SIZE_KEYS.forEach(function(sk){ G.OS_KEYS.forEach(function(os){
+    var v = s.sizes[sk].variants[os];
+    G.COMP_PN_FIELDS.forEach(function(f){ pnAll++; if(String(v[f[0]]||'').trim()) pnSet++; });
+    ['pocketIdMin','pocketIdMax','f2fMin','f2fMax','gateThkMin','seatThkMin'].forEach(function(k){ dimAll++; if(num(v[k])!==null) dimSet++; });
+  });});
+  var vp = 0; G.SIZE_KEYS.forEach(function(sk){ G.OS_KEYS.forEach(function(os){ if((s.sizes[sk].variants[os].pns||[]).length) vp++; }); });
+  var row = function(k, v){ return '<div class="info-row"><span class="info-key">'+e(k)+'</span><span class="info-val">'+v+'</span></div>'; };
+  var frac = function(a, b){ return (a===b ? '<span class="gvs-ok">'+a+' / '+b+'</span>' : '<span style="color:#d97706;font-weight:700">'+a+' / '+b+'</span>'); };
+  return row('Revision', e(s.rev||'—'))
+    + row('Approved by', e(s.approvedBy||'—'))
+    + row('Last saved', s.updatedAt ? e(new Date(s.updatedAt).toLocaleString('en-GB')) : 'Defaults — not yet saved')
+    + row('Valve part numbers', frac(vp, 9))
+    + row('Component part numbers', frac(pnSet, pnAll))
+    + row('Dimensional limits', frac(dimSet, dimAll));
+}
+function fillInfo(){ var el = document.getElementById('gvs-info'); if(el) el.innerHTML = infoRows(); }
+
+/* ── path helpers: 'sizes|3_1_16_15K|variants|NORMAL|seatPN' ─────────── */
+function walk(path){ var p = path.split('|'), o = D; for(var i=0;i<p.length-1;i++){ if(o[p[i]]===undefined) o[p[i]] = {}; o = o[p[i]]; } return { o:o, k:p[p.length-1] }; }
+function getP(path){ var w = walk(path); return w.o[w.k]; }
+function setP(path, v){ var w = walk(path); w.o[w.k] = v; }
+function q(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function mark(){ dirty = true; var d = document.getElementById('gvs-dirty'); if(d) d.style.display = 'inline-block'; }
+function inp(path, ph, kind){
+  var v = getP(path); if(kind==='list') v = (v||[]).join(', ');
+  return '<input class="field-input" value="'+e(v==null?'':v)+'" placeholder="'+e(ph||'')+'"'+(kind==='num'?' inputmode="decimal"':'')
+    +' oninput="gvsSet(\''+q(path)+'\',this.value,\''+(kind||'')+'\')"/>';
+}
+function area(path, rows, ph){
+  return '<textarea class="field-input" rows="'+(rows||2)+'" placeholder="'+e(ph||'')+'" oninput="gvsSet(\''+q(path)+'\',this.value)">'+e(getP(path)||'')+'</textarea>';
+}
+function actionSel(path){
+  var v = getP(path);
+  return '<select class="field-input" onchange="gvsSet(\''+q(path)+'\',this.value);gvsRender()">'
+    + G.ACTION_KEYS.map(function(k){ return '<option value="'+k+'"'+(v===k?' selected':'')+'>'+e(ACTIONS[k].label)+'</option>'; }).join('')+'</select>';
+}
+function sizePills(){
+  return '<div class="gvs-pills">'+G.SIZE_KEYS.map(function(sk){
+    return '<button class="gvs-pill'+(size===sk?' on':'')+'" onclick="gvsSize(\''+sk+'\')">'+e(D.sizes[sk].label||G.SIZE_SHORT[sk])+'</button>'; }).join('')+'</div>';
+}
+function osPills(){
+  return '<div class="gvs-pills">'+G.OS_KEYS.map(function(os){
+    return '<button class="gvs-pill'+(vos===os?' on':'')+'" onclick="gvsOS(\''+os+'\')">'+e(OS_LABEL[os])+'</button>'; }).join('')+'</div>';
+}
+
+/* ── validation ───────────────────────────────────────────────────────── */
+function duplicates(std){
+  var seen = {}, out = [];
+  G.SIZE_KEYS.forEach(function(sk){ G.OS_KEYS.forEach(function(os){
+    (std.sizes[sk].variants[os].pns||[]).forEach(function(pn){
+      var b = String(pn).toUpperCase().replace(/[\s\-_.]/g,''); if(!b) return;
+      var where = (std.sizes[sk].label||sk)+' '+OS_LABEL[os];
+      if(seen[b] && seen[b]!==where) out.push(pn+' is used for both '+seen[b]+' and '+where);
+      else seen[b] = where;
+    });
+  });});
+  return out;
+}
+function bandProblems(std){
+  var out = [];
+  Object.keys(G.GROUP_LABELS).forEach(function(gk){
+    var g = std.groups[gk]; if(!g) return;
+    (g.bands||[]).forEach(function(b, i){
+      var m = num(b.max);
+      if(m===null || m<0) out.push(G.GROUP_LABELS[gk]+': band '+(i+1)+' needs a depth limit');
+    });
+  });
+  return out;
+}
+
+/* ── tabs ─────────────────────────────────────────────────────────────── */
+function tabValves(){
+  var sz = D.sizes[size], base = 'sizes|'+size+'|variants|', h = '';
+  h += '<div class="card"><div class="section-title">Valve configurations and part numbers</div>';
+  h += '<div class="gvs-tip">The inspector enters or scans the top level or assembly part number; the app looks it up here to identify the size and configuration. Add every part number that identifies the valve.</div>';
+  h += '<div class="gvs-btns" style="margin:0 0 6px"><label class="settings-btn-connect" style="cursor:pointer">Import IBOM<input type="file" accept=".xls,.xlsx,.htm,.html" style="display:none" onchange="gvsIbomFile(this)"/></label></div>'
+    +'<div class="gvs-tip" style="margin:0 0 12px">Use the .xls exported from the IBOM tool. The top level part number and the component part numbers (body, seats, gate, stems, bonnets) are filled in for the matching configuration; you confirm them first.</div>';
+  h += sizePills();
+  h += '<div style="margin-bottom:10px;max-width:320px"><label class="field-label">Size label</label>'+inp('sizes|'+size+'|label', G.SIZE_SHORT[size])+'</div>';
+  h += '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:24%"></th>'
+    + G.OS_KEYS.map(function(os){ return '<th>'+e(OS_LABEL[os])+'</th>'; }).join('')+'</tr></thead><tbody>';
+  var row = function(lbl, key, kind, ph){
+    return '<tr><td class="k">'+e(lbl)+'</td>'+G.OS_KEYS.map(function(os){ return '<td>'+inp(base+os+'|'+key, ph, kind)+'</td>'; }).join('')+'</tr>';
+  };
+  h += '<tr><td class="k">Valve part numbers</td>'+G.OS_KEYS.map(function(os){ return '<td>'+pnCell(os)+'</td>'; }).join('')+'</tr>';
+  h += '<tr><td class="k">IBOM</td>'+G.OS_KEYS.map(function(os){
+      var ib = sz.variants[os].ibom;
+      return '<td class="gvs-ibom">'+(ib ? '<b>'+e(ib.pn)+'</b> rev '+e(ib.rev||'—')+'<br>'+e(new Date(ib.importedAt).toLocaleDateString('en-GB'))
+        +' · '+((ib.rows||[]).length)+' rows <button class="gvs-link" onclick="gvsIbomView(\''+os+'\')">View</button>' : '<span style="color:var(--text3)">Not imported</span>')+'</td>'; }).join('')+'</tr>';
+  h += '<tr class="sec"><td colspan="4">Component part numbers — used when a component is replaced</td></tr>';
+  G.COMP_PN_FIELDS.forEach(function(f){ h += row(f[1], f[0], '', 'PN'); });
+  h += '<tr class="sec"><td colspan="4">Dimensional limits (in)</td></tr>';
+  h += row('Seat pocket ID — min', 'pocketIdMin', 'num', '0.000');
+  h += row('Seat pocket ID — max', 'pocketIdMax', 'num', '0.000');
+  h += row('Face to face — min', 'f2fMin', 'num', '0.000');
+  h += row('Face to face — max', 'f2fMax', 'num', '0.000');
+  h += row('Gate — min thickness', 'gateThkMin', 'num', '0.000');
+  h += row('Seat — min thickness', 'seatThkMin', 'num', '0.000');
+  h += '</tbody></table></div>';
+  h += '<div class="gvs-tip" style="margin-top:10px">Seat pocket ID above the maximum routes the valve to the next oversize. ID below the minimum, or face to face outside its range, goes to Engineering. Thickness below the minimum replaces the gate or seats. Leave a limit empty to skip that check.</div>';
+  h += '<div class="section-title" style="margin-top:14px">Seat pocket route</div><div id="gvs-route">'+routeHTML()+'</div>';
+  var dup = duplicates(D);
+  if(dup.length) h += '<div class="gvs-warn">Duplicate part numbers — detection would be ambiguous:<br>'+dup.map(e).join('<br>')+'</div>';
+  return h+'</div>';
+}
+function pnCell(os){
+  var path = 'sizes|'+size+'|variants|'+os+'|pns', list = getP(path) || [];
+  return '<div class="gvs-chips">'+(list.length ? list.map(function(pn, i){
+      return '<span class="gvs-chip">'+e(pn)+'<button title="Remove" onclick="gvsPnDel(\''+os+'\','+i+')">&times;</button></span>'; }).join('')
+      : '<span style="font-size:11px;color:var(--text3)">None</span>')+'</div>'
+    +'<div class="gvs-addpn"><input class="field-input" id="gvs-addpn-'+os+'" placeholder="Add PN" onkeydown="if(event.key===\'Enter\'){event.preventDefault();gvsPnAdd(\''+os+'\')}"/>'
+    +'<button onclick="gvsPnAdd(\''+os+'\')">+ Add</button></div>';
+}
+function routeHTML(){
+  var v = D.sizes[size].variants, pn = function(os){ return (v[os].pns||[])[0] || 'PN not set'; };
+  var node = function(os){ return '<div class="gvs-node"><b>'+e(OS_LABEL[os])+'</b><span>'+e(pn(os))+'</span><br><span>Seats '+e(v[os].seatPN||'not set')+'</span></div>'; };
+  return '<div class="gvs-route">'+node('NORMAL')+'<span class="gvs-arrow">&rarr; machine &rarr;</span>'+node('OS_030')
+    +'<span class="gvs-arrow">&rarr; machine &rarr;</span>'+node('OS_060')
+    +'<span class="gvs-arrow">&rarr;</span><div class="gvs-node hw"><b>Hot-weld repair</b><span>back to Normal</span></div>'
+    +'<span class="gvs-arrow">&rarr;</span>'+node('NORMAL')+'</div>'
+    +'<div class="gvs-tip" style="margin-top:8px">When the seat pockets need machining, the report re-identifies the valve to the next part number and replaces the seats with that configuration\'s seat PN even if the seats are in good condition.</div>';
+}
+
+function listTable(path, title, tip){
+  var list = getP(path) || [], h = '';
+  h += '<div class="spare-sub-h" style="margin-top:12px">'+e(title)+'</div>'+(tip?'<div class="gvs-tip" style="margin-top:4px">'+tip+'</div>':'');
+  h += '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:26%">Part no.</th><th>Description</th><th style="width:70px">Qty</th><th style="width:40px"></th></tr></thead><tbody>';
+  list.forEach(function(it, i){
+    var p = path+'|'+i+'|';
+    h += '<tr><td>'+inp(p+'pn','PN')+'</td><td>'+inp(p+'description','Description')+'</td><td>'+inp(p+'qty','1')+'</td>'
+      +'<td><button class="gvs-del" title="Remove" onclick="gvsDel(\''+q(path)+'\','+i+')">&times;</button></td></tr>';
+  });
+  if(!list.length) h += '<tr><td colspan="4" style="color:var(--text3)">None listed.</td></tr>';
+  h += '</tbody></table></div><button class="gvs-add" onclick="gvsAdd(\''+q(path)+'\')">+ Add part</button>';
+  return h;
+}
+var SLOTS = ['NORMAL','OS_030','OS_060','CWR'];
+function slotGet(sk, os){ return os==='CWR' ? D.sizes[sk].cwrSow : D.sizes[sk].variants[os].sow; }
+function slotSet(sk, os, m){ if(os==='CWR') D.sizes[sk].cwrSow = m; else D.sizes[sk].variants[os].sow = m; }
+function tabSow(){
+  var h = '<div class="card"><div class="section-title">Scope of work files</div>'
+    +'<div class="gvs-tip">One SOW per conversion and valve size. When the evaluation routes a valve to oversize machining or hot-weld repair, the report links the SOW for that valve. The SOW for a conversion is linked to the valve\'s top level part number through its GV body part number (from the IBOM).</div>'
+    +'<div class="gvs-btns" style="margin:0 0 6px"><label class="settings-btn-connect" style="cursor:pointer">Upload SOW files<input type="file" multiple accept=".pptx,.ppt,.pdf,.docx,.doc,.xlsx,.xls" style="display:none" onchange="gvsSowBulk(this)"/></label></div>'
+    +'<div class="gvs-tip" style="margin:0 0 12px">Files are placed automatically from their names — the GV body or valve part number and OS30, OS60 or HWR, for example <b>SoW-OS30-P149968.pptx</b>. Files that cannot be placed are listed for you to choose.</div>'
+    + sizePills();
+  SLOTS.forEach(function(os){
+    var sz = D.sizes[size], v = os==='CWR' ? null : sz.variants[os], m = slotGet(size, os);
+    var fromLbl = os==='CWR' ? 'Any configuration, valve hot-weld repaired before' : os==='OS_060' ? 'Any configuration when the defect is deeper than the oversize allowance' : 'Top level <b>'+e((v.pns||[])[0]||'not set')+'</b> · GV body <b>'+e(v.bodyPN||'not set')+'</b>';
+    var toOS = (os==='NORMAL') ? 'OS_030' : (os==='OS_030') ? 'OS_060' : 'NORMAL', toV = sz.variants[toOS];
+    var npPath = os==='CWR' ? 'sizes|'+size+'|cwrNewPN' : 'sizes|'+size+'|variants|'+os+'|sowNewPN';
+    h += '<div class="gvs-sow"><div class="gvs-sow-h"><div class="gvs-sow-t">'+e(G.SOW_LABEL[os])+'</div>'
+      +'<div class="gvs-sow-pn">'+fromLbl+'</div></div>'
+      +'<div class="gvs-grid" style="margin-top:8px"><div><label class="field-label">Name plate part number after this SOW</label>'+inp(npPath, (toV.pns||[])[0]||'PN')+'</div>'
+      +'<div class="gvs-tip" style="margin:18px 0 0">Leave empty to use the '+e(OS_LABEL[toOS])+' part number '+e((toV.pns||[])[0]||'')+'. The report tells the inspector to change the name plate to this number.</div></div>';
+    if(m){
+      h += G.files.linkHTML(m, 'SOW file')
+        +'<div style="margin-top:7px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+        +(m.webUrl ? '<span class="gvs-tag sp">ON SHAREPOINT</span>' : '<span class="gvs-tag loc">THIS DEVICE ONLY — uploads to SharePoint on Save when connected</span>')
+        +'<span style="font-size:11px;color:var(--text3)">Added '+e(new Date(m.uploadedAt).toLocaleDateString('en-GB'))+'</span>'
+        +'<label class="gvs-link">Replace<input type="file" accept=".pptx,.ppt,.pdf,.docx,.doc,.xlsx,.xls" style="display:none" onchange="gvsSowFile(\''+os+'\',this)"/></label>'
+        +'<button class="gvs-link" style="color:#dc2626" onclick="gvsSowDel(\''+os+'\')">Remove</button></div>';
+    } else {
+      h += '<div style="margin-top:8px"><label class="gvs-add" style="cursor:pointer;display:inline-block">+ Upload SOW<input type="file" accept=".pptx,.ppt,.pdf,.docx,.doc,.xlsx,.xls" style="display:none" onchange="gvsSowFile(\''+os+'\',this)"/></label></div>';
+    }
+    h += '</div>';
+  });
+  return h+'</div>';
+}
+function tabSpares(){
+  var base = 'sizes|'+size+'|variants|'+vos+'|', h = '';
+  h += '<div class="card"><div class="section-title">Spares and consumables</div>';
+  h += '<div class="gvs-tip">Lists for each size and configuration. The report uses the lists of the configuration leaving the shop — after machining to oversize or hot-weld repair, that is the new configuration.</div>';
+  h += sizePills() + osPills();
+  h += '<div class="gvs-tip" style="margin:0">Valve PN: <b>'+e((D.sizes[size].variants[vos].pns||[]).join(' / ')||'not set')+'</b></div>';
+  h += listTable(base+'consumables', 'Consumables — always replaced');
+  h += listTable(base+'condition', 'Based-on-condition parts — replaced when found damaged',
+       'The inspector marks each one Good or Replace. Rows with "stud" or "nut" in the description are replaced automatically when Studs / Nuts are found damaged.');
+  h += '<div class="gvs-btns" style="margin-top:14px"><button class="settings-btn-disconnect" onclick="gvsCatalog()">Restore spare parts catalog lists for this configuration</button></div>';
+  return h+'</div>';
+}
+
+function tabCriteria(){
+  var h = '<div class="card"><div class="section-title">Depth criteria</div>'
+    +'<div class="gvs-tip">For each kind of critical area, the inspector\'s defect depth is checked against the bands in order. The first band whose limit is not exceeded sets the action; anything deeper than the last band gets the "above the last band" action. Depths in inches.</div></div>';
+  Object.keys(G.GROUP_LABELS).forEach(function(gk){
+    var g = D.groups[gk] || (D.groups[gk] = { bands:[], over:{ action:'ENGINEERING', text:'' } });
+    var used = []; G.COMPONENTS.forEach(function(c){ c.points.forEach(function(p){ if(p.group===gk) used.push(c.title+' — '+p.label); }); });
+    h += '<div class="card"><div class="section-title">'+e(G.GROUP_LABELS[gk])+'</div>'
+      +'<div class="gvs-tip">Applies to: '+e(used.join(' · '))+'</div>';
+    h += '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:110px">Depth up to</th><th style="width:180px">Action</th><th>Disposition text</th><th style="width:40px"></th></tr></thead><tbody>';
+    (g.bands||[]).forEach(function(b, i){
+      var p = 'groups|'+gk+'|bands|'+i+'|';
+      h += '<tr><td>'+inp(p+'max','0.000','num')+'</td><td>'+actionSel(p+'action')+'</td><td>'+area(p+'text',2)+'</td>'
+        +'<td><button class="gvs-del" onclick="gvsDel(\'groups|'+gk+'|bands\','+i+')">&times;</button></td></tr>';
+    });
+    h += '<tr><td class="k" style="white-space:normal">Above the last band</td><td>'+actionSel('groups|'+gk+'|over|action')+'</td><td>'+area('groups|'+gk+'|over|text',2)+'</td><td></td></tr>';
+    h += '</tbody></table></div><button class="gvs-add" onclick="gvsAddBand(\''+gk+'\')">+ Add band</button>';
+    if(gk==='seatPocket') h += '<div class="gvs-tip" style="margin-top:8px">"Machine to next oversize" moves the valve along the route: Normal → OS .030" → OS .060" → hot-weld repair to Normal.</div>';
+    h += '</div>';
+  });
+  h += '<div class="card"><div class="section-title">Seat pocket route by defect depth</div>'
+    +'<div class="gvs-tip">When a seat pocket defect is over the polish limit, the valve goes to the smallest oversize that removes it. Deeper than the last oversize allows → hot-weld repair (HWR) back to Normal. A valve already at an oversize only has the difference left (OS .030" → OS .060" removes '+(G.allowance(D,'OS_060')-G.allowance(D,'OS_030')).toFixed(3)+'").</div>'
+    +'<div class="gvs-grid"><div><label class="field-label">OS .030" — metal removed (in)</label>'+inp('osAllowance|OS_030','0.030','num')+'</div>'
+    +'<div><label class="field-label">OS .060" — metal removed (in)</label>'+inp('osAllowance|OS_060','0.060','num')+'</div></div>'
+    +'<div class="gvs-tip" style="margin:10px 0 0">Normal valve: up to '+G.allowance(D,'OS_030').toFixed(3)+'" → OS .030" · up to '+G.allowance(D,'OS_060').toFixed(3)+'" → OS .060" (direct) · deeper → HWR to Normal.</div></div>';
+  h += '<div class="card"><div class="section-title">Non-critical areas and studs / nuts</div>'
+    +'<div class="gvs-tip">These are selections rather than depths, as on the evaluation report.</div>'
+    +'<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:200px">Inspector selects</th><th style="width:180px">Action</th><th>Disposition text</th></tr></thead><tbody>';
+  [['nc','buff','Non-critical — buffing required'],['nc','severe','Non-critical — severe damage'],
+   ['studs','polish','Studs / nuts — gentle polish'],['studs','damaged','Studs / nuts — damaged']].forEach(function(x){
+    var p = 'choices|'+x[0]+'|'+x[1]+'|';
+    h += '<tr><td class="k" style="white-space:normal">'+e(x[2])+'</td><td>'+actionSel(p+'action')+'</td><td>'+area(p+'text',2)+'</td></tr>';
+  });
+  h += '</tbody></table></div></div>';
+  h += '<div class="card"><div class="section-title">Engineering involvement and seats</div>'
+    +'<label class="field-label">Defect types that always go to Engineering</label><div class="gvs-checks">'
+    + G.DEFECT_TYPES.map(function(t){
+        var on = (D.forceEngTypes||[]).indexOf(t[0])!==-1;
+        return '<label class="gvs-check"><input type="checkbox"'+(on?' checked':'')+' onchange="gvsForce(\''+t[0]+'\',this.checked)"/>'+e(t[1])+'</label>'; }).join('')
+    +'</div><div class="gvs-tip" style="margin-top:6px">Every other finding is dispositioned automatically. The inspector can still flag any finding as abnormal to request Engineering review.</div>'
+    +'<label class="gvs-check" style="margin-top:6px"><input type="checkbox"'+(D.seatsAsPair?' checked':'')+' onchange="gvsSet(\'seatsAsPair\',this.checked,\'bool\')"/> Replace seats as a pair when one seat is damaged</label></div>';
+  h += '<div class="card"><div class="section-title">Try the criteria</div>'
+    +'<div class="gvs-test"><div><label class="field-label">Area</label><select class="field-input" id="gvs-t-g" onchange="gvsTry()">'
+    + Object.keys(G.GROUP_LABELS).map(function(gk){ return '<option value="'+gk+'">'+e(G.GROUP_LABELS[gk])+'</option>'; }).join('')+'</select></div>'
+    +'<div><label class="field-label">Defect type</label><select class="field-input" id="gvs-t-t" onchange="gvsTry()">'
+    + G.DEFECT_TYPES.map(function(t){ return '<option value="'+t[0]+'">'+e(t[1])+'</option>'; }).join('')+'</select></div>'
+    +'<div><label class="field-label">Depth (in)</label><input class="field-input" id="gvs-t-d" inputmode="decimal" placeholder="0.000" oninput="gvsTry()"/></div></div>'
+    +'<div class="gvs-test-out" id="gvs-t-out"></div></div>';
+  return h;
+}
+
+function testPlanTable(){
+  var std = { testing:D.testing[size] }, rows = [
+    ['Standard redress', { type:'none' }], ['Machining to OS .030"', { type:'os', target:'OS_030' }], ['Machining to OS .060"', { type:'os', target:'OS_060' }],
+    ['Hot-weld repair (HWR)', { type:'hotweld', cwr:false }], ['CWR', { type:'hotweld', cwr:true }]];
+  return '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th>Disposition</th><th>Body test</th><th>Gate / seat test</th></tr></thead><tbody>'
+    + rows.map(function(x){ var tp = G.testPlan(std, { route:x[1] }), b = tp.rows[0], s2 = tp.rows[1];
+        return '<tr><td class="k" style="padding-top:6px">'+e(x[0])+'</td><td>'+e(b?b[1].split(' — ').slice(0,2).join(' — '):'—')+'</td><td>'+e(s2?s2[1].split(' — ').slice(0,2).join(' — '):'—')+'</td></tr>'; }).join('')
+    +'</tbody></table></div>';
+}
+function tabTesting(){
+  var p = 'testing|'+size+'|', h = '<div class="card"><div class="section-title">Testing requirements</div>'
+    +'<div class="gvs-tip">Printed on every report for the valve size; the test pressures follow the disposition. The inspector does not record test results in this flow.</div>'+sizePills();
+  h += '<div class="gvs-grid">'
+    +'<div><label class="field-label">Working pressure (psi)</label>'+inp(p+'workingPsi','15,000')+'</div>'
+    +'<div><label class="field-label">Body test factor after hot-weld repair</label>'+inp(p+'hwrFactor','1.5','num')+'</div>'
+    +'<div class="full"><label class="gvs-check"><input type="checkbox"'+(D.testing[size].cwrUseFactor===true?' checked':'')+' onchange="gvsSet(\''+p+'cwrUseFactor\',this.checked,\'bool\');gvsRender()"/> Also use this factor after CWR (normally CWR is tested at working pressure)</label></div>'
+    +'<div class="full" id="gvs-tplan">'+testPlanTable()+'</div>'
+    +'<div><label class="field-label">Body test hold</label>'+inp(p+'bodyHold')+'</div>'
+    +'<div><label class="field-label">Gate / seat test hold</label>'+inp(p+'seatHold')+'</div>'
+    +'<div><label class="field-label">Low pressure seat test (psi)</label>'+inp(p+'lowPsi','Leave empty if not required')+'</div>'
+    +'<div><label class="field-label">Low pressure hold</label>'+inp(p+'lowHold')+'</div>'
+    +'<div class="full"><label class="field-label">Procedure</label>'+inp(p+'procedure')+'</div>'
+    +'<div class="full"><label class="field-label">Drift</label>'+inp(p+'drift')+'</div>'
+    +'<div class="full"><label class="field-label">Acceptance criteria</label>'+area(p+'acceptance',2)+'</div>'
+    +'<div class="full"><label class="field-label">Notes</label>'+area(p+'notes',2)+'</div></div>';
+  h += '<div class="gvs-btns" style="margin-top:12px"><button class="settings-btn-disconnect" onclick="gvsCopyTesting()">Copy these values to the other sizes</button></div>';
+  return h+'</div>';
+}
+
+function tabAdvisory(){
+  var x = [['osTo030','Machining Normal → OS .030"','Shown when a Normal valve needs its seat pockets machined.'],
+           ['osTo060','Machining OS .030" → OS .060"','Shown when an OS .030" valve needs its seat pockets machined.'],
+           ['hotWeld','Hot-weld repair OS .060" → Normal','Shown when an OS .060" valve needs its seat pockets machined.'],
+           ['hotWeldDepth','Hot-weld repair — defect deeper than the oversize allowance','Shown when a Normal or OS .030" valve has a seat pocket defect too deep for oversize machining.'],
+           ['cwr','CWR note','Shown when the valve was hot-weld repaired before and needs another weld repair.'],
+           ['nameplate','Name plate change','General instruction for re-identifying the valve after a conversion.'],
+           ['general','General redress advisory','Printed on every report.'],
+           ['engPolicy','Engineering involvement policy','Shown to the inspector under Unusual Findings.']];
+  return '<div class="card"><div class="section-title">Advisories</div><div class="gvs-tip">Automatic recommendations printed on the report. Only Engineering can change them.</div>'
+    + x.map(function(a){ return '<div style="margin-bottom:12px"><label class="field-label">'+e(a[1])+'<span class="settings-tip">'+e(a[2])+'</span></label>'+area('advisory|'+a[0],3)+'</div>'; }).join('')
+    +'</div>';
+}
+
+function tabBackup(){
+  var live = G.liveStd(), sp = (typeof tokenValid==='function' && tokenValid() && typeof spConfig!=='undefined' && spConfig.reportsFolder);
+  var h = '<div class="card"><div class="section-title">SharePoint</div>'
+    +'<div class="gvs-tip">Saved standards are published to <b>'+e(((typeof spConfig!=='undefined'&&spConfig.reportsFolder)||'the Reports folder')+'/'+SP_FILE)+'</b>. Every device loads the newer revision when it syncs.</div>'
+    +'<div class="gvs-btns"><button class="settings-btn-connect"'+(sp?'':' disabled style="opacity:.5"')+' onclick="gvsPush(true)">Publish saved standards</button>'
+    +'<button class="settings-btn-save"'+(sp?'':' disabled style="opacity:.5"')+' onclick="gvsPull(true)">Load from SharePoint</button></div>'
+    +(sp?'':'<div class="gvs-tip" style="margin-top:8px">Connect to SharePoint to publish and load standards.</div>')+'</div>';
+  h += '<div class="card"><div class="section-title">File backup</div>'
+    +'<div class="gvs-btns"><button class="settings-btn-save" onclick="gvsExport()">Export standards (JSON)</button>'
+    +'<label class="settings-btn-save" style="cursor:pointer">Import standards<input type="file" accept="application/json,.json" style="display:none" onchange="gvsImport(this)"/></label></div>'
+    +'<div class="gvs-tip" style="margin-top:8px">An import loads into the editor; press Save to apply it.</div></div>';
+  h += '<div class="card settings-card-danger"><div class="section-title" style="color:#dc2626">Reset</div>'
+    +'<div class="gvs-tip">Replaces everything in the editor with the built-in defaults and the spare parts catalog. Press Save to apply.</div>'
+    +'<button class="settings-btn-danger" onclick="gvsReset()">Reset editor to defaults</button></div>';
+  var log = (live.log||[]).slice().reverse();
+  h += '<div class="card"><div class="section-title">Revision history</div>'
+    +(log.length ? log.slice(0,30).map(function(l){ return '<div class="gvs-log"><b>Rev '+e(l.rev)+'</b> · '+e(l.by||'—')+' · '+e(l.at?new Date(l.at).toLocaleString('en-GB'):'')+(l.note?'<br>'+e(l.note):'')+'</div>'; }).join('')
+         : '<div class="gvs-tip">No saved revisions yet — running on the built-in defaults.</div>')+'</div>';
+  return h;
+}
+
+function render(){
+  var body = document.getElementById('gvs-body'); if(!body) return;
+  var live = G.liveStd(), h = '';
+  h += '<div class="card"><div class="section-title">Revision <span class="gvs-dirty" id="gvs-dirty" style="display:'+(dirty?'inline-block':'none')+'">UNSAVED CHANGES</span></div>'
+    +'<div class="gvs-grid"><div><label class="field-label">Revision</label>'+inp('rev','1.0')+'</div>'
+    +'<div><label class="field-label">Approved by (Engineering)</label>'+inp('approvedBy','Name')+'</div>'
+    +'<div class="full"><label class="field-label">Change note</label><input class="field-input" placeholder="What changed in this revision" value="'+e(note)+'" oninput="gvsNote(this.value)"/></div></div>'
+    +'<div class="gvs-tip" style="margin:8px 0 0">Saved revision '+e(live.rev)+(live.updatedAt?' · '+e(new Date(live.updatedAt).toLocaleString('en-GB')):' · built-in defaults')
+    +'. Saved reports keep the revision they were dispositioned under.</div></div>';
+  var tabs = [['valves','Valves & PNs'],['sow','SOW files'],['spares','Spares'],['criteria','Defect criteria'],['testing','Testing'],['advisory','Advisories'],['backup','Backup & sync']];
+  h += '<div class="gvs-tabs">'+tabs.map(function(t){ return '<button class="gvs-tab'+(tab===t[0]?' on':'')+'" onclick="gvsTab(\''+t[0]+'\')">'+e(t[1])+'</button>'; }).join('')+'</div>';
+  h += tab==='valves' ? tabValves() : tab==='sow' ? tabSow() : tab==='spares' ? tabSpares() : tab==='criteria' ? tabCriteria()
+     : tab==='testing' ? tabTesting() : tab==='advisory' ? tabAdvisory() : tabBackup();
+  h += '<button class="save-full-btn" onclick="gvsSave()">Save standards</button>';
+  body.innerHTML = h;
+}
+
+/* ── handlers ─────────────────────────────────────────────────────────── */
+function unlocked(){ return typeof adminUnlocked!=='undefined' && adminUnlocked; }
+window.gvsOpen = function(){
+  if(!unlocked()){ if(typeof showSettings==='function') showSettings(); return; }
+  D = G.clone(G.liveStd()); dirty = false; note = ''; tab = 'valves';
+  showView('gvstd');
+};
+window.gvsBack = function(){
+  if(dirty && !confirm('Discard the unsaved changes to the gate valve standards?')) return;
+  dirty = false; D = null;
+  showView(unlocked() ? 'settings' : 'home');
+};
+window.gvsRender = function(){ var y = window.scrollY; render(); window.scrollTo(0, y); };
+window.gvsTab  = function(t){ tab = t; render(); window.scrollTo(0,0); };
+window.gvsSize = function(s){ size = s; gvsRender(); };
+window.gvsOS   = function(o){ vos = o; gvsRender(); };
+window.gvsNote = function(v){ note = v; };
+window.gvsSet  = function(path, v, kind){
+  if(kind==='list') v = String(v).split(/[,;\n]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+  else if(kind==='bool') v = !!v;
+  setP(path, v); mark();
+  if(tab==='valves' && /\|(pns|seatPN)$/.test(path)){ var r = document.getElementById('gvs-route'); if(r) r.innerHTML = routeHTML(); }
+  if(tab==='criteria') gvsTry();
+  if(tab==='testing'){ var tpl = document.getElementById('gvs-tplan'); if(tpl) tpl.innerHTML = testPlanTable(); }
+};
+window.gvsDel = function(path, i){ var l = getP(path); if(l){ l.splice(i,1); mark(); gvsRender(); } };
+window.gvsAdd = function(path){ var l = getP(path); if(!l){ l = []; setP(path, l); } l.push({ pn:'', description:'', qty:'1' }); mark(); gvsRender(); };
+window.gvsAddBand = function(gk){
+  var g = D.groups[gk], b = g.bands || (g.bands = []);
+  var last = b.length ? num(b[b.length-1].max)||0 : 0;
+  b.push({ max:+(last+0.002).toFixed(4), action:'POLISH', text:'' }); mark(); gvsRender();
+};
+window.gvsForce = function(t, on){
+  var l = D.forceEngTypes || (D.forceEngTypes = []), i = l.indexOf(t);
+  if(on && i===-1) l.push(t); if(!on && i!==-1) l.splice(i,1); mark(); gvsTry();
+};
+window.gvsCatalog = function(){
+  var def = G.defaultStd().sizes[size].variants[vos];
+  if(!confirm('Replace the consumables and based-on-condition lists for '+(D.sizes[size].label)+' '+OS_LABEL[vos]+' with the spare parts catalog lists?')) return;
+  var v = D.sizes[size].variants[vos]; v.consumables = def.consumables; v.condition = def.condition; mark(); gvsRender();
+};
+window.gvsCopyTesting = function(){
+  if(!confirm('Copy the '+D.sizes[size].label+' testing requirements to the other sizes?')) return;
+  G.SIZE_KEYS.forEach(function(sk){ if(sk!==size) D.testing[sk] = G.clone(D.testing[size]); }); mark(); toast('Testing requirements copied');
+};
+window.gvsTry = function(){
+  var out = document.getElementById('gvs-t-out'); if(!out) return;
+  var gk = (document.getElementById('gvs-t-g')||{}).value, t = (document.getElementById('gvs-t-t')||{}).value, d = num((document.getElementById('gvs-t-d')||{}).value);
+  if(!gk || d===null){ out.innerHTML = '<div class="gvs-tip" style="margin:0">Enter a depth to see the automatic disposition.</div>'; return; }
+  var g = D.groups[gk], res;
+  if((D.forceEngTypes||[]).indexOf(t)!==-1) res = { action:'ENGINEERING', text:'This defect type always needs Engineering review.' };
+  else {
+    var bands = (g.bands||[]).slice().sort(function(a,b){ return num(a.max)-num(b.max); }), band = null;
+    for(var i=0;i<bands.length;i++){ if(d <= num(bands[i].max)+1e-9){ band = bands[i]; break; } }
+    res = band || g.over;
+  }
+  var A = ACTIONS[res.action] || ACTIONS.ENGINEERING;
+  out.innerHTML = '<div class="gve-disp t-'+A.tone+'"><div class="gve-disp-h"><span class="gve-act">'+e(A.label)+'</span><span class="gve-auto">Result</span></div>'+e(res.text||'')+'</div>';
+};
+window.gvsExport = function(){
+  var s = G.liveStd(), blob = new Blob([JSON.stringify(s, null, 2)], { type:'application/json' });
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'gv_standards_rev'+String(s.rev||'').replace(/[^\w.-]/g,'_')+'.json';
+  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+};
+window.gvsImport = function(input){
+  var f = input.files && input.files[0]; if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(ev){
+    try{
+      var o = JSON.parse(ev.target.result);
+      if(!o || !o.sizes || !o.groups) throw new Error('not a gate valve standards file');
+      D = G.fill(G.defaultStd(), o); mark(); tab = 'valves'; render();
+      toast('Loaded rev '+(D.rev||'?')+' — press Save to apply');
+    }catch(x){ toast('⚠ Import failed: '+x.message); }
+  };
+  rd.readAsText(f); input.value = '';
+};
+window.gvsReset = function(){
+  if(!confirm('Reset the editor to the built-in defaults? Nothing changes until you press Save.')) return;
+  var keep = { rev:D.rev, approvedBy:D.approvedBy };
+  D = G.defaultStd(); D.rev = keep.rev; D.approvedBy = keep.approvedBy; D.log = G.liveStd().log || [];
+  mark(); render(); toast('Defaults loaded — press Save to apply');
+};
+function bumpRev(r){
+  var m = String(r||'').match(/^(.*?)(\d+)$/);
+  return m ? m[1]+(parseInt(m[2],10)+1) : r;
+}
+window.gvsSave = function(){
+  if(!D) return;
+  var dup = duplicates(D), bp = bandProblems(D);
+  if(dup.length){ toast('⚠ Duplicate valve part numbers — see Valves & PNs', 4000); tab = 'valves'; render(); return; }
+  if(bp.length){ toast('⚠ '+bp[0], 4000); tab = 'criteria'; render(); return; }
+  if(!String(D.approvedBy||'').trim()){ toast('⚠ Enter who approved this revision', 3500); window.scrollTo(0,0); return; }
+  Object.keys(D.groups).forEach(function(gk){
+    var g = D.groups[gk];
+    g.bands = (g.bands||[]).map(function(b){ return { max:num(b.max), action:b.action, text:b.text||'' }; }).sort(function(a,b){ return a.max-b.max; });
+  });
+  var live = G.liveStd();
+  if(live.updatedAt && String(D.rev)===String(live.rev)){ var nr = bumpRev(D.rev); if(nr!==D.rev){ D.rev = nr; toast('Revision raised to '+nr); } }
+  D.updatedAt = new Date().toISOString();
+  D.log = (live.log||[]).concat([{ rev:D.rev, by:D.approvedBy, at:D.updatedAt, note:note }]).slice(-100);
+  G.writeStd(D);
+  D = G.clone(G.liveStd()); dirty = false; note = '';
+  render(); fillInfo();
+  toast('✓ Gate valve standards rev '+D.rev+' saved');
+  gvsPush(false);
+};
+
+/* ── valve part numbers ───────────────────────────────────────────────── */
+window.gvsPnAdd = function(os){
+  var el = document.getElementById('gvs-addpn-'+os); if(!el) return;
+  var add = String(el.value||'').split(/[,;\s]+/).map(function(x){ return x.trim().toUpperCase(); }).filter(Boolean);
+  if(!add.length){ el.focus(); return; }
+  var v = D.sizes[size].variants[os]; v.pns = v.pns || [];
+  add.forEach(function(pn){ if(v.pns.map(function(x){ return String(x).toUpperCase(); }).indexOf(pn)===-1) v.pns.push(pn); });
+  mark(); gvsRender();
+  var dup = duplicates(D); if(dup.length) toast('⚠ '+dup[0], 4500);
+  var n = document.getElementById('gvs-addpn-'+os); if(n) n.focus();
+};
+window.gvsPnDel = function(os, i){ var v = D.sizes[size].variants[os]; (v.pns||[]).splice(i,1); mark(); gvsRender(); };
+
+/* ── modal for IBOM import and SOW placement ──────────────────────────── */
+function modal(html){
+  var ov = document.getElementById('gvs-ov');
+  if(!ov){ ov = document.createElement('div'); ov.id = 'gvs-ov'; ov.className = 'gvo-ov'; ov.innerHTML = '<div class="gvo-box" id="gvs-mbox" style="max-width:760px"></div>';
+    ov.addEventListener('click', function(ev){ if(ev.target===ov) gvsModalClose(); }); document.body.appendChild(ov); }
+  ov.style.display = 'flex'; document.getElementById('gvs-mbox').innerHTML = html;
+}
+function mhead(t){ return '<div class="gvo-h"><div class="gvo-t">'+e(t)+'</div><button class="gvo-x" onclick="gvsModalClose()">&#x2715;</button></div>'; }
+window.gvsModalClose = function(){ var ov = document.getElementById('gvs-ov'); if(ov) ov.style.display = 'none'; IB = null; PEND = null; };
+
+/* ── IBOM import ──────────────────────────────────────────────────────── */
+var IB = null;
+var MAP_FIELDS = [['bodyPN','GV body'],['plateBlankPN','Name plate (blank)'],['seatPN','Seat'],['gatePN','Gate'],['mstemPN','Main stem'],['bstemPN','Balance stem'],['bonnetPN','Main bonnet'],['bsbPN','Balance stem bonnet']];
+window.gvsIbomFile = function(input){
+  var f = input.files && input.files[0]; input.value = ''; if(!f) return;
+  G.ibom.readTable(f).then(function(rows){
+    var ib = G.ibom.parse(rows);
+    var hit = G.detect(ib.pn, D);
+    IB = { file:f.name, ib:ib, map:G.ibom.map(ib.rows), size: hit ? hit.size : (G.ibom.sizeFromDesc(ib.desc) || size), os: hit ? hit.os : vos, known:!!hit };
+    ibomDialog();
+  }).catch(function(x){ toast('⚠ IBOM import: '+(x && x.message || x), 5000); });
+};
+function rowLabel(r){ return r.pn+(r.rev?' rev '+r.rev:'')+' — '+String(r.desc).slice(0,60); }
+function ibomDialog(){
+  var ib = IB.ib, h = mhead('Import IBOM — '+ib.pn);
+  h += '<div class="gvo-msg '+(IB.known?'ok':'warn')+'"><b>'+e(ib.pn)+'</b> rev '+e(ib.rev||'—')+' — '+e(ib.desc)+'<br>'
+    +(IB.known ? 'Already listed as '+e(D.sizes[IB.size].label)+' · '+e(OS_LABEL[IB.os])+'.' : 'Not in the standards yet — choose where it belongs. It will be added to the valve part numbers.')+'</div>';
+  h += '<div class="gvo-grid"><div><label class="field-label">Size</label><select class="field-input" id="gvs-ib-size">'
+    + G.SIZE_KEYS.map(function(k){ return '<option value="'+k+'"'+(IB.size===k?' selected':'')+'>'+e(D.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
+    +'<div><label class="field-label">Configuration</label><select class="field-input" id="gvs-ib-os">'
+    + G.OS_KEYS.map(function(k){ return '<option value="'+k+'"'+(IB.os===k?' selected':'')+'>'+e(OS_LABEL[k])+'</option>'; }).join('')+'</select></div></div>';
+  h += '<div class="section-title" style="margin-top:14px">Component part numbers</div><div class="gvs-tip">Matched from the IBOM descriptions. Change any that are wrong; choose "Not in this IBOM" to keep the current value.</div>';
+  var opts = ib.rows.filter(function(r){ return r.lvl>1; });
+  h += '<div class="gvs-scroll"><table class="gvs-tbl gvs-map"><tbody>';
+  MAP_FIELDS.forEach(function(f){
+    var hit = IB.map[f[0]];
+    h += '<tr><td class="k">'+e(f[1])+'</td><td><select class="field-input" id="gvs-ib-'+f[0]+'"><option value="">Not in this IBOM</option>'
+      + opts.map(function(r, i){ return '<option value="'+i+'"'+(hit===r?' selected':'')+'>'+e(rowLabel(r))+(r.alt?' (alternate)':'')+'</option>'; }).join('')
+      +'</select></td></tr>';
+  });
+  h += '</tbody></table></div>';
+  h += '<label class="gve-abn" style="margin-top:12px"><input type="checkbox" id="gvs-ib-top" checked/> Add '+e(ib.pn)+' to the valve part numbers</label>';
+  h += '<details class="gvo-raw"><summary>All '+ib.rows.length+' IBOM rows</summary><pre>'+ib.rows.map(function(r){ return (new Array(r.lvl).join('  '))+r.pn+' '+r.rev+'  x'+r.qty+'  '+r.desc; }).map(e).join('\n')+'</pre></details>';
+  h += '<div class="gvo-acts"><button class="gvo-cancel" onclick="gvsModalClose()">Cancel</button><button class="gvo-apply" onclick="gvsIbomApply()">Apply to standards</button></div>';
+  modal(h);
+  IB.opts = opts;
+}
+window.gvsIbomApply = function(){
+  if(!IB) return;
+  var sk = document.getElementById('gvs-ib-size').value, os = document.getElementById('gvs-ib-os').value, v = D.sizes[sk].variants[os], n = 0;
+  MAP_FIELDS.forEach(function(f){
+    var i = document.getElementById('gvs-ib-'+f[0]).value;
+    if(i!==''){ v[f[0]] = IB.opts[+i].pn; n++; }
+  });
+  if(document.getElementById('gvs-ib-top').checked){
+    v.pns = v.pns || [];
+    if(v.pns.map(function(x){ return String(x).toUpperCase(); }).indexOf(IB.ib.pn.toUpperCase())===-1) v.pns.unshift(IB.ib.pn);
+  }
+  v.ibom = { pn:IB.ib.pn, rev:IB.ib.rev, desc:IB.ib.desc, file:IB.file, importedAt:new Date().toISOString(), rows:IB.ib.rows };
+  size = sk; vos = os; tab = 'valves';
+  gvsModalClose(); mark(); render();
+  var dup = duplicates(D);
+  toast(dup.length ? '⚠ '+dup[0] : '✓ IBOM applied to '+D.sizes[sk].label+' '+OS_LABEL[os]+' — '+n+' component PNs. Press Save to keep.', 4500);
+};
+window.gvsIbomView = function(os){
+  var ib = D.sizes[size].variants[os].ibom; if(!ib) return;
+  modal(mhead('IBOM '+ib.pn+' rev '+(ib.rev||'—'))+'<div class="gvs-tip">'+e(ib.desc)+'<br>Imported '+e(new Date(ib.importedAt).toLocaleString('en-GB'))+' from '+e(ib.file||'')+'</div>'
+    +'<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th>Lvl</th><th>Part</th><th>Rev</th><th>Qty</th><th>Description</th></tr></thead><tbody>'
+    +(ib.rows||[]).map(function(r){ return '<tr><td>'+r.lvl+(r.alt?'A':'')+'</td><td style="font-family:ui-monospace,Menlo,monospace;white-space:nowrap">'+e(r.pn)+'</td><td>'+e(r.rev)+'</td><td>'+e(r.qty)+'</td><td>'+e(r.desc)+'</td></tr>'; }).join('')
+    +'</tbody></table></div>');
+};
+
+/* ── SOW files ────────────────────────────────────────────────────────── */
+var PEND = null;
+function sowTag(sk, os){ return sk+' '+({NORMAL:'Normal-to-OS030', OS_030:'OS030-to-OS060', OS_060:'HWR-to-Normal', CWR:'CWR'}[os]); }
+function placeSow(sk, os, file){
+  return G.files.addFile(file).then(function(meta){
+    var v = os==='CWR' ? null : D.sizes[sk].variants[os];
+    meta.bodyPN = v ? v.bodyPN || '' : ''; meta.topPN = v ? (v.pns||[])[0] || '' : '';
+    slotSet(sk, os, meta); mark();
+    if(G.files.spReady()) return G.files.upload(meta, sowTag(sk, os)).then(function(){ return meta; }, function(){ return meta; });
+    return meta;
+  });
+}
+window.gvsSowFile = function(os, input){
+  var f = input.files && input.files[0]; input.value = ''; if(!f) return;
+  placeSow(size, os, f).then(function(){ gvsRender(); toast('✓ '+f.name+' set for '+D.sizes[size].label+' '+G.SOW_LABEL[os]+' — press Save'); })
+    .catch(function(x){ toast('⚠ Could not store the file: '+(x&&x.message||x)); });
+};
+window.gvsSowDel = function(os){
+  var m = slotGet(size, os);
+  if(!m || !confirm('Remove '+m.name+' from '+G.SOW_LABEL[os]+'?')) return;
+  slotSet(size, os, null); mark(); gvsRender();
+};
+window.gvsSowBulk = function(input){
+  var files = Array.prototype.slice.call(input.files||[]); input.value = ''; if(!files.length) return;
+  var placed = [], open = [];
+  files.forEach(function(f){
+    var m = G.sowSlot(f.name, D);
+    if(m.size && m.slot) placed.push({ f:f, size:m.size, os:m.slot }); else open.push({ f:f, size:m.size||size, os:m.slot||'NORMAL' });
+  });
+  Promise.all(placed.map(function(x){ return placeSow(x.size, x.os, x.f); })).then(function(){
+    if(placed.length){ size = placed[0].size; gvsRender(); }
+    var msg = placed.map(function(x){ return x.f.name+' → '+D.sizes[x.size].label+' · '+G.SOW_LABEL[x.os]; });
+    if(!open.length){ toast('✓ '+msg.join(' | ')+' — press Save', 5000); return; }
+    PEND = open;
+    var h = mhead('Place SOW files')+(msg.length?'<div class="gvo-msg ok">'+msg.map(e).join('<br>')+'</div>':'')
+      +'<div class="gvs-tip">These files could not be placed from their names — no known GV body or valve part number, or no OS30 / OS60 / HWR in the name.</div>';
+    open.forEach(function(x, i){
+      h += '<div class="gvs-sow"><div class="gvs-sow-t" style="word-break:break-all">'+e(x.f.name)+'</div><div class="gvo-grid" style="margin-top:8px">'
+        +'<div><label class="field-label">Size</label><select class="field-input" id="gvs-pl-s'+i+'"><option value="">Skip this file</option>'
+        + G.SIZE_KEYS.map(function(k){ return '<option value="'+k+'"'+(x.size===k?' selected':'')+'>'+e(D.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
+        +'<div><label class="field-label">Conversion</label><select class="field-input" id="gvs-pl-o'+i+'">'
+        + SLOTS.map(function(k){ return '<option value="'+k+'"'+(x.os===k?' selected':'')+'>'+e(G.SOW_LABEL[k])+'</option>'; }).join('')+'</select></div></div></div>';
+    });
+    h += '<div class="gvo-acts"><button class="gvo-cancel" onclick="gvsModalClose()">Cancel</button><button class="gvo-apply" onclick="gvsSowPlace()">Place files</button></div>';
+    modal(h);
+  });
+};
+window.gvsSowPlace = function(){
+  if(!PEND) return;
+  var jobs = [];
+  PEND.forEach(function(x, i){
+    var sk = document.getElementById('gvs-pl-s'+i).value, os = document.getElementById('gvs-pl-o'+i).value;
+    if(sk) jobs.push(placeSow(sk, os, x.f).then(function(){ size = sk; }));
+  });
+  Promise.all(jobs).then(function(){ gvsModalClose(); gvsRender(); toast('✓ '+jobs.length+' SOW file(s) placed — press Save'); });
+};
+/* Upload any SOW still only on this device (used before publishing). */
+function uploadPending(std){
+  var jobs = [];
+  G.SIZE_KEYS.forEach(function(sk){ SLOTS.forEach(function(os){
+    var m = os==='CWR' ? std.sizes[sk].cwrSow : std.sizes[sk].variants[os].sow;
+    if(m && !m.webUrl) jobs.push(G.files.upload(m, sowTag(sk, os)).catch(function(){ return m; }));
+  }); });
+  return Promise.all(jobs).then(function(){ return jobs.length; });
+}
+
+/* ── SharePoint publish / load ────────────────────────────────────────── */
+function spReady(){ return typeof tokenValid==='function' && tokenValid() && typeof spConfig!=='undefined' && spConfig.reportsFolder; }
+window.gvsPush = function(loud){
+  if(!spReady()){ if(loud) toast('⚠ Not connected to SharePoint'); return; }
+  var s = G.liveStd();
+  if(!s.updatedAt){ if(loud) toast('Save the standards first'); return; }
+  uploadPending(s).then(function(n){
+    if(n){ G.writeStd(s); s = G.liveStd(); if(D && !dirty){ D = G.clone(s); render(); } }
+    publishJSON(s);
+  });
+};
+function publishJSON(s){
+  msUploadFile(spConfig.reportsFolder, SP_FILE, JSON.stringify(s, null, 2), true, function(ok){
+    toast(ok ? '✅ Gate valve standards rev '+s.rev+' published to SharePoint' : '⚠ Publishing the gate valve standards failed');
+  });
+};
+window.gvsPull = function(loud){
+  if(!spReady()){ if(loud) toast('⚠ Not connected to SharePoint'); return; }
+  msResolveSite(function(ok){
+    if(!ok) return;
+    var path = (spConfig.reportsFolder+'/'+SP_FILE).split('/').map(encodeURIComponent).join('/');
+    fetch('https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/root:/'+path+':/content', { headers:{ 'Authorization':'Bearer '+msAccessToken } })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(o){
+        if(!o || !o.sizes || !o.updatedAt){ if(loud) toast('No gate valve standards published on SharePoint yet'); return; }
+        var live = G.liveStd();
+        if(!loud && live.updatedAt && String(o.updatedAt) <= String(live.updatedAt)) return;
+        if(loud && live.updatedAt && String(o.updatedAt) < String(live.updatedAt)
+           && !confirm('SharePoint has rev '+o.rev+', older than this device\'s rev '+live.rev+'. Load it anyway?')) return;
+        G.writeStd(o); fillInfo();
+        if(D && !dirty){ D = G.clone(G.liveStd()); render(); }
+        toast('✅ Gate valve standards rev '+o.rev+' loaded from SharePoint');
+      }).catch(function(){ if(loud) toast('⚠ Could not load the standards from SharePoint'); });
+  });
+};
+
+/* ── wire into the app ────────────────────────────────────────────────── */
+var _showView = window.showView;
+window.showView = function(name){
+  var v = document.getElementById('view-gvstd');
+  if(name==='gvstd'){
+    if(!unlocked()){ if(v) v.classList.add('hidden'); return _showView.call(this, 'home'); }
+    ['home','form','history','preview','settings','dashboard'].forEach(function(n){ var el = document.getElementById('view-'+n); if(el) el.classList.add('hidden'); });
+    if(v) v.classList.remove('hidden');
+    if(!D) D = G.clone(G.liveStd());
+    render(); window.scrollTo(0,0);
+    return;
+  }
+  if(v) v.classList.add('hidden');
+  return _showView.apply(this, arguments);
+};
+var _loadSettings = window.loadSettingsPage;
+window.loadSettingsPage = function(){ var r = _loadSettings.apply(this, arguments); fillInfo(); return r; };
+var _sync = window.msSyncFromSharePoint;
+window.msSyncFromSharePoint = function(){ var r = _sync.apply(this, arguments); try{ gvsPull(false); }catch(x){} return r; };
+
+G.settingsRender = render; G.settingsInfo = fillInfo; G.SP_FILE = SP_FILE;
+G._draft = function(){ return D; };
+fillInfo();
 })();
 
 </script>
