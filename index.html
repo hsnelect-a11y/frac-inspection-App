@@ -12581,7 +12581,23 @@ var css = ''
  +'.gvs-vbtn.pri{background:var(--brand);border-color:var(--brand);color:#fff}'
  +'.gvs-vbtn.del{color:#dc2626;border-color:rgba(220,38,38,.35)}'
  +'.gvs-newv{margin-top:10px;padding:10px;border-radius:10px;border:1px dashed var(--brand)}'
- +'@media(max-width:560px){.gvs-grid,.gvs-test{grid-template-columns:1fr}}';
+ +'.gvs-spbar{display:grid;grid-template-columns:1fr 220px;gap:8px;margin:4px 0 8px}'
+ +'.gvs-ibwrap{max-height:520px;overflow-y:auto;border:1px solid var(--border);border-radius:10px}'
+ +'.gvs-ibtbl{min-width:640px}.gvs-ibtbl thead th{position:sticky;top:0;z-index:1}'
+ +'.gvs-ibtbl th.ck{width:84px;text-align:center;line-height:1.25}'
+ +'.gvs-ibtbl td.ck{text-align:center;vertical-align:middle}.gvs-ibtbl td.ck input{width:18px;height:18px;accent-color:var(--brand);cursor:pointer}'
+ +'.gvs-ibtbl td.lv{color:var(--text3);font-size:11px;text-align:center}'
+ +'.gvs-ibtbl td.pn{white-space:nowrap}.gvs-ibtbl td.pn>span{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;font-weight:700}'
+ +'.gvs-ibtbl td.pn .tags{display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;font-family:inherit}'
+ +'.gvs-ibtbl td.ds{font-size:11px;color:var(--text2);line-height:1.4}'
+ +'.gvs-ibtbl tr.top td{background:var(--bg3)}'
+ +'.gvs-ibtbl tr:has(.gvs-spck:checked) td{background:rgba(175,97,255,.07)}'
+ +'.gvs-ibtbl .dsm{display:none}'
+ +'@media(max-width:600px){.gvs-ibtbl{min-width:0}.gvs-ibtbl .lv,.gvs-ibtbl .ds{display:none}.gvs-ibtbl th.ck{width:62px;font-size:9px}'
+ +'.gvs-ibtbl td.pn{white-space:normal}.gvs-ibtbl td.pn span{padding-left:0!important}.gvs-ibtbl .dsm{display:block;font-weight:400;font-size:10.5px;color:var(--text2);line-height:1.35;margin-top:3px}}'
+ +'.gvs-tag.alt{background:rgba(59,130,246,.14);color:#2563eb}.gvs-tag.obs{background:rgba(220,38,38,.12);color:#dc2626}'
+ +'.gvs-tag.comp{background:rgba(175,97,255,.16);color:var(--brand)}.gvs-tag.top{background:var(--bg2);color:var(--text3);border:1px solid var(--border2)}'
+ +'@media(max-width:560px){.gvs-grid,.gvs-test{grid-template-columns:1fr}.gvs-spbar{grid-template-columns:1fr}}';
 var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
 /* ── view + settings card (built here so index.html needs no markup) ─── */
@@ -12760,16 +12776,17 @@ function routeHTML(){
     +'<div class="gvs-tip" style="margin-top:8px">When the seat pockets need machining, the report re-identifies the valve to the next part number and replaces the seats with that configuration\'s seat PN even if the seats are in good condition.</div>';
 }
 
-function listTable(path, title, tip){
-  var list = getP(path) || [], h = '';
+function listTable(path, title, tip, ib){
+  var list = getP(path) || [], h = '', kind = path.split('|').pop();
   h += '<div class="spare-sub-h" style="margin-top:12px">'+e(title)+'</div>'+(tip?'<div class="gvs-tip" style="margin-top:4px">'+tip+'</div>':'');
-  h += '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:26%">Part no.</th><th>Description</th><th style="width:70px">Qty</th><th style="width:40px"></th></tr></thead><tbody>';
+  h += '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:26%">Part no.</th><th>Description</th><th style="width:70px">Qty</th>'+(ib?'<th style="width:78px">Source</th>':'')+'<th style="width:40px"></th></tr></thead><tbody>';
   list.forEach(function(it, i){
     var p = path+'|'+i+'|';
     h += '<tr><td>'+inp(p+'pn','PN')+'</td><td>'+inp(p+'description','Description')+'</td><td>'+inp(p+'qty','1')+'</td>'
+      +(ib?'<td style="padding-top:10px" id="gvs-src-'+kind+'-'+i+'">'+srcTag(ib, it.pn)+'</td>':'')
       +'<td><button class="gvs-del" title="Remove" onclick="gvsDel(\''+q(path)+'\','+i+')">&times;</button></td></tr>';
   });
-  if(!list.length) h += '<tr><td colspan="4" style="color:var(--text3)">None listed.</td></tr>';
+  if(!list.length) h += '<tr><td colspan="'+(ib?5:4)+'" style="color:var(--text3)">None listed.</td></tr>';
   h += '</tbody></table></div><button class="gvs-add" onclick="gvsAdd(\''+q(path)+'\')">+ Add part</button>';
   return h;
 }
@@ -12820,17 +12837,110 @@ function tabSow(){
   return h+'</div>';
 }
 function tabSpares(){
-  var base = 'sizes|'+size+'|variants|'+vos+'|', h = '';
+  var base = 'sizes|'+size+'|variants|'+vos+'|', v = D.sizes[size].variants[vos], h = '';
+  var ib = ibRows(v).length ? ibSet(v) : null;
   h += '<div class="card"><div class="section-title">Spares and consumables</div>';
   h += '<div class="gvs-tip">Lists for each valve and configuration. The report uses the lists of the configuration leaving the shop — after machining to oversize or hot-weld repair, that is the new configuration.</div>';
   h += sizePills() + osPills();
-  h += '<div class="gvs-tip" style="margin:0">Valve PN: <b>'+e((D.sizes[size].variants[vos].pns||[]).join(' / ')||'not set')+'</b></div>';
-  h += listTable(base+'consumables', 'Consumables — always replaced');
-  h += listTable(base+'condition', 'Based-on-condition parts — replaced when found damaged',
-       'The inspector marks each one Good or Replace. Rows with "stud" or "nut" in the description are replaced automatically when Studs / Nuts are found damaged.');
+  h += '<div class="gvs-tip" style="margin:0">Valve PN: <b>'+e((v.pns||[]).join(' / ')||'not set')+'</b></div>';
+  h += ibomPicker(v);
+  h += '<div id="gvs-splists">'+spListsHTML()+'</div>';
   h += '<div class="gvs-btns" style="margin-top:14px"><button class="settings-btn-disconnect" onclick="gvsCatalog()">Restore spare parts catalog lists for this configuration</button></div>';
   return h+'</div>';
 }
+function spListsHTML(){
+  var base = 'sizes|'+size+'|variants|'+vos+'|', v = D.sizes[size].variants[vos], ib = ibRows(v).length ? ibSet(v) : null;
+  return listTable(base+'consumables', 'Consumables — always replaced', ib ? 'Ticked in the IBOM above, plus any extra parts added here.' : '', ib)
+    + listTable(base+'condition', 'Based-on-condition parts — replaced when found damaged',
+       'The inspector marks each one Good or Replace. Rows with "stud" or "nut" in the description are replaced automatically when Studs / Nuts are found damaged.', ib)
+    + '<div class="gvs-tip" style="margin-top:10px">Use <b>+ Add part</b> for parts that are not in the IBOM'+(ib ? ' (they show as Extra)' : '')+'.</div>';
+}
+/* ── IBOM picker: tick IBOM parts as consumable or based on condition ── */
+var SPF = { q:'', show:'all' };
+function pnKey(x){ return String(x||'').trim().toUpperCase(); }
+function ibRows(v){ return (v && v.ibom && v.ibom.rows) || []; }
+function ibSet(v){ var o = {}; ibRows(v).forEach(function(r){ o[pnKey(r.pn)] = 1; }); return o; }
+function srcTag(ib, pn){
+  if(!String(pn||'').trim()) return '';
+  return ib[pnKey(pn)] ? '<span class="gvs-tag sp">IBOM</span>' : '<span class="gvs-tag loc" title="Not in the IBOM of this configuration">EXTRA</span>';
+}
+function inList(list, pn){ var k = pnKey(pn); return !!k && (list||[]).some(function(x){ return pnKey(x.pn)===k; }); }
+function shortDesc(d){
+  var parts = String(d||'').replace(/\s+/g,' ').trim().split(/\s*,\s*/), out = parts[0] || '';
+  if(out.length < 15 && parts[1]) out += ', '+parts[1];
+  return out.length > 70 ? out.slice(0,70).replace(/\s+\S*$/,'')+'…' : out;
+}
+function cleanQty(x){ var n = parseFloat(x); return isNaN(n) ? (String(x||'').trim() || '1') : String(+n.toFixed(3)); }
+function compUse(v, pn){
+  var k = pnKey(pn), hit = '';
+  G.COMP_PN_FIELDS.forEach(function(f){ if(!hit && k && pnKey(v[f[0]])===k) hit = f[1]; });
+  return hit;
+}
+function spCounts(v){
+  var ib = ibSet(v), c = (v.consumables||[]).filter(function(x){ return ib[pnKey(x.pn)]; }).length,
+      k = (v.condition||[]).filter(function(x){ return ib[pnKey(x.pn)]; }).length,
+      x = (v.consumables||[]).concat(v.condition||[]).filter(function(y){ return String(y.pn||'').trim() && !ib[pnKey(y.pn)]; }).length;
+  return '<b>'+c+'</b> consumable'+(c===1?'':'s')+' and <b>'+k+'</b> based-on-condition part'+(k===1?'':'s')+' ticked'
+    +(x ? ' · <b>'+x+'</b> extra part'+(x===1?'':'s')+' not in this IBOM' : '');
+}
+function ibomPicker(v){
+  var ib = v.ibom, rows = ibRows(v), h = '<div class="spare-sub-h" style="margin-top:14px">IBOM'+(ib && ib.pn ? ' — '+e(ib.pn)+' rev '+e(ib.rev||'—') : '')+'</div>';
+  if(!rows.length) return h + '<div class="gvs-tip" style="margin-top:4px">No IBOM imported for '+e(D.sizes[size].label)+' '+e(OS_LABEL[vos])+'. Import it to pick the consumables and based-on-condition parts from it; the lists below can still be filled in by hand.</div>'
+    +'<label class="settings-btn-connect" style="cursor:pointer;display:inline-block">Import IBOM<input type="file" accept=".xls,.xlsx,.htm,.html" style="display:none" onchange="gvsIbomFile(this)"/></label>';
+  h += '<div class="gvs-tip" style="margin-top:4px">'+e(ib.desc||'')+'<br>Tick <b>Consumable</b> for parts replaced at every redress, or <b>Based on condition</b> for parts the inspector checks and replaces when found damaged. Ticked parts go into the lists below with the IBOM quantity; untick to take them out. A part can be in one list only.</div>';
+  h += '<div class="gvs-spbar"><input class="field-input" id="gvs-spq" placeholder="Search part no. or description" value="'+e(SPF.q)+'" oninput="gvsSpFilter()"/>'
+    +'<select class="field-input" id="gvs-sps" onchange="gvsSpFilter()">'
+    +[['all','All IBOM rows'],['on','Ticked only'],['off','Not ticked'],['main','Hide alternates and obsolete']].map(function(o){ return '<option value="'+o[0]+'"'+(SPF.show===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')
+    +'</select></div>';
+  h += '<div class="gvs-tip" style="margin:0 0 6px" id="gvs-spcount">'+spCounts(v)+'</div>';
+  h += '<div class="gvs-scroll gvs-ibwrap"><table class="gvs-tbl gvs-ibtbl"><thead><tr><th class="ck">Consumable</th><th class="ck">Based on condition</th><th class="lv" style="width:34px">Lvl</th><th style="width:150px">Part no.</th><th class="ds">Description</th><th style="width:52px">Qty</th></tr></thead><tbody>';
+  rows.forEach(function(r, i){
+    var top = r.lvl===1, obs = /^\s*OBSOLETE/i.test(r.desc||''), use = compUse(v, r.pn);
+    var tags = (top ? '<span class="gvs-tag top">TOP LEVEL</span>' : '')+(r.alt ? '<span class="gvs-tag alt">ALT</span>' : '')+(obs ? '<span class="gvs-tag obs">OBSOLETE</span>' : '')
+      +(use ? '<span class="gvs-tag comp" title="Evaluated component — replaced when the evaluation finds it damaged">'+e(use.toUpperCase())+'</span>' : '');
+    var box = function(kind){ return top ? '' : '<input type="checkbox" class="gvs-spck" data-i="'+i+'" data-k="'+kind+'"'+(inList(v[kind], r.pn)?' checked':'')+' onchange="gvsSpTick('+i+',\''+kind+'\',this.checked)" aria-label="'+(kind==='consumables'?'Consumable':'Based on condition')+' '+e(r.pn)+'"/>'; };
+    h += '<tr class="gvs-ibr'+(top?' top':'')+'" data-i="'+i+'" data-q="'+e((r.pn+' '+(r.desc||'')).toLowerCase())+'" data-alt="'+(r.alt||obs?1:0)+'">'
+      +'<td class="ck">'+box('consumables')+'</td><td class="ck">'+box('condition')+'</td>'
+      +'<td class="lv">'+r.lvl+'</td><td class="pn"><span style="padding-left:'+Math.max(0,(r.lvl-1)*8)+'px">'+e(r.pn)+'</span>'+(tags?'<div class="tags">'+tags+'</div>':'')+'<div class="dsm">'+e(r.desc||'')+'</div></td>'
+      +'<td class="ds">'+e(r.desc||'')+'</td><td>'+e(cleanQty(r.qty))+(r.uom && !/^EA$/i.test(r.uom) ? ' '+e(r.uom) : '')+'</td></tr>';
+  });
+  h += '<tr id="gvs-spnone" style="display:none"><td colspan="6" style="color:var(--text3)">No IBOM rows match.</td></tr></tbody></table></div>';
+  return h;
+}
+window.gvsSpTick = function(i, kind, on){
+  var v = D.sizes[size].variants[vos], r = ibRows(v)[i]; if(!r) return;
+  var other = kind==='consumables' ? 'condition' : 'consumables', k = pnKey(r.pn), moved = null;
+  v[kind] = v[kind] || []; v[other] = v[other] || [];
+  if(on){
+    v[other] = v[other].filter(function(x){ if(pnKey(x.pn)===k){ moved = moved || x; return false; } return true; });
+    if(!inList(v[kind], r.pn)) v[kind].push(moved ? { pn:moved.pn, description:moved.description, qty:moved.qty } : { pn:r.pn, description:shortDesc(r.desc), qty:cleanQty(r.qty) });
+  } else v[kind] = v[kind].filter(function(x){ return pnKey(x.pn)!==k; });
+  mark();
+  var box = document.getElementById('gvs-splists');
+  if(box){ box.innerHTML = spListsHTML(); spSync(); } else gvsRender();
+};
+/* keep ticks, counts and source tags in step when a PN is typed in the lists */
+function spSync(){
+  var v = D && D.sizes[size] && D.sizes[size].variants[vos]; if(!v || !document.getElementById('gvs-spcount')) return;
+  var rows = ibRows(v), ib = ibSet(v);
+  Array.prototype.forEach.call(document.querySelectorAll('.gvs-spck'), function(c){ var r = rows[+c.getAttribute('data-i')]; if(r) c.checked = inList(v[c.getAttribute('data-k')], r.pn); });
+  document.getElementById('gvs-spcount').innerHTML = spCounts(v);
+  ['consumables','condition'].forEach(function(kind){ (v[kind]||[]).forEach(function(it, i){ var el = document.getElementById('gvs-src-'+kind+'-'+i); if(el) el.innerHTML = srcTag(ib, it.pn); }); });
+  gvsSpFilter();
+}
+window.gvsSpFilter = function(){
+  var qi = document.getElementById('gvs-spq'), si = document.getElementById('gvs-sps'); if(!qi || !si) return;
+  SPF.q = qi.value; SPF.show = si.value;
+  var words = SPF.q.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+  Array.prototype.forEach.call(document.querySelectorAll('.gvs-ibr'), function(tr){
+    var t = tr.getAttribute('data-q'), on = !!tr.querySelector('.gvs-spck:checked'), ok = words.every(function(w){ return t.indexOf(w)!==-1; });
+    if(SPF.show==='on') ok = ok && on;
+    else if(SPF.show==='off') ok = ok && !on && !tr.classList.contains('top');
+    else if(SPF.show==='main') ok = ok && tr.getAttribute('data-alt')!=='1';
+    tr.style.display = ok ? '' : 'none'; if(ok) shown++;
+  });
+  var none = document.getElementById('gvs-spnone'); if(none) none.style.display = shown ? 'none' : '';
+};
 
 /* ── GV body seat pocket route by defect depth ─────────────────────────── */
 function rinp(path, ph){
@@ -13090,6 +13200,7 @@ function render(){
      : tab==='testing' ? tabTesting() : tab==='advisory' ? tabAdvisory() : tabBackup();
   h += '<button class="save-full-btn" onclick="gvsSave()">Save standards</button>';
   body.innerHTML = h;
+  if(tab==='spares') gvsSpFilter();
 }
 
 /* ── handlers ─────────────────────────────────────────────────────────── */
@@ -13104,10 +13215,11 @@ window.gvsBack = function(){
   dirty = false; D = null;
   showView(unlocked() ? 'settings' : 'home');
 };
-window.gvsRender = function(){ var y = window.scrollY; render(); window.scrollTo(0, y); };
+window.gvsRender = function(){ var y = window.scrollY, w = document.querySelector('.gvs-ibwrap'), iy = w ? w.scrollTop : 0; render(); window.scrollTo(0, y); w = document.querySelector('.gvs-ibwrap'); if(w) w.scrollTop = iy; };
 window.gvsTab  = function(t){ tab = t; render(); window.scrollTo(0,0); };
-window.gvsSize = function(s){ size = s; gvsRender(); };
-window.gvsOS   = function(o){ vos = o; gvsRender(); };
+function ibTop(){ var w = document.querySelector('.gvs-ibwrap'); if(w) w.scrollTop = 0; }
+window.gvsSize = function(s){ size = s; gvsRender(); ibTop(); };
+window.gvsOS   = function(o){ vos = o; gvsRender(); ibTop(); };
 window.gvsNote = function(v){ note = v; };
 window.gvsSet  = function(path, v, kind){
   if(kind==='list') v = String(v).split(/[,;\n]+/).map(function(s){ return s.trim(); }).filter(Boolean);
@@ -13117,6 +13229,7 @@ window.gvsSet  = function(path, v, kind){
   if(tab==='criteria') gvsTry();
   if(tab==='route') gvsRouteTry();
   if(tab==='flange') gvsFlangeTry();
+  if(tab==='spares' && /\|(consumables|condition)\|\d+\|pn$/.test(path)) spSync();
   if(tab==='testing'){ var tpl = document.getElementById('gvs-tplan'); if(tpl) tpl.innerHTML = testPlanTable(); }
 };
 window.gvsDel = function(path, i){ var l = getP(path); if(l){ l.splice(i,1); mark(); gvsRender(); } };
