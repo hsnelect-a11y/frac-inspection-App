@@ -10403,6 +10403,7 @@ function defaultStd(){
 
   return {
     rev:'1.0', approvedBy:'', updatedAt:'',
+    docTitle:'Frac Gate Valve Inspection and Disposition Standard', docNo:'', preparedBy:'',
     sizes: sizes,
     valveOrder: DEFAULT_KEYS.slice(),   /* display order of the valves */
     removed: [],                        /* standard valves Engineering deleted */
@@ -11665,7 +11666,8 @@ function testingHTML(std, a){
   return '<div class="card"><div class="section-title">Testing Requirements <span class="sub-hint" style="text-transform:none;font-weight:600;letter-spacing:0">— '+e(tp.basis)+'</span></div>'
     +'<div class="gve-kv">'+tp.rows.map(function(x){ return '<div>'+e(x[0])+'</div><div>'+e(x[1])+'</div>'; }).join('')+'</div>'
     +(tp.notes?'<div class="gve-note">'+e(tp.notes)+'</div>':'')
-    +'<div class="gve-note">Standards rev '+e(std.rev)+(std.approvedBy?' · approved by '+e(std.approvedBy):'')+'</div></div>';
+    +'<div class="gve-note">Standards rev '+e(std.rev)+(std.approvedBy?' · approved by '+e(std.approvedBy):'')
+    +(window.gvdOpen ? ' · <button class="gvs-link" onclick="gvdOpen(\'form\')">View the standards document</button>' : '')+'</div></div>';
 }
 
 /* ── whole form ───────────────────────────────────────────────────────── */
@@ -12584,7 +12586,8 @@ card.innerHTML = '<div class="settings-card-header">'
   +' Gate Valve Engineering Standards</div>'
   +'<div class="settings-card-sub">Depth criteria, part numbers, spares and consumables, testing requirements and advisories used for the automatic gate valve disposition. Engineering only.</div>'
   +'<div class="info-grid" id="gvs-info"></div>'
-  +'<div class="settings-actions"><button class="settings-btn-connect" onclick="gvsOpen()">Open standards editor</button></div>';
+  +'<div class="settings-actions"><button class="settings-btn-connect" onclick="gvsOpen()">Open standards editor</button>'
+  +'<button class="settings-btn-save" onclick="gvdOpen(\'settings\')">Standards document (PDF)</button></div>';
 var sb = document.querySelector('#view-settings .settings-body');
 if(sb){ var first = sb.querySelector('.settings-card'); if(first && first.nextSibling) sb.insertBefore(card, first.nextSibling); else sb.appendChild(card); }
 
@@ -13052,11 +13055,15 @@ function render(){
   var body = document.getElementById('gvs-body'); if(!body) return;
   var live = G.liveStd(), h = '';
   h += '<div class="card"><div class="section-title">Revision <span class="gvs-dirty" id="gvs-dirty" style="display:'+(dirty?'inline-block':'none')+'">UNSAVED CHANGES</span></div>'
-    +'<div class="gvs-grid"><div><label class="field-label">Revision</label>'+inp('rev','1.0')+'</div>'
+    +'<div class="gvs-grid"><div class="full"><label class="field-label">Document title</label>'+inp('docTitle','Frac Gate Valve Inspection and Disposition Standard')+'</div>'
+    +'<div><label class="field-label">Document no.</label>'+inp('docNo','Document number')+'</div>'
+    +'<div><label class="field-label">Revision</label>'+inp('rev','1.0')+'</div>'
+    +'<div><label class="field-label">Prepared by</label>'+inp('preparedBy','Name')+'</div>'
     +'<div><label class="field-label">Approved by (Engineering)</label>'+inp('approvedBy','Name')+'</div>'
     +'<div class="full"><label class="field-label">Change note</label><input class="field-input" placeholder="What changed in this revision" value="'+e(note)+'" oninput="gvsNote(this.value)"/></div></div>'
     +'<div class="gvs-tip" style="margin:8px 0 0">Saved revision '+e(live.rev)+(live.updatedAt?' · '+e(new Date(live.updatedAt).toLocaleString('en-GB')):' · built-in defaults')
-    +'. Saved reports keep the revision they were dispositioned under.</div></div>';
+    +'. Saved reports keep the revision they were dispositioned under.</div>'
+    +'<div class="gvs-btns" style="margin-top:10px"><button class="settings-btn-save" onclick="gvdOpen(\'editor\')">Preview standards document</button></div></div>';
   var tabs = [['valves','Valves & PNs'],['route','Seat pocket route'],['flange','Flange ring grooves'],['sow','SOW files'],['spares','Spares'],['criteria','Defect criteria'],['testing','Testing'],['advisory','Advisories'],['backup','Backup & sync']];
   h += '<div class="gvs-tabs">'+tabs.map(function(t){ return '<button class="gvs-tab'+(tab===t[0]?' on':'')+'" onclick="gvsTab(\''+t[0]+'\')">'+e(t[1])+'</button>'; }).join('')+'</div>';
   h += tab==='valves' ? tabValves() : tab==='route' ? tabRoute() : tab==='flange' ? tabFlange() : tab==='sow' ? tabSow() : tab==='spares' ? tabSpares() : tab==='criteria' ? tabCriteria()
@@ -13468,9 +13475,364 @@ window.loadSettingsPage = function(){ var r = _loadSettings.apply(this, argument
 var _sync = window.msSyncFromSharePoint;
 window.msSyncFromSharePoint = function(){ var r = _sync.apply(this, arguments); try{ gvsPull(false); }catch(x){} return r; };
 
-G.settingsRender = render; G.settingsInfo = fillInfo; G.SP_FILE = SP_FILE;
+G.settingsRender = render; G.settingsDirty = function(){ return dirty; }; G.settingsInfo = fillInfo; G.SP_FILE = SP_FILE;
 G._draft = function(){ return D; };
 fillInfo();
+})();
+
+</script>
+
+<!-- ══ GATE VALVE ENGINEERING STANDARD — document ══ -->
+<script>
+/* ═══ GATE VALVE ENGINEERING STANDARD — printable procedure document ═══════
+   Builds one document from the Gate Valve Engineering Standards: purpose,
+   process, valve register, criteria, routes, testing, spares, SOWs,
+   advisories and revision history. Shown in the app (Settings → Gate Valve
+   Engineering Standards → Standards document) and printed / saved as PDF.
+   ═══════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+var G = window.GVEval; if(!G) return;
+var e = G.e, num = G.num, OS_LABEL = G.OS_LABEL, ACTIONS = G.ACTIONS;
+
+function f3(v){ var n = num(v); return n===null ? '—' : n.toFixed(3)+'"'; }
+function v_(x){ var s = String(x==null?'':x).trim(); return s ? e(s) : '<span class="nil">—</span>'; }
+function tbl(head, rows, cls){
+  return '<table class="'+(cls||'')+'"><thead><tr>'+head.map(function(h){ return '<th>'+h+'</th>'; }).join('')+'</tr></thead><tbody>'
+    + (rows.length ? rows.map(function(r){ return '<tr>'+r.map(function(c){ return '<td>'+c+'</td>'; }).join('')+'</tr>'; }).join('')
+                   : '<tr><td colspan="'+head.length+'" class="nil">None</td></tr>')
+    + '</tbody></table>';
+}
+function kv(rows){ return '<table class="kv"><tbody>'+rows.map(function(r){ return '<tr><th>'+r[0]+'</th><td>'+r[1]+'</td></tr>'; }).join('')+'</tbody></table>'; }
+function act(k){ var A = ACTIONS[k]; return A ? '<b>'+e(A.label)+'</b>' : e(k||'—'); }
+function sowName(m){ return m ? (m.webUrl ? '<a href="'+e(m.webUrl)+'">'+e(m.name)+'</a>' : e(m.name)) : '<span class="nil">Not set</span>'; }
+function date(iso){ return iso ? new Date(iso).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '—'; }
+
+/* ── the document ─────────────────────────────────────────────────────── */
+function build(std, opts){
+  opts = opts || {};
+  var keys = G.keys(std), secs = [], n = 0;
+  var title = std.docTitle || 'Frac Gate Valve Inspection and Disposition Standard';
+  var docNo = std.docNo || '';
+  var sec = function(t, body, brk){ n++; secs.push({ n:n, t:t, body:body, brk:brk }); return n; };
+
+  /* 1 purpose and scope */
+  sec('Purpose and scope',
+    '<p>This standard defines how frac gate valves returned for redress are inspected and dispositioned with the FRAC Equipment Inspection App. '
+    +'The inspector records the condition of each critical area of the FRAC Evaluation Report (good or damaged, defect type and approximate depth, and the measurements asked for). '
+    +'The disposition, parts, scope of work, name plate change and test requirements are then set automatically from the criteria in this document.</p>'
+    +'<p>It applies to the valves listed in section 4. Pressure testing records and NORM screening are outside the evaluation flow and follow their own procedures.</p>'
+    +'<p class="note">'+e((std.advisory||{}).engPolicy||'')+'</p>');
+
+  /* 2 responsibilities */
+  sec('Responsibilities', tbl(['Role','Responsibility'], [
+    ['<b>Inspector</b>','Identifies the valve (part number entry or name plate scan), records serial numbers, evaluates every critical area, measures where asked, attaches photos, flags abnormal findings, and records QC after rework.'],
+    ['<b>Engineering</b>','Owns this standard: part numbers, IBOMs, criteria, routes, flange tolerances, spares, SOWs, testing and advisories (Settings, password protected). Dispositions findings referred to Engineering and approves each revision.'],
+    ['<b>QC</b>','Verifies each rework or repair after completion (QC after rework: pass / fail) before the report is complete.'],
+    ['<b>Reviewers</b>','Review and sign the completed FRAC Evaluation Report.']
+  ]));
+
+  /* 3 evaluation process */
+  sec('Evaluation process',
+    '<ol>'
+    +'<li><b>Identify the valve.</b> Enter or scan the top level or assembly part number from the name plate. The app finds the valve and its configuration (Standard, OS .030", OS .060"). If the part number is not listed, the inspector selects the valve and configuration and Engineering adds the number.</li>'
+    +'<li><b>Check the valve history.</b> The valve serial number is checked against earlier reports (this device and SharePoint). A previous hot-weld repair sets CWR for further weld repair; the same applies per bonnet (bonnet serial) and per end flange ring groove.</li>'
+    +'<li><b>Evaluate each critical area.</b> Select Good condition or Damaged. For damage, record the defect type and approximate depth (and flange thickness for the side ring grooves). Non-critical areas and studs / nuts use the selections on the report form.</li>'
+    +'<li><b>Automatic disposition.</b> Each finding is dispositioned to sections 6 to 9. A defect type set to always need Engineering, or a finding flagged abnormal by the inspector, goes to Engineering.</li>'
+    +'<li><b>Valve disposition.</b> Seat pocket damage sets the oversize / hot-weld repair route; the report then lists the new part number, seats, consumables of the configuration leaving the shop, the SOW and the name plate change.</li>'
+    +'<li><b>Rework and QC.</b> Each finding with an action needs QC after rework (pass) before the report is complete.</li>'
+    +'<li><b>Testing and release.</b> Test to section 10 for the final disposition.</li>'
+    +'</ol>'
+    +tbl(['Report status','Meaning'], [
+      ['Inspection incomplete','Critical areas, depths or measurements still to record.'],
+      ['Has findings','Findings waiting for Engineering, or rework waiting for QC.'],
+      ['Rework complete','All actions completed and passed QC.'],
+      ['All pass','Every critical area in good condition — standard redress.']
+    ]));
+
+  /* 4 valve register */
+  var reg = '';
+  keys.forEach(function(k){
+    var z = std.sizes[k], fl = (std.flanges||[]).filter(function(f){ return f.id===z.flange; })[0];
+    reg += '<h3>'+e(z.label||k)+'</h3>'
+      + kv([['Nominal size', v_(z.nominal ? z.nominal+'"' : '')], ['End flange', v_(fl ? fl.label : '')],
+            ['Balanced stem', z.balanced===false ? 'No — Balance Stem Bonnet (3) and Balance Stem (7) not evaluated' : 'Yes']]);
+    var rows = [
+      ['Valve part numbers'].concat(G.OS_KEYS.map(function(os){ return v_((z.variants[os].pns||[]).join(', ')); })),
+      ['IBOM'].concat(G.OS_KEYS.map(function(os){ var ib = z.variants[os].ibom; return ib ? e(ib.pn)+' rev '+e(ib.rev||'—')+'<div class="sm">'+e(date(ib.importedAt))+'</div>' : '<span class="nil">—</span>'; }))
+    ];
+    G.COMP_PN_FIELDS.forEach(function(f){
+      if(z.balanced===false && (f[0]==='bstemPN' || f[0]==='bsbPN')) return;
+      rows.push([e(f[1])].concat(G.OS_KEYS.map(function(os){ return v_(z.variants[os][f[0]]); })));
+    });
+    [['pocketIdMin','Seat pocket ID min'],['pocketIdMax','Seat pocket ID max'],['f2fMin','Face to face min'],['f2fMax','Face to face max'],['gateThkMin','Gate min thickness'],['seatThkMin','Seat min thickness']]
+      .forEach(function(d){ rows.push([e(d[1])].concat(G.OS_KEYS.map(function(os){ return f3(z.variants[os][d[0]]); }))); });
+    reg += tbl(['','Standard (Normal)','OS .030"','OS .060"'], rows, 'reg');
+  });
+  sec('Valve register', '<p>Part numbers identify the valve and its configuration. Component part numbers are used when a component is replaced and come from the IBOM of each configuration.</p>'+reg, true);
+
+  /* 5 critical areas */
+  var ca = [];
+  G.COMPONENTS.forEach(function(c){
+    c.points.forEach(function(p, i){
+      var crit = p.mode==='nc' ? 'Selection: good / buffing / severe' : p.mode==='studs' ? 'Selection: good / gentle polish / damaged'
+        : p.flange ? 'End flange ring groove (section 8)' : p.group==='seatPocket' ? 'Seat pocket route (section 7)' : e(G.GROUP_LABELS[p.group]||p.group);
+      var meas = (p.meas||[]).map(function(m){ return e(m.l); }).join(', ');
+      ca.push([i===0 ? '<b>'+e(c.n+'. '+c.title)+'</b>'+(c.balance?'<div class="sm">balanced-stem valves only</div>':'') : '', e(p.label)+(p.hint?'<div class="sm">'+e(p.hint)+'</div>':''), crit, meas || '<span class="nil">—</span>']);
+    });
+  });
+  sec('Critical areas evaluated', '<p>As on the FRAC Evaluation Report. Serial and part numbers are recorded for each component (scan available).</p>'
+    + tbl(['Component','Area','Criteria','Measurement'], ca), true);
+
+  /* 6 depth criteria */
+  var dc = '';
+  Object.keys(G.GROUP_LABELS).forEach(function(gk){
+    if(gk==='seatPocket') return;
+    var g = (std.groups||{})[gk]; if(!g) return;
+    var rows = (g.bands||[]).slice().sort(function(a,b){ return num(a.max)-num(b.max); })
+      .map(function(b){ return ['up to '+f3(b.max), act(b.action), e(b.text||'')]; });
+    rows.push(['deeper', act(g.over && g.over.action), e((g.over && g.over.text)||'')]);
+    dc += '<h3>'+e(G.GROUP_LABELS[gk])+'</h3>'+tbl(['Defect depth','Action','Disposition text'], rows, 'crit');
+  });
+  var ch = std.choices||{};
+  dc += '<h3>Non-critical areas and studs / nuts</h3>'+tbl(['Inspector selects','Action','Disposition text'], [
+    ['Non-critical — buffing required', act((ch.nc||{}).buff && ch.nc.buff.action), e(((ch.nc||{}).buff||{}).text||'')],
+    ['Non-critical — severe damage', act((ch.nc||{}).severe && ch.nc.severe.action), e(((ch.nc||{}).severe||{}).text||'')],
+    ['Studs / nuts — gentle polish', act((ch.studs||{}).polish && ch.studs.polish.action), e(((ch.studs||{}).polish||{}).text||'')],
+    ['Studs / nuts — damaged', act((ch.studs||{}).damaged && ch.studs.damaged.action), e(((ch.studs||{}).damaged||{}).text||'')]
+  ], 'crit');
+  dc += '<h3>Engineering involvement and seats</h3>'+kv([
+    ['Defect types always referred to Engineering', v_((std.forceEngTypes||[]).map(function(t){ var x = G.DEFECT_TYPES.filter(function(d){ return d[0]===t; })[0]; return x ? x[1] : t; }).join(', '))],
+    ['Abnormal findings', 'Any finding flagged abnormal by the inspector is referred to Engineering.'],
+    ['Seats', std.seatsAsPair ? 'Replaced as a pair when one seat is damaged.' : 'Replaced individually.'],
+    ['Measurements', 'Seat pocket ID above its maximum → seat pocket route; ID below its minimum or face to face out of range → Engineering; gate or seat thickness below its minimum → replace.']
+  ]);
+  sec('Defect criteria', dc, true);
+
+  /* 7 seat pocket route */
+  var pol = G.polishLimit(std), route = '<p>The seat pocket defect depth (ID and face) sets the route. The valve goes to the first step whose limit is not exceeded; deeper than every step → hot-weld repair (HWR) back to Standard, or CWR if the valve was hot-weld repaired before. Seat pocket ID above its maximum with no depth recorded moves the valve one step.</p>';
+  route += tbl(['Valve is','Defect depth','Disposition'], [].concat.apply([], G.OS_KEYS.map(function(from){
+    var rows = [[ '<b>'+e(from==='NORMAL' ? 'Standard (Normal)' : OS_LABEL[from])+'</b>', 'up to '+f3(pol), 'Polish — no machining' ]];
+    G.routeTable(std, from).forEach(function(x){
+      rows.push(['', x.type==='os' ? 'up to '+f3(x.upTo) : 'deeper', x.type==='os' ? '<b>Machine to '+e(OS_LABEL[x.target])+'</b>' : '<b>HWR back to Standard</b> (CWR if hot-weld repaired before)']);
+    });
+    return rows;
+  })));
+  route += '<h3>On every route change</h3><ul>'
+    +'<li>The valve is re-identified to the part number of the new configuration (or the part number given for that SOW) and the name plate is changed or re-stamped. '+e((std.advisory||{}).nameplate||'')+'</li>'
+    +'<li>Seats of the new configuration are fitted (pair) regardless of seat condition; consumables are those of the new configuration; the blank name plate is listed when set.</li>'
+    +'<li>The SOW for each conversion step is attached to the report (both steps when machining directly from Standard to OS .060"). The next step\'s SOW is attached in case defects remain.</li></ul>';
+  sec('Seat pocket route — oversize machining and hot-weld repair', route, true);
+
+  /* 8 end flange ring grooves */
+  var fl = std.flanges||[];
+  sec('End flange ring grooves (LHS / RHS)',
+    '<p>For the side ring grooves the inspector records the defect depth and measures the flange thickness. Defects up to '+f3(std.flangePolish)+' are polished. '
+    +'Otherwise skimming the face removes the defect depth'+(num(std.flangeCleanup) ? ' plus a clean-up cut of '+f3(std.flangeCleanup) : '')+'. '
+    +'If the flange stays at or above its minimum thickness → skim the face and re-cut the ring groove to API 6A and the drawing. If not, or if the flange is already below the minimum → hot-weld repair (HWR), or CWR when that ring groove was weld repaired before. A flange without a minimum set is referred to Engineering.</p>'
+    + tbl(['Flange size','Nominal thickness','Minimum thickness','Max skim from nominal','Valves'], fl.map(function(f){
+        var nm = num(f.nominal), mn = num(f.min);
+        return [e(f.label||f.id), f3(f.nominal), mn===null ? '<span class="warn">Not set</span>' : f3(f.min), (nm!==null && mn!==null) ? (nm-mn).toFixed(3)+'"' : '—',
+                e(keys.filter(function(k){ return std.sizes[k].flange===f.id; }).map(function(k){ return std.sizes[k].label; }).join(', '))];
+      })));
+
+  /* 9 bonnet and weld repair rules */
+  sec('Bonnet body weld repair and repeat weld repair (CWR)',
+    '<p>Main bonnet and balance stem bonnet sealing areas (ring groove, back seat, UV packing area) damaged beyond their limits (section 6) are hot-weld repaired (HWR) to the bonnet HWR SOW. '
+    +'If that bonnet was hot-weld repaired before, the repair follows the bonnet CWR SOW. Bonnet history is matched by bonnet serial number, or by valve serial number when the bonnet serial is not recorded.</p>'
+    + tbl(['Situation','Disposition','Found from'], [
+      ['Seat pocket weld repair needed, valve hot-weld repaired before','CWR — valve CWR SOW','Valve serial number history or inspector'],
+      ['Bonnet weld repair needed, bonnet hot-weld repaired before','CWR — bonnet CWR SOW','Bonnet serial (or valve serial) history or inspector'],
+      ['End flange ring groove weld repair needed, ring groove weld repaired before','CWR — flange ring groove CWR SOW','Valve serial number history or inspector']
+    ])
+    +'<p class="note">'+e((std.advisory||{}).cwr||'')+'</p>');
+
+  /* 10 testing */
+  var ts = '';
+  keys.forEach(function(k){
+    var t = (std.testing||{})[k] || {}, st = { testing:t }, z = std.sizes[k];
+    var rowsFor = function(lbl, route, cw){ var tp = G.testPlan(st, { route:route, compWeld:cw||[] }); return [lbl, e((tp.rows[0]||[])[1]||'—'), e((tp.rows[1]||[])[1]||'—')]; };
+    ts += '<h3>'+e(z.label||k)+'</h3>'
+      + tbl(['Disposition','Body test','Gate / seat test'], [
+          rowsFor('Standard redress', { type:'none' }),
+          rowsFor('Machining to OS .030" / OS .060"', { type:'os', target:'OS_030' }),
+          rowsFor('Hot-weld repair (HWR)', { type:'hotweld', cwr:false }),
+          rowsFor('CWR', { type:'hotweld', cwr:true }),
+          rowsFor('Bonnet / flange ring groove HWR', { type:'none' }, [{ title:'Bonnet', action:'HWR' }])
+        ], 'test')
+      + kv([['Low pressure seat test', v_(t.lowPsi ? t.lowPsi+' psi'+(t.lowHold?' — '+t.lowHold:'') : '')], ['Procedure', v_(t.procedure)], ['Drift', v_(t.drift)], ['Acceptance', v_(t.acceptance)], ['Notes', v_(t.notes)]]);
+  });
+  sec('Testing requirements', ts, true);
+
+  /* 11 spares */
+  if(opts.spares!==false){
+    var sp = '';
+    keys.forEach(function(k){
+      var z = std.sizes[k];
+      G.OS_KEYS.forEach(function(os){
+        var v = z.variants[os];
+        sp += '<h3>'+e(z.label||k)+' — '+e(OS_LABEL[os])+'</h3>'
+          + '<div class="two"><div><div class="cap">Consumables — always replaced</div>'+tbl(['Part no.','Description','Qty'], (v.consumables||[]).map(function(c){ return [e(c.pn), e(c.description), e(c.qty)]; }), 'sp')+'</div>'
+          + '<div><div class="cap">Based on condition — replaced when found damaged</div>'+tbl(['Part no.','Description','Qty'], (v.condition||[]).map(function(c){ return [e(c.pn), e(c.description), e(c.qty)]; }), 'sp')+'</div></div>';
+      });
+    });
+    sec('Spares and consumables', '<p>The report uses the lists of the configuration leaving the shop. Studs and nuts in the based-on-condition list are replaced automatically when Studs / Nuts are found damaged.</p>'+sp, true);
+  }
+
+  /* 12 SOW register */
+  var sowRows = [];
+  keys.forEach(function(k){
+    var z = std.sizes[k], first = true;
+    var add = function(lbl, m, np){ sowRows.push([first ? '<b>'+e(z.label||k)+'</b>' : '', e(lbl), sowName(m), np===undefined ? '<span class="nil">—</span>' : v_(np)]); first = false; };
+    add(G.SOW_LABEL.NORMAL, z.variants.NORMAL.sow, z.variants.NORMAL.sowNewPN || (z.variants.OS_030.pns||[])[0]);
+    add(G.SOW_LABEL.OS_030, z.variants.OS_030.sow, z.variants.OS_030.sowNewPN || (z.variants.OS_060.pns||[])[0]);
+    add(G.SOW_LABEL.OS_060, z.variants.OS_060.sow, z.variants.OS_060.sowNewPN || (z.variants.NORMAL.pns||[])[0]);
+    add(G.SOW_LABEL.CWR, z.cwrSow, z.cwrNewPN || (z.variants.NORMAL.pns||[])[0]);
+    add(G.SOW_LABEL.RG_HWR, z.rgHwrSow); add(G.SOW_LABEL.RG_CWR, z.rgCwrSow);
+    add(G.SOW_LABEL.BON_HWR, z.bonHwrSow); add(G.SOW_LABEL.BON_CWR, z.bonCwrSow);
+    if(z.balanced!==false){ add(G.SOW_LABEL.BSB_HWR, z.bsbHwrSow || null); add(G.SOW_LABEL.BSB_CWR, z.bsbCwrSow || null); }
+  });
+  sec('Scope of work register', '<p>SOW files are held in the app and on SharePoint and are attached to the report automatically for the disposition.</p>'
+    + tbl(['Valve','Scope of work','File','Name plate part number after'], sowRows, 'sow'), true);
+
+  /* 13 advisories */
+  var adv = std.advisory||{};
+  sec('Advisories printed on reports', kv([
+    ['Machining Standard → OS .030"', v_(adv.osTo030)], ['Machining → OS .060"', v_(adv.osTo060)],
+    ['Hot-weld repair OS .060" → Standard', v_(adv.hotWeld)], ['Hot-weld repair — defect deeper than the oversize allowance', v_(adv.hotWeldDepth)],
+    ['CWR (valve)', v_(adv.cwr)], ['CWR (bonnet)', v_(adv.compCwr)], ['CWR (flange ring groove)', v_(adv.flangeCwr)],
+    ['Name plate change', v_(adv.nameplate)], ['General redress', v_(adv.general)], ['Engineering involvement', v_(adv.engPolicy)]
+  ]));
+
+  /* 14 IBOM appendix */
+  if(opts.ibom){
+    var ap = '';
+    keys.forEach(function(k){ var z = std.sizes[k]; G.OS_KEYS.forEach(function(os){
+      var ib = z.variants[os].ibom; if(!ib || !(ib.rows||[]).length) return;
+      ap += '<h3>'+e(z.label||k)+' — '+e(OS_LABEL[os])+': '+e(ib.pn)+' rev '+e(ib.rev||'—')+'</h3>'
+        + tbl(['Lvl','Part','Rev','Qty','Description'], ib.rows.map(function(r){ return [r.lvl+(r.alt?'A':''), e(r.pn), e(r.rev), e(r.qty), e(r.desc)]; }), 'ib');
+    }); });
+    if(ap) sec('Appendix — IBOMs', ap, true);
+  }
+
+  /* 15 revision history */
+  sec('Revision history', tbl(['Rev','Date','By','Change'], (std.log||[]).slice().reverse().map(function(l){ return [e(l.rev), e(date(l.at)), e(l.by||''), e(l.note||'')]; })));
+
+  /* ── assemble ── */
+  var logoEl = document.querySelector('#view-home img'), logo = logoEl ? logoEl.src : '';
+  var foot = (docNo ? docNo+' · ' : '')+'Rev '+(std.rev||'')+' · '+(opts.draft ? 'DRAFT — not saved' : 'Uncontrolled when printed');
+  var css = '@page{size:A4;margin:16mm 14mm 18mm;@bottom-left{content:"'+foot.replace(/"/g,'')+'";font:8pt Arial;color:#6b7280}@bottom-right{content:"Page " counter(page) " of " counter(pages);font:8pt Arial;color:#6b7280}}'
+    +'*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#111827;margin:0;padding:18px;line-height:1.4;background:#fff}'
+    +'.doc{max-width:190mm;margin:0 auto}'
+    +'.hd{display:flex;align-items:center;gap:14px;border-bottom:3px solid #252963;padding-bottom:10px}.hd img{height:34px}.hd .t{flex:1}'
+    +'.hd h1{font-size:17pt;color:#252963;margin:0}.hd .s{font-size:9pt;color:#6b7280;margin-top:3px}'
+    +'.ctl{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid #d1d5db;margin:12px 0 4px}.ctl div{padding:6px 8px;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;font-size:9pt}'
+    +'.ctl b{display:block;font-size:7.5pt;color:#6b7280;text-transform:uppercase;letter-spacing:.05em}'
+    +'.draft{border:2px solid #dc2626;color:#dc2626;font-weight:700;padding:6px 10px;margin:8px 0;text-align:center}'
+    +'.toc{columns:2;font-size:9.5pt;margin:8px 0 0;padding-left:18px}'
+    +'h2{font-size:12.5pt;color:#252963;margin:20px 0 6px;padding-bottom:3px;border-bottom:1px solid #c7c9e6;page-break-after:avoid}'
+    +'h3{font-size:10.5pt;margin:12px 0 4px;color:#111827;page-break-after:avoid}'
+    +'.brk{page-break-before:always}'
+    +'p{margin:4px 0 6px}.note{color:#4b5563;font-style:italic}ol,ul{margin:4px 0 8px;padding-left:20px}li{margin:3px 0}'
+    +'table{width:100%;border-collapse:collapse;margin:4px 0 10px;font-size:8.8pt}th,td{border:1px solid #d1d5db;padding:4px 6px;text-align:left;vertical-align:top}'
+    +'thead th{background:#252963;color:#fff;font-size:8pt;text-transform:uppercase;letter-spacing:.03em}tr{page-break-inside:avoid}'
+    +'table.kv th{width:30%;background:#f3f4f6;color:#111827;text-transform:none;font-size:8.8pt;letter-spacing:0}'
+    +'table.reg td:first-child{font-weight:700;background:#f9fafb;width:22%}table.reg td{font-family:Consolas,Menlo,monospace;font-size:8.3pt}table.reg td:first-child{font-family:Arial,sans-serif}'
+    +'table.crit td:first-child,table.test td:first-child{white-space:nowrap;width:18%}table.sp td:first-child{white-space:nowrap;font-family:Consolas,Menlo,monospace}'
+    +'table.sow th:nth-child(1){width:15%}table.sow th:nth-child(2){width:39%}table.sow th:nth-child(3){width:28%}table.sow td:nth-child(3){word-break:break-all}'
+    +'table.ib{font-size:7.8pt}.sm{font-size:7.5pt;color:#6b7280;font-family:Arial,sans-serif}.nil{color:#9ca3af}.warn{color:#dc2626;font-weight:700}'
+    +'.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.cap{font-size:8pt;font-weight:700;color:#6b7280;text-transform:uppercase;margin-top:2px}'
+    +'.sig{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:16px}.sig div{border-top:1px solid #111827;padding-top:4px;font-size:8.5pt;color:#4b5563}'
+    +'a{color:#252963}'
+    +'@media screen and (max-width:640px){body{padding:10px}.ctl{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}.toc{columns:1}table{font-size:8pt}}'
+    +'@media print{body{padding:0}.doc{max-width:none}}';
+  var h = '<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>'+e(title)+' — Rev '+e(std.rev||'')+'</title><style>'+css+'</style></head><body><div class="doc">';
+  h += '<div class="hd">'+(logo?'<img src="'+logo+'" alt=""/>':'')+'<div class="t"><h1>'+e(title)+'</h1><div class="s">Engineering standard generated from the FRAC Equipment Inspection App · TechnipFMC | Internal</div></div></div>';
+  h += '<div class="ctl"><div><b>Document no.</b>'+v_(docNo)+'</div><div><b>Revision</b>'+v_(std.rev)+'</div><div><b>Date</b>'+e(date(std.updatedAt))+'</div>'
+    +'<div><b>Prepared by</b>'+v_(std.preparedBy)+'</div><div><b>Approved by</b>'+v_(std.approvedBy)+'</div><div><b>Generated</b>'+e(new Date().toLocaleString('en-GB'))+'</div></div>';
+  if(opts.draft) h += '<div class="draft">DRAFT — includes changes not yet saved in Settings</div>';
+  h += '<ol class="toc">'+secs.map(function(s){ return '<li>'+e(s.t)+'</li>'; }).join('')+'</ol>';
+  secs.forEach(function(s){ h += '<h2 class="'+(s.brk?'brk':'')+'">'+s.n+'. '+e(s.t)+'</h2>'+s.body; });
+  h += '<div class="sig"><div>Prepared by: '+v_(std.preparedBy)+'</div><div>Approved by: '+v_(std.approvedBy)+'</div><div>Date: '+e(date(std.updatedAt))+'</div></div>';
+  h += '</div>'+(opts.autoPrint ? '<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>' : '')+'</body></html>';
+  return h;
+}
+
+/* ── in-app preview ───────────────────────────────────────────────────── */
+var css = '.gvd-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}'
+  +'.gvd-bar .gvs-check{margin-right:8px}'
+  +'.gvd-frame{width:100%;border:1px solid var(--border);border-radius:12px;background:#fff;min-height:600px;display:block}'
+  +'.gvd-note{font-size:11.5px;color:var(--text3);margin:-4px 0 10px;line-height:1.45}';
+var stEl = document.createElement('style'); stEl.textContent = css; document.head.appendChild(stEl);
+
+var view = document.createElement('div');
+view.id = 'view-gvdoc'; view.className = 'hidden';
+view.innerHTML = '<div class="topbar"><button class="topbar-back" onclick="gvdBack()">&larr; Back</button>'
+  +'<div class="topbar-title">Standards document</div>'
+  +'<button class="topbar-action btn-save" onclick="gvdPrint()">Print / PDF</button></div>'
+  +'<div class="settings-body" style="max-width:980px" id="gvd-body"></div>';
+var anchor = document.getElementById('view-form');
+if(anchor && anchor.parentNode) anchor.parentNode.insertBefore(view, anchor); else document.body.appendChild(view);
+
+var CUR = { std:null, draft:false, back:'settings', spares:true, ibom:false };
+function doc(autoPrint){ return build(CUR.std, { draft:CUR.draft, spares:CUR.spares, ibom:CUR.ibom, autoPrint:autoPrint }); }
+function renderView(){
+  var b = document.getElementById('gvd-body'); if(!b) return;
+  var sp = typeof tokenValid==='function' && tokenValid() && typeof spConfig!=='undefined' && spConfig.pdfFolder;
+  b.innerHTML = '<div class="gvd-bar">'
+    +'<label class="gvs-check"><input type="checkbox"'+(CUR.spares?' checked':'')+' onchange="gvdOpt(\'spares\',this.checked)"/> Spares and consumables</label>'
+    +'<label class="gvs-check"><input type="checkbox"'+(CUR.ibom?' checked':'')+' onchange="gvdOpt(\'ibom\',this.checked)"/> IBOM appendix</label>'
+    +'<span style="flex:1"></span>'
+    +(sp ? '<button class="settings-btn-save" onclick="gvdSave()">Save to SharePoint</button>' : '')
+    +'<button class="settings-btn-connect" onclick="gvdPrint()">Print / save as PDF</button></div>'
+    +'<div class="gvd-note">'+(CUR.draft ? '<b style="color:#dc2626">Draft</b> — shows the unsaved changes in the editor. ' : 'Saved standards rev '+e(CUR.std.rev||'')+'. ')
+    +'Use Print and choose "Save as PDF" to share it as a PDF.</div>'
+    +'<iframe class="gvd-frame" id="gvd-frame" title="Standards document"></iframe>';
+  var fr = document.getElementById('gvd-frame');
+  fr.onload = function(){ try{ fr.style.height = (fr.contentDocument.documentElement.scrollHeight + 20)+'px'; }catch(x){} };
+  fr.srcdoc = doc(false);
+}
+/* from: 'settings' | 'editor' | 'form' */
+window.gvdOpen = function(from){
+  var draft = from==='editor' && G._draft && G._draft();
+  CUR.std = draft ? G.fromJSON(G.clone(draft)) : G.liveStd();
+  CUR.draft = !!(draft && G.settingsDirty && G.settingsDirty());
+  CUR.back = from || 'settings';
+  showView('gvdoc');
+};
+window.gvdBack = function(){ showView(CUR.back==='editor' ? 'gvstd' : CUR.back); };
+window.gvdOpt = function(k, on){ CUR[k] = !!on; renderView(); };
+window.gvdPrint = function(){
+  var html = doc(true);
+  try{
+    var url = URL.createObjectURL(new Blob([html], { type:'text/html' }));
+    var win = window.open(url, '_blank');
+    if(!win){ var fr = document.getElementById('gvd-frame'); if(fr && fr.contentWindow){ fr.contentWindow.focus(); fr.contentWindow.print(); } }
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
+  }catch(err){ toast('⚠ Print failed: '+err.message); }
+};
+window.gvdSave = function(){
+  if(!(typeof tokenValid==='function' && tokenValid() && spConfig.pdfFolder)){ toast('⚠ Not connected to SharePoint'); return; }
+  var html = doc(true), fname = 'GV_Engineering_Standard_rev'+String(CUR.std.rev||'').replace(/[^\w.-]/g,'_')+(CUR.draft?'_DRAFT':'')+'.html';
+  var rd = new FileReader();
+  rd.onload = function(ev){ msUploadPrintFile(spConfig.pdfFolder, fname, ev.target.result, function(ok){ toast(ok ? '✅ '+fname+' saved to SharePoint' : '⚠ Saving to SharePoint failed'); }); };
+  rd.readAsArrayBuffer(new Blob([html], { type:'text/html' }));
+};
+
+var _sv = window.showView;
+window.showView = function(name){
+  var v = document.getElementById('view-gvdoc');
+  if(name==='gvdoc'){
+    _sv.call(this, 'gvdoc');            /* hides every other view */
+    if(v) v.classList.remove('hidden');
+    renderView(); window.scrollTo(0,0);
+    return;
+  }
+  if(v) v.classList.add('hidden');
+  return _sv.apply(this, arguments);
+};
+
+G.stdDoc = build;
 })();
 
 </script>
