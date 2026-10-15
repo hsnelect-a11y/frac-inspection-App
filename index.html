@@ -12636,6 +12636,7 @@ var css = ''
  +'.gvs-ibtbl tr.top td{background:var(--bg3)}'
  +'.gvs-ibtbl tr:has(.gvs-spck:checked) td{background:rgba(175,97,255,.07)}'
  +'.gvs-ibtbl .dsm{display:none}'
+ +'.gvs-spfound{font-size:11.5px;color:var(--text2);margin:-2px 0 6px}.gvs-spfound:empty{display:none}.gvs-spfound .miss{color:#dc2626;font-weight:700}'
  +'.gvs-ibd{padding:6px 2px;font-size:12px;color:var(--text);line-height:1.35;cursor:help}'
  +'@media(max-width:600px){.gvs-ibtbl{min-width:0}.gvs-ibtbl .lv,.gvs-ibtbl .ds{display:none}.gvs-ibtbl th.ck{width:62px;font-size:9px}'
  +'.gvs-ibtbl td.pn{white-space:normal}.gvs-ibtbl td.pn span{padding-left:0!important}.gvs-ibtbl .dsm{display:block;font-weight:400;font-size:10.5px;color:var(--text2);line-height:1.35;margin-top:3px}}'
@@ -12932,10 +12933,11 @@ function ibomPicker(v){
   if(!rows.length) return h + '<div class="gvs-tip" style="margin-top:4px">No IBOM imported for '+e(D.sizes[size].label)+' '+e(OS_LABEL[vos])+'. Import it to pick the consumables and based-on-condition parts from it; the lists below can still be filled in by hand.</div>'
     +'<label class="settings-btn-connect" style="cursor:pointer;display:inline-block">Import IBOM<input type="file" accept=".xls,.xlsx,.htm,.html" style="display:none" onchange="gvsIbomFile(this)"/></label>';
   h += '<div class="gvs-tip" style="margin-top:4px">'+e(ib.desc||'')+'<br>Tick <b>Consumable</b> for parts replaced at every redress, or <b>Based on condition</b> for parts the inspector checks and replaces when found damaged. Ticked parts go into the lists below with the IBOM quantity; untick to take them out. A part can be in one list only.</div>';
-  h += '<div class="gvs-spbar"><input class="field-input" id="gvs-spq" placeholder="Search part no. or description" value="'+e(SPF.q)+'" oninput="gvsSpFilter()"/>'
+  h += '<div class="gvs-spbar"><input class="field-input" id="gvs-spq" placeholder="Part numbers or words — several separated by spaces" value="'+e(SPF.q)+'" oninput="gvsSpFilter()" onpaste="gvsSpPaste(event)"/>'
     +'<select class="field-input" id="gvs-sps" onchange="gvsSpFilter()">'
     +[['all','All IBOM rows'],['on','Ticked only'],['off','Not ticked'],['main','Hide alternates and obsolete']].map(function(o){ return '<option value="'+o[0]+'"'+(SPF.show===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')
     +'</select></div>';
+  h += '<div class="gvs-spfound" id="gvs-spfound"></div>';
   h += '<div class="gvs-tip" style="margin:0 0 6px" id="gvs-spcount">'+spCounts(v)+'</div>';
   h += '<div class="gvs-scroll gvs-ibwrap"><table class="gvs-tbl gvs-ibtbl"><thead><tr><th class="ck">Consumable</th><th class="ck">Based on condition</th><th class="lv" style="width:34px">Lvl</th><th style="width:150px">Part no.</th><th class="ds">Description</th><th style="width:52px">Qty</th></tr></thead><tbody>';
   rows.forEach(function(r, i){
@@ -12943,7 +12945,7 @@ function ibomPicker(v){
     var tags = (top ? '<span class="gvs-tag top">TOP LEVEL</span>' : '')+(r.alt ? '<span class="gvs-tag alt">ALT</span>' : '')+(obs ? '<span class="gvs-tag obs">OBSOLETE</span>' : '')
       +(use ? '<span class="gvs-tag comp" title="Evaluated component — replaced when the evaluation finds it damaged">'+e(use.toUpperCase())+'</span>' : '');
     var box = function(kind){ return top ? '' : '<input type="checkbox" class="gvs-spck" data-i="'+i+'" data-k="'+kind+'"'+(inList(v[kind], r.pn)?' checked':'')+' onchange="gvsSpTick('+i+',\''+kind+'\',this.checked)" aria-label="'+(kind==='consumables'?'Consumable':'Based on condition')+' '+e(r.pn)+'"/>'; };
-    h += '<tr class="gvs-ibr'+(top?' top':'')+'" data-i="'+i+'" data-q="'+e((r.pn+' '+(r.desc||'')).toLowerCase())+'" data-alt="'+(r.alt||obs?1:0)+'">'
+    h += '<tr class="gvs-ibr'+(top?' top':'')+'" data-i="'+i+'" data-q="'+e((r.pn+' '+(r.desc||'')).toLowerCase())+'" data-pn="'+e(alnum(r.pn))+'" data-alt="'+(r.alt||obs?1:0)+'">'
       +'<td class="ck">'+box('consumables')+'</td><td class="ck">'+box('condition')+'</td>'
       +'<td class="lv">'+r.lvl+'</td><td class="pn"><span style="padding-left:'+Math.max(0,(r.lvl-1)*8)+'px">'+e(r.pn)+'</span>'+(tags?'<div class="tags">'+tags+'</div>':'')+'<div class="dsm">'+e(r.desc||'')+'</div></td>'
       +'<td class="ds">'+e(r.desc||'')+'</td><td>'+e(cleanQty(r.qty))+(r.uom && !/^EA$/i.test(r.uom) ? ' '+e(r.uom) : '')+'</td></tr>';
@@ -12977,19 +12979,53 @@ function spSync(){
   }); });
   gvsSpFilter();
 }
+/* Search: several part numbers or words separated by spaces, commas or new
+   lines (pasted from Excel works) — a row shows when it matches any of them.
+   "Quoted words" search as one phrase. A term with a digit is a part number:
+   it matches the part number column, with or without dashes and in part
+   (48-080 finds 48-080-022); only if no part number has it is the
+   description searched (M150, 22 INCH …). Words search the description. */
+function alnum(x){ return String(x||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+function spTerms(q){
+  var out = [], re = /"([^"]+)"|([^\s,;]+)/g, m;
+  while((m = re.exec(String(q||'')))) { var t = (m[1]||m[2]).trim().toLowerCase(); if(t && out.indexOf(t)===-1) out.push(t); }
+  return out;
+}
+function spPnHit(tr, t){ var a = alnum(t); return a.length >= 2 && tr.getAttribute('data-pn').indexOf(a)!==-1; }
+function spHit(tr, t, pnMode){ return pnMode ? spPnHit(tr, t) : tr.getAttribute('data-q').indexOf(t)!==-1; }
 window.gvsSpFilter = function(){
   var qi = document.getElementById('gvs-spq'), si = document.getElementById('gvs-sps'); if(!qi || !si) return;
   SPF.q = qi.value; SPF.show = si.value;
-  var words = SPF.q.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
-  Array.prototype.forEach.call(document.querySelectorAll('.gvs-ibr'), function(tr){
-    var t = tr.getAttribute('data-q'), on = !!tr.querySelector('.gvs-spck:checked'), ok = words.every(function(w){ return t.indexOf(w)!==-1; });
+  var terms = spTerms(SPF.q), found = {}, shown = 0, rows = document.querySelectorAll('.gvs-ibr'), pnMode = {};
+  terms.forEach(function(t){ pnMode[t] = /\d/.test(t) && Array.prototype.some.call(rows, function(tr){ return spPnHit(tr, t); }); });
+  Array.prototype.forEach.call(rows, function(tr){
+    var on = !!tr.querySelector('.gvs-spck:checked'), ok = !terms.length;
+    terms.forEach(function(t){ if(spHit(tr, t, pnMode[t])){ ok = true; found[t] = 1; } });
     if(SPF.show==='on') ok = ok && on;
     else if(SPF.show==='off') ok = ok && !on && !tr.classList.contains('top');
     else if(SPF.show==='main') ok = ok && tr.getAttribute('data-alt')!=='1';
     tr.style.display = ok ? '' : 'none'; if(ok) shown++;
   });
   var none = document.getElementById('gvs-spnone'); if(none) none.style.display = shown ? 'none' : '';
+  var fd = document.getElementById('gvs-spfound');
+  if(fd){
+    var miss = terms.filter(function(t){ return !found[t]; });
+    fd.innerHTML = terms.length < 2 && !miss.length ? '' :
+      '<b>'+shown+'</b> row'+(shown===1?'':'s')+' shown for '+terms.length+' search term'+(terms.length===1?'':'s')
+      +(miss.length ? ' · <span class="miss">Not in this IBOM: '+miss.map(e).join(', ')+'</span>' : '')
+      +' <button class="gvs-link" onclick="gvsSpClear()">Clear</button>';
+  }
 };
+/* a column pasted from Excel keeps its line breaks as spaces */
+window.gvsSpPaste = function(ev){
+  var t = ev.clipboardData && ev.clipboardData.getData('text'); if(!t || !/[\r\n\t]/.test(t)) return;
+  ev.preventDefault();
+  var el = ev.target, a = el.selectionStart, b = el.selectionEnd, txt = t.replace(/[\r\n\t]+/g, ' ').trim();
+  el.value = el.value.slice(0, a) + txt + ' ' + el.value.slice(b);
+  el.selectionStart = el.selectionEnd = a + txt.length + 1;
+  gvsSpFilter();
+};
+window.gvsSpClear = function(){ var qi = document.getElementById('gvs-spq'); if(qi){ qi.value = ''; gvsSpFilter(); qi.focus(); } };
 
 /* ── GV body seat pocket route by defect depth ─────────────────────────── */
 function rinp(path, ph){
