@@ -10341,9 +10341,9 @@ function today(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth
 /* End flange sizes. Thicknesses are entered by Engineering in Settings. */
 var FLANGE_BY_NOMINAL = { '3-1/16':'F3_15K', '5-1/8':'F5_15K', '7-1/16':'F7_15K' };
 function defaultFlanges(){
-  return [ { id:'F3_15K', label:'3-1/16" 15K (6BX)', nominal:'', min:'' },
-           { id:'F5_15K', label:'5-1/8" 15K (6BX)',  nominal:'', min:'' },
-           { id:'F7_15K', label:'7-1/16" 15K (6BX)', nominal:'', min:'' } ];
+  return [ { id:'F3_15K', label:'3-1/16" 15K (6BX)', min:'', max:'' },
+           { id:'F5_15K', label:'5-1/8" 15K (6BX)',  min:'', max:'' },
+           { id:'F7_15K', label:'7-1/16" 15K (6BX)', min:'', max:'' } ];
 }
 function flangeFor(std, sk){ var z = std.sizes[sk]; if(!z) return null; return (std.flanges||[]).filter(function(f){ return f.id===z.flange; })[0] || null; }
 function BONNET_HWR_TEXT(area){ return 'Damage exceeds the tolerance — hot-weld repair (HWR) the bonnet '+area+' and re-machine to drawing per the bonnet HWR SOW. Hardness check and NDE after welding.'; }
@@ -10483,6 +10483,10 @@ var STD = null;
 /* Older saved standards had fixed body/seat test pressures. */
 var OLD_TEST_NOTE = 'Default values follow the API 6A 15K rating. Engineering to confirm against TST10065665.';
 function migrate(got){
+  if(got && Array.isArray(got.flanges)) got.flanges.forEach(function(f){   /* nominal/min → min/max tolerance */
+    if(f && f.max===undefined){ f.max = f.nominal!==undefined ? f.nominal : ''; }
+    if(f) delete f.nominal;
+  });
   if(got && !got.seatRoute && got.osAllowance){   /* route limits from the older oversize allowances */
     var a30 = num(got.osAllowance.OS_030), a60 = num(got.osAllowance.OS_060);
     if(a30===null) a30 = 0.030; if(a60===null) a60 = 0.060;
@@ -10696,26 +10700,40 @@ function evalPoint(r, pt, std){
 }
 
 /* ── end flange ring groove: skim within the flange thickness tolerance ──
+   Each flange size has a Min and Max thickness (the drawing tolerance).
    Skimming the face removes the defect depth (plus any clean-up cut set by
-   Engineering). If the flange stays at or above its minimum thickness →
-   skim and re-cut the groove; otherwise → hot-weld repair (CWR if that ring
-   groove was weld repaired before). */
+   Engineering).
+   - Cut deeper than the whole tolerance band (Max − Min): no flange can be
+     skimmed clear, even one at Max → hot-weld repair, no measurement needed.
+   - Otherwise the measured thickness T decides: T − cut ≥ Min → skim and
+     re-cut the groove; T − cut < Min (or T already below Min) → hot-weld
+     repair. CWR instead of HWR if that ring groove was weld repaired before.
+   - T above Max is flagged for re-measurement. */
 function flangeCheck(r, pt, std, d){
   var F = std.flange || {}, pol = num(std.flangePolish), cu = num(std.flangeCleanup) || 0;
   if(pol===null) pol = 0.002;
   if(d <= pol + 1e-9) return { res:{ action:'POLISH', src:'depth',
     text:'Polish the ring groove with Scotch-Brite. Remove compression marks; no high points or sharp edges. Verify ring groove dimensions per API 6A. (Depth '+d+' in — within the '+pol+' in polish limit.)' } };
-  var m = (pt.meas||[])[0], T = m ? num((r.gvEval.meas||{})[m.k]) : null, Tmin = num(F.min), fl = F.label || 'this flange';
-  if(Tmin===null) return { res:{ action:'ENGINEERING', src:'flange', text:'Minimum flange thickness for '+fl+' is not set in Settings — refer to Engineering.' } };
-  if(T===null) return { pending:true, msg:'Measure the flange thickness — the app checks whether skimming the face clears the '+d+' in defect without going below the '+Tmin+' in minimum for '+fl+'.' };
-  var cut = +(d + cu).toFixed(4), after = +(T - cut).toFixed(4), f3 = function(x){ return (+x).toFixed(3); };
-  var cutTxt = f3(cut)+' in'+(cu ? ' (defect '+f3(d)+' + clean-up '+f3(cu)+')' : '');
+  var m = (pt.meas||[])[0], T = m ? num((r.gvEval.meas||{})[m.k]) : null, Tmin = num(F.min), Tmax = num(F.max!==undefined ? F.max : F.nominal), fl = F.label || 'this flange';
+  var f3 = function(x){ return (+x).toFixed(3); };
+  if(Tmin===null || Tmax===null) return { res:{ action:'ENGINEERING', src:'flange', text:(Tmin===null && Tmax===null ? 'Minimum and maximum flange thickness' : Tmin===null ? 'Minimum flange thickness' : 'Maximum flange thickness')+' for '+fl+' is not set in Settings — refer to Engineering.' } };
+  var tol = f3(Tmin)+' – '+f3(Tmax)+' in', band = +(Tmax - Tmin).toFixed(4);
+  var cut = +(d + cu).toFixed(4), cutTxt = f3(cut)+' in'+(cu ? ' (defect '+f3(d)+' + clean-up '+f3(cu)+')' : '');
+  var HW = ' — hot-weld repair (HWR) the ring groove and re-machine to drawing per the flange HWR SOW. Hardness check and NDE after welding.';
+  if(T===null){
+    if(cut > band + 1e-9) return { res:{ action:'HWR', src:'flange',
+      text:'Skimming '+cutTxt+' is more than the whole '+f3(band)+' in thickness tolerance of '+fl+' ('+tol+') — the defect cannot be skimmed out even on a flange at maximum thickness'+HW } };
+    return { pending:true, msg:'Measure the flange thickness — skimming '+cutTxt+' must keep '+fl+' within its '+tol+' thickness tolerance. Measured thickness of '+f3(Tmin+cut)+' in or more → skim; less → HWR.' };
+  }
+  var after = +(T - cut).toFixed(4), room = +(T - Tmin).toFixed(4);
+  var over = T > Tmax + 1e-9 ? ' Note: the measured thickness '+f3(T)+' in is above the '+f3(Tmax)+' in maximum — check the measurement.' : '';
   if(T < Tmin - 1e-9) return { res:{ action:'HWR', src:'flange',
-    text:'Flange thickness '+f3(T)+' in is already below the '+f3(Tmin)+' in minimum for '+fl+' — hot-weld repair (HWR) the ring groove and re-machine to drawing per the flange HWR SOW. Hardness check and NDE after welding.' } };
+    text:'Flange thickness '+f3(T)+' in is already below the '+tol+' tolerance for '+fl+HW } };
   if(after >= Tmin - 1e-9) return { res:{ action:'SKIM', src:'flange',
-    text:'Skim-machine the flange face '+cutTxt+' and re-cut the ring groove per API 6A and the drawing. Flange thickness after skim '+f3(after)+' in — within the '+f3(Tmin)+' in minimum for '+fl+'.' } };
+    text:'Skim-machine the flange face '+cutTxt+' and re-cut the ring groove per API 6A and the drawing. Flange thickness '+f3(T)+' → '+f3(after)+' in after skim — '
+      +(after > Tmax + 1e-9 ? 'above the '+tol+' tolerance for '+fl : 'within the '+tol+' tolerance for '+fl+' ('+f3(room)+' in of '+f3(band)+' in available above the minimum)')+'.'+over } };
   return { res:{ action:'HWR', src:'flange',
-    text:'Skimming '+cutTxt+' would leave '+f3(after)+' in, below the '+f3(Tmin)+' in minimum flange thickness for '+fl+' — hot-weld repair (HWR) the ring groove and re-machine to drawing per the flange HWR SOW. Hardness check and NDE after welding.' } };
+    text:'Skimming '+cutTxt+' would leave '+f3(after)+' in, below the '+tol+' flange thickness tolerance for '+fl+' (only '+f3(Math.max(0,room))+' in available above the minimum)'+HW+over } };
 }
 
 /* ── seat pocket route by defect depth ─────────────────────────────────
@@ -11562,8 +11580,10 @@ function ptInner(p, ev, std){
     if(needDepth) h+='<div><label class="field-label">Approx. depth (in)</label><input class="field-input" inputmode="decimal" placeholder="0.000" value="'+e(s.depth||'')+'" oninput="gveDepth(\''+p.id+'\',this.value)"/></div>';
     if(p.flange){
       var F=(std&&std.flange)||{}, m0=p.meas[0];
-      h+='<div class="full"><label class="field-label">'+e(m0.l)+'</label><input class="field-input" inputmode="decimal" placeholder="'+e(F.min?'min '+F.min+(F.nominal?' · nominal '+F.nominal:''):'measure')+'" value="'+e(M[m0.k]||'')
-        +'" oninput="gveMeas(\''+m0.k+'\',\''+p.id+'\',this.value)"/><div class="gve-note" style="margin-top:3px">'+(F.label?e(F.label)+(F.min?' — minimum '+e(F.min)+' in. Needed when the defect is deeper than the polish limit.':' — minimum thickness not set in Settings.'):'No flange size set for this valve in Settings.')+'</div></div>';
+      var hasMin=String(F.min||'').trim()!=='', hasMax=String(F.max||'').trim()!=='';
+      var tolTxt=hasMin&&hasMax ? 'tolerance '+F.min+' – '+F.max+' in' : hasMin ? 'min '+F.min+' in' : hasMax ? 'max '+F.max+' in' : '';
+      h+='<div class="full"><label class="field-label">'+e(m0.l)+'</label><input class="field-input" inputmode="decimal" placeholder="'+e(tolTxt||'measure')+'" value="'+e(M[m0.k]||'')
+        +'" oninput="gveMeas(\''+m0.k+'\',\''+p.id+'\',this.value)"/><div class="gve-note" style="margin-top:3px">'+(F.label?e(F.label)+(hasMin&&hasMax?' — thickness tolerance '+e(F.min)+' – '+e(F.max)+' in. Needed when the defect is deeper than the polish limit.':' — '+(hasMin?'maximum':hasMax?'minimum':'minimum and maximum')+' thickness not set in Settings.'):'No flange size set for this valve in Settings.')+'</div></div>';
     }
     h+='<div class="full"><input class="field-input" placeholder="Location / description of the finding" value="'+e(s.note||'')+'" oninput="gveNote(\''+p.id+'\',this.value)"/></div>';
     h+='<label class="gve-abn full"><input type="checkbox"'+(s.abnormal?' checked':'')+' onchange="gveAbn(\''+p.id+'\',this.checked)"/> Abnormal finding — request Engineering review</label>';
@@ -12878,21 +12898,21 @@ function routeProblems(std){
 function tabFlange(){
   var fl = D.flanges || (D.flanges = []), h = '';
   h += '<div class="card"><div class="section-title">GV body end flange ring grooves (LHS / RHS)</div>'
-    +'<div class="gvs-tip">For the side ring grooves the inspector records the defect depth and measures the flange thickness. Skimming the flange face removes the defect depth'+' plus the clean-up cut below. If the flange stays at or above its minimum thickness → skim the face and re-cut the ring groove. Otherwise → hot-weld repair (HWR), or CWR when that ring groove was weld repaired before. Depths and thicknesses in inches.</div>'
+    +'<div class="gvs-tip">For the side ring grooves the inspector records the defect depth and measures the flange thickness. Skimming the flange face removes the defect depth plus the clean-up cut below.<br>• Cut more than the whole tolerance band (Max − Min) → hot-weld repair straight away; no flange could be skimmed clear, even one at Max.<br>• Otherwise measured thickness − cut ≥ Min → skim the face and re-cut the ring groove; below Min → hot-weld repair (HWR).<br>• CWR instead of HWR when that ring groove was weld repaired before. A measured thickness above Max is flagged for re-measurement. Depths and thicknesses in inches.</div>'
     +'<div class="gvs-grid"><div><label class="field-label">Polish limit — no machining up to</label>'+rinp('flangePolish','0.002')+'</div>'
     +'<div><label class="field-label">Clean-up cut added to the defect depth</label>'+rinp('flangeCleanup','0')+'</div></div></div>';
   h += '<div class="card"><div class="section-title">Flange thickness tolerance by flange size</div>'
-    +'<div class="gvs-tip">The minimum thickness is the limit after skimming. A ring groove defect beyond the polish limit on a flange without a minimum set is referred to Engineering.</div>'
-    +'<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th>Flange size</th><th style="width:130px">Nominal thickness</th><th style="width:130px">Minimum thickness</th><th style="width:120px">Max skim from nominal</th><th style="width:40px"></th></tr></thead><tbody>';
+    +'<div class="gvs-tip">Minimum and maximum flange thickness from the drawing. The minimum is the limit after skimming; the tolerance band (Max − Min) is the most that can ever be skimmed off. A ring groove defect beyond the polish limit on a flange without both values set is referred to Engineering.</div>'
+    +'<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th>Flange size</th><th style="width:130px">Minimum thickness</th><th style="width:130px">Maximum thickness</th><th style="width:120px">Tolerance band</th><th style="width:40px"></th></tr></thead><tbody>';
   fl.forEach(function(f, i){
-    var nm = num(f.nominal), mn = num(f.min), room = (nm!==null && mn!==null) ? (nm-mn).toFixed(3)+'"' : '—';
-    h += '<tr><td>'+inp('flanges|'+i+'|label','e.g. 3-1/16" 15K (6BX)')+'</td><td>'+inp('flanges|'+i+'|nominal','0.000','num')+'</td><td>'+inp('flanges|'+i+'|min','0.000','num')+'</td>'
+    var mx = num(f.max), mn = num(f.min), room = (mx!==null && mn!==null) ? (mx-mn).toFixed(3)+'"' : '—';
+    h += '<tr><td>'+inp('flanges|'+i+'|label','e.g. 3-1/16" 15K (6BX)')+'</td><td>'+inp('flanges|'+i+'|min','0.000','num')+'</td><td>'+inp('flanges|'+i+'|max','0.000','num')+'</td>'
       +'<td class="k" style="padding-top:10px" id="gvs-fl-room-'+i+'">'+room+'</td><td><button class="gvs-del" onclick="gvsFlangeDel('+i+')">&times;</button></td></tr>';
   });
   if(!fl.length) h += '<tr><td colspan="5" style="color:var(--text3)">No flange sizes.</td></tr>';
   h += '</tbody></table></div><button class="gvs-add" onclick="gvsFlangeAdd()">+ Add flange size</button>';
-  var missing = fl.filter(function(f){ return num(f.min)===null; }).map(function(f){ return f.label||'(unnamed)'; });
-  if(missing.length) h += '<div class="gvs-warn">Minimum thickness not set: '+missing.map(e).join(', ')+'. Side ring groove defects beyond the polish limit on these flanges go to Engineering.</div>';
+  var missing = fl.filter(function(f){ return num(f.min)===null || num(f.max)===null; }).map(function(f){ return (f.label||'(unnamed)')+(num(f.min)===null && num(f.max)===null ? '' : num(f.min)===null ? ' (min)' : ' (max)'); });
+  if(missing.length) h += '<div class="gvs-warn">Thickness tolerance not complete: '+missing.map(e).join(', ')+'. Side ring groove defects beyond the polish limit on these flanges go to Engineering until both Min and Max are set.</div>';
   h += '</div>';
   h += '<div class="card"><div class="section-title">End flange of each valve</div><div class="gvs-scroll"><table class="gvs-tbl"><tbody>'
     + G.keys(D).map(function(k){ var v = D.sizes[k];
@@ -12907,7 +12927,7 @@ function tabFlange(){
     +'<div class="gvs-test-out" id="gvs-f-out"></div></div>';
   return h;
 }
-window.gvsFlangeAdd = function(){ (D.flanges = D.flanges||[]).push({ id:'F'+Date.now().toString(36), label:'', nominal:'', min:'' }); mark(); gvsRender(); };
+window.gvsFlangeAdd = function(){ (D.flanges = D.flanges||[]).push({ id:'F'+Date.now().toString(36), label:'', min:'', max:'' }); mark(); gvsRender(); };
 window.gvsFlangeDel = function(i){
   var f = D.flanges[i]; if(!f) return;
   var users = G.keys(D).filter(function(k){ return D.sizes[k].flange===f.id; });
@@ -12916,7 +12936,7 @@ window.gvsFlangeDel = function(i){
   D.flanges.splice(i,1); mark(); gvsRender();
 };
 window.gvsFlangeTry = function(){
-  (D.flanges||[]).forEach(function(f, i){ var el = document.getElementById('gvs-fl-room-'+i); if(el){ var nm = num(f.nominal), mn = num(f.min); el.textContent = (nm!==null && mn!==null) ? (nm-mn).toFixed(3)+'"' : '—'; } });
+  (D.flanges||[]).forEach(function(f, i){ var el = document.getElementById('gvs-fl-room-'+i); if(el){ var nm = num(f.max), mn = num(f.min); el.textContent = (nm!==null && mn!==null) ? (nm-mn).toFixed(3)+'"' : '—'; } });
   var out = document.getElementById('gvs-f-out'); if(!out) return;
   var F = (D.flanges||[])[+(document.getElementById('gvs-f-f')||{}).value], d = num((document.getElementById('gvs-f-d')||{}).value), T = (document.getElementById('gvs-f-t')||{}).value;
   if(!F || d===null){ out.innerHTML = '<div class="gvs-tip" style="margin:0">Enter a defect depth (and the measured thickness) to see the disposition.</div>'; return; }
@@ -12930,9 +12950,9 @@ window.gvsFlangeTry = function(){
 function flangeProblems(std){
   var out = [];
   (std.flanges||[]).forEach(function(f){
-    var nm = num(f.nominal), mn = num(f.min), lb = f.label || '(unnamed flange)';
+    var nm = num(f.max), mn = num(f.min), lb = f.label || '(unnamed flange)';
     if(!String(f.label||'').trim()) out.push('Flange ring grooves: every flange size needs a name');
-    if(nm!==null && mn!==null && mn >= nm) out.push('Flange ring grooves: '+lb+' minimum thickness must be less than its nominal thickness');
+    if(nm!==null && mn!==null && mn >= nm) out.push('Flange ring grooves: '+lb+' minimum thickness must be less than its maximum thickness');
     if(mn!==null && mn<=0) out.push('Flange ring grooves: '+lb+' minimum thickness must be more than zero');
   });
   return out;
@@ -13629,10 +13649,16 @@ function build(std, opts){
   sec('End flange ring grooves (LHS / RHS)',
     '<p>For the side ring grooves the inspector records the defect depth and measures the flange thickness. Defects up to '+f3(std.flangePolish)+' are polished. '
     +'Otherwise skimming the face removes the defect depth'+(num(std.flangeCleanup) ? ' plus a clean-up cut of '+f3(std.flangeCleanup) : '')+'. '
-    +'If the flange stays at or above its minimum thickness → skim the face and re-cut the ring groove to API 6A and the drawing. If not, or if the flange is already below the minimum → hot-weld repair (HWR), or CWR when that ring groove was weld repaired before. A flange without a minimum set is referred to Engineering.</p>'
-    + tbl(['Flange size','Nominal thickness','Minimum thickness','Max skim from nominal','Valves'], fl.map(function(f){
-        var nm = num(f.nominal), mn = num(f.min);
-        return [e(f.label||f.id), f3(f.nominal), mn===null ? '<span class="warn">Not set</span>' : f3(f.min), (nm!==null && mn!==null) ? (nm-mn).toFixed(3)+'"' : '—',
+    +'Each flange size has a minimum and maximum thickness (the drawing tolerance); the tolerance band (Max − Min) is the most that can ever be skimmed off.</p>'
+    +'<ul><li>Cut deeper than the tolerance band → hot-weld repair (HWR) without measuring; the defect cannot be skimmed out even on a flange at maximum thickness.</li>'
+    +'<li>Otherwise the flange thickness is measured. Measured thickness − cut ≥ Min → skim the face and re-cut the ring groove to API 6A and the drawing.</li>'
+    +'<li>Measured thickness − cut below Min, or flange already below Min → hot-weld repair (HWR).</li>'
+    +'<li>CWR instead of HWR when that ring groove was weld repaired before.</li>'
+    +'<li>A measured thickness above Max is flagged on the report for re-measurement.</li>'
+    +'<li>A flange size without both Min and Max set is referred to Engineering.</li></ul>'
+    + tbl(['Flange size','Minimum thickness','Maximum thickness','Tolerance band (max skim)','Valves'], fl.map(function(f){
+        var mx = num(f.max!==undefined ? f.max : f.nominal), mn = num(f.min), ns = '<span class="warn">Not set</span>';
+        return [e(f.label||f.id), mn===null ? ns : f3(mn), mx===null ? ns : f3(mx), (mx!==null && mn!==null) ? (mx-mn).toFixed(3)+'"' : '—',
                 e(keys.filter(function(k){ return std.sizes[k].flange===f.id; }).map(function(k){ return std.sizes[k].label; }).join(', '))];
       })));
 
