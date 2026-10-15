@@ -10519,11 +10519,51 @@ function normalise(std){
     var z = std.sizes[k];
     if(typeof z.balanced!=='boolean') z.balanced = deriveBalanced(z);
     if(!hadFlange || z.flange===null) z.flange = FLANGE_BY_NOMINAL[z.nominal||''] || '';
+    OS_KEYS.forEach(function(os){ if(z.variants && z.variants[os]) syncSpareDesc(z.variants[os]); });
   });
   var order = (std.valveOrder||[]).filter(function(k, i, a){ return std.sizes[k] && a.indexOf(k)===i; });
   Object.keys(std.sizes).forEach(function(k){ if(order.indexOf(k)===-1) order.push(k); });
   std.valveOrder = order;
   return std;
+}
+/* Spares list descriptions come from the IBOM, shortened to what tells the
+   part apart: the part name (with a short qualifier such as WIPER or FMC BX
+   ASSY), its main dimensions, the O-ring dash number and the oversize it is
+   for. Metric duplicates "(5.33) IN(MM)" and model / size / material codes
+   are dropped. E.g. "O-RING, .210 CS X 4.475 ID, DASH # 349",
+   "BELLEVILLE SPRING, 5.325 OD X 4.675 ID X 0.058 THK". */
+var SD_CODE = /^(M\d{3}\b.*|\d[\d\s\/-]*-?\d+K\b.*|ALLOY|PSL\b.*|K-[A-Z]+|[A-Z]{2}-[A-Z]{2}|EE|FF|HH|STD SVC|NON-?EXP|PTFE|\d*\s?SS|UNCOATED|SURFACE|MANUAL.*|ACTUATED|API\b.*|GR\s?\d+\w*|PLAIN|MOLDED|AS568|BE-?CU|BECU|GSP|MONOGRAM\w*)$/i;
+var SD_DIM  = /\b(ID|OD|CS|LG|DIA|THK|WIDE|HT)\b|\d-\d+\s?UN/i;
+function shortDesc(d){
+  var s = String(d||'').replace(/\s+/g,' ').trim(), obs = '';
+  var m = s.match(/^OBSOLETE\b.*?PHASE OUT\s*,\s*/i); if(m){ obs = 'OBSOLETE – '; s = s.slice(m[0].length); }
+  var full = s;
+  s = s.replace(/\s*\(\s*[\d.]+\s*\)/g, '').replace(/\s*IN\s*\(\s*MM\s*\)/gi, '').replace(/\s+IN\s+(LG|DIA)\b/gi, ' $1').replace(/^GV\s*,\s*/i, 'GV ');
+  var seg = s.split(/\s*,\s*/).filter(Boolean), name = seg[0] || '', i = 1;
+  var isDim = function(x){ return /\d/.test(x) && SD_DIM.test(x); };
+  while(i < seg.length && name.length < 20 && !isDim(seg[i]) && !SD_CODE.test(seg[i]) && seg[i].length <= 34 && (name+', '+seg[i]).length <= 45){ name += ', '+seg[i]; i++; }
+  var out = name, dim = seg.filter(function(x, j){ return j >= i && isDim(x); })[0];
+  if(dim){
+    var p = dim.split(/\s+X\s+/);
+    while(p.length > 2 && (out+', '+p.join(' X ')).length > 60) p.pop();
+    if((out+', '+p.join(' X ')).length <= 60) out += ', '+p.join(' X ');
+  }
+  var dash = full.match(/DASH\s*#\s*(\d+)/i); if(dash) out += ', DASH # '+dash[1];
+  var os = full.match(/F\/\s*(\.0\d)\s*OVERSIZED/i); if(os) out += ', F/ '+os[1]+' OVERSIZED SEAT';
+  return obs + out;
+}
+function ibomDescMap(v){
+  var m = {};
+  ((v && v.ibom && v.ibom.rows) || []).forEach(function(r){ var k = String(r.pn||'').trim().toUpperCase(); if(k && !m[k]) m[k] = r.desc || ''; });
+  return m;
+}
+/* parts in the spares lists that are in the IBOM take the IBOM description */
+function syncSpareDesc(v){
+  var m = ibomDescMap(v);
+  ['consumables','condition'].forEach(function(kind){ (v && v[kind] || []).forEach(function(it){
+    var d = m[String(it.pn||'').trim().toUpperCase()]; if(d) it.description = shortDesc(d);
+  }); });
+  return v;
 }
 /* Balanced-stem valve? Known from its part numbers or IBOMs: a balance stem
    or balance stem bonnet anywhere → balanced; IBOMs imported without either
@@ -10962,6 +11002,8 @@ function nameplateDisp(r, a, std){
   return { change:true, fromPN:fromPN, toPN:toPN, fromBody:fb, toBody:tb, sow:sowName, text:text, blank:a.toVar.plateBlankPN || a.fromVar.plateBlankPN || '' };
 }
 
+/* bonnet studs and their nuts (not packing nuts, lift nuts or other nuts) */
+function isStudPart(d){ return /\bSTUDS?\b|\bHEX NUT|\bHEAVY HEX\b/i.test(String(d||'')); }
 /* Parts to replace for the valve configuration that leaves the shop. */
 function partsList(r, a){
   var g = r.gvEval, to = a.toVar || {}, rows = [], osChange = a.route.type!=='none';
@@ -10984,7 +11026,7 @@ function partsList(r, a){
   var studsRep = a.points.some(function(ev){ return ev.comp.id==='studs' && ev.res && ev.res.action==='REPLACE'; });
   (to.condition||[]).forEach(function(cp){
     var key = cp.pn || cp.description;
-    var auto = studsRep && /stud|nut/i.test(cp.description||'');
+    var auto = studsRep && isStudPart(cp.description);
     if((g.small||{})[key]==='replace' || auto)
       add(cp.pn, cp.description, cp.qty, auto ? 'Studs / nuts damaged' : 'Found damaged — based on condition', 'condition');
   });
@@ -11047,6 +11089,7 @@ var SOW_LABEL = { NORMAL:'Normal → OS .030"', OS_030:'OS .030" → OS .060"', 
 window.GVEval = {
   fromJSON:fromJSON, factoryStd:factoryStd, embeddedRev:function(){ var e = embedded(); return e ? e.rev : ''; },
   valveHistory:valveHistory, hwrEvidence:hwrEvidence, bareSN:bareSN, compHistory:compHistory, ptHistory:ptHistory,
+  isStudPart:isStudPart, shortDesc:shortDesc, syncSpareDesc:syncSpareDesc, ibomDescMap:ibomDescMap,
   flangeFor:flangeFor, defaultFlanges:defaultFlanges, flangeCheck:flangeCheck, FLANGE_BY_NOMINAL:FLANGE_BY_NOMINAL,
   componentsFor:componentsFor, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
   keys:valveKeys, newValveId:newValveId, blankValve:blankValve, defaultTesting:defaultTesting, valvesByNominal:valvesByNominal,
@@ -11668,7 +11711,7 @@ function summaryHTML(a){
     var studsRep=a.points.some(function(ev){ return ev.comp.id==='studs' && ev.res && ev.res.action==='REPLACE'; });
     h+='<div class="spare-sub-h" style="margin-top:14px">Based-on-condition parts <span class="sub-hint">— mark any found damaged</span></div>';
     cond.forEach(function(cp){
-      var key=cp.pn||cp.description, on=(s.small||{})[key]==='replace', auto=studsRep&&/stud|nut/i.test(cp.description||'');
+      var key=cp.pn||cp.description, on=(s.small||{})[key]==='replace', auto=studsRep&&G.isStudPart(cp.description);
       h+='<div class="gve-small"><span class="d">'+e(cp.description)+' <span class="p">'+e(cp.pn)+' &times;'+e(cp.qty)+'</span></span>'
         +(auto ? '<span class="gve-chip major">AUTO — STUDS</span>' :
           '<button class="gve-btn'+(!on?' on-ok':'')+'" onclick="gveSmall(\''+e(key).replace(/'/g,"\\'")+'\',\'\')">Good</button>'
@@ -12593,6 +12636,7 @@ var css = ''
  +'.gvs-ibtbl tr.top td{background:var(--bg3)}'
  +'.gvs-ibtbl tr:has(.gvs-spck:checked) td{background:rgba(175,97,255,.07)}'
  +'.gvs-ibtbl .dsm{display:none}'
+ +'.gvs-ibd{padding:6px 2px;font-size:12px;color:var(--text);line-height:1.35;cursor:help}'
  +'@media(max-width:600px){.gvs-ibtbl{min-width:0}.gvs-ibtbl .lv,.gvs-ibtbl .ds{display:none}.gvs-ibtbl th.ck{width:62px;font-size:9px}'
  +'.gvs-ibtbl td.pn{white-space:normal}.gvs-ibtbl td.pn span{padding-left:0!important}.gvs-ibtbl .dsm{display:block;font-weight:400;font-size:10.5px;color:var(--text2);line-height:1.35;margin-top:3px}}'
  +'.gvs-tag.alt{background:rgba(59,130,246,.14);color:#2563eb}.gvs-tag.obs{background:rgba(220,38,38,.12);color:#dc2626}'
@@ -12782,13 +12826,19 @@ function listTable(path, title, tip, ib){
   h += '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:26%">Part no.</th><th>Description</th><th style="width:70px">Qty</th>'+(ib?'<th style="width:78px">Source</th>':'')+'<th style="width:40px"></th></tr></thead><tbody>';
   list.forEach(function(it, i){
     var p = path+'|'+i+'|';
-    h += '<tr><td>'+inp(p+'pn','PN')+'</td><td>'+inp(p+'description','Description')+'</td><td>'+inp(p+'qty','1')+'</td>'
+    h += '<tr><td>'+inp(p+'pn','PN')+'</td><td id="gvs-dsc-'+kind+'-'+i+'">'+descCell(path, i, it, ib)+'</td><td>'+inp(p+'qty','1')+'</td>'
       +(ib?'<td style="padding-top:10px" id="gvs-src-'+kind+'-'+i+'">'+srcTag(ib, it.pn)+'</td>':'')
       +'<td><button class="gvs-del" title="Remove" onclick="gvsDel(\''+q(path)+'\','+i+')">&times;</button></td></tr>';
   });
   if(!list.length) h += '<tr><td colspan="'+(ib?5:4)+'" style="color:var(--text3)">None listed.</td></tr>';
   h += '</tbody></table></div><button class="gvs-add" onclick="gvsAdd(\''+q(path)+'\')">+ Add part</button>';
   return h;
+}
+/* a part found in the IBOM takes the shortened IBOM description; extra parts are typed in */
+function descCell(path, i, it, ib){
+  var k = pnKey(it.pn);
+  if(ib && k && ib[k]!==undefined) return '<div class="gvs-ibd" title="'+e(ib[k])+'">'+e(it.description||'')+'</div>';
+  return inp(path+'|'+i+'|description','Description');
 }
 var SLOTS = ['NORMAL','OS_030','OS_060','CWR','RG_HWR','RG_CWR','BON_HWR','BON_CWR','BSB_HWR','BSB_CWR'];
 var SLOT_FIELD = { CWR:'cwrSow', RG_HWR:'rgHwrSow', RG_CWR:'rgCwrSow', BON_HWR:'bonHwrSow', BON_CWR:'bonCwrSow', BSB_HWR:'bsbHwrSow', BSB_CWR:'bsbCwrSow' };
@@ -12838,7 +12888,6 @@ function tabSow(){
 }
 function tabSpares(){
   var base = 'sizes|'+size+'|variants|'+vos+'|', v = D.sizes[size].variants[vos], h = '';
-  var ib = ibRows(v).length ? ibSet(v) : null;
   h += '<div class="card"><div class="section-title">Spares and consumables</div>';
   h += '<div class="gvs-tip">Lists for each valve and configuration. The report uses the lists of the configuration leaving the shop — after machining to oversize or hot-weld repair, that is the new configuration.</div>';
   h += sizePills() + osPills();
@@ -12852,24 +12901,19 @@ function spListsHTML(){
   var base = 'sizes|'+size+'|variants|'+vos+'|', v = D.sizes[size].variants[vos], ib = ibRows(v).length ? ibSet(v) : null;
   return listTable(base+'consumables', 'Consumables — always replaced', ib ? 'Ticked in the IBOM above, plus any extra parts added here.' : '', ib)
     + listTable(base+'condition', 'Based-on-condition parts — replaced when found damaged',
-       'The inspector marks each one Good or Replace. Rows with "stud" or "nut" in the description are replaced automatically when Studs / Nuts are found damaged.', ib)
-    + '<div class="gvs-tip" style="margin-top:10px">Use <b>+ Add part</b> for parts that are not in the IBOM'+(ib ? ' (they show as Extra)' : '')+'.</div>';
+       'The inspector marks each one Good or Replace. Studs (and hex nuts) are replaced automatically when Studs / Nuts are found damaged.', ib)
+    + '<div class="gvs-tip" style="margin-top:10px">'+(ib ? 'Parts in the IBOM take the IBOM description, shortened (hover for the full text) — re-import the IBOM to update them. ' : '')+'Use <b>+ Add part</b> for parts that are not in the IBOM'+(ib ? ' (they show as Extra and are described here)' : '')+'.</div>';
 }
 /* ── IBOM picker: tick IBOM parts as consumable or based on condition ── */
 var SPF = { q:'', show:'all' };
 function pnKey(x){ return String(x||'').trim().toUpperCase(); }
 function ibRows(v){ return (v && v.ibom && v.ibom.rows) || []; }
-function ibSet(v){ var o = {}; ibRows(v).forEach(function(r){ o[pnKey(r.pn)] = 1; }); return o; }
+function ibSet(v){ return G.ibomDescMap(v); }   /* PN → full IBOM description */
 function srcTag(ib, pn){
   if(!String(pn||'').trim()) return '';
-  return ib[pnKey(pn)] ? '<span class="gvs-tag sp">IBOM</span>' : '<span class="gvs-tag loc" title="Not in the IBOM of this configuration">EXTRA</span>';
+  return ib[pnKey(pn)]!==undefined ? '<span class="gvs-tag sp">IBOM</span>' : '<span class="gvs-tag loc" title="Not in the IBOM of this configuration">EXTRA</span>';
 }
 function inList(list, pn){ var k = pnKey(pn); return !!k && (list||[]).some(function(x){ return pnKey(x.pn)===k; }); }
-function shortDesc(d){
-  var parts = String(d||'').replace(/\s+/g,' ').trim().split(/\s*,\s*/), out = parts[0] || '';
-  if(out.length < 15 && parts[1]) out += ', '+parts[1];
-  return out.length > 70 ? out.slice(0,70).replace(/\s+\S*$/,'')+'…' : out;
-}
 function cleanQty(x){ var n = parseFloat(x); return isNaN(n) ? (String(x||'').trim() || '1') : String(+n.toFixed(3)); }
 function compUse(v, pn){
   var k = pnKey(pn), hit = '';
@@ -12877,9 +12921,9 @@ function compUse(v, pn){
   return hit;
 }
 function spCounts(v){
-  var ib = ibSet(v), c = (v.consumables||[]).filter(function(x){ return ib[pnKey(x.pn)]; }).length,
-      k = (v.condition||[]).filter(function(x){ return ib[pnKey(x.pn)]; }).length,
-      x = (v.consumables||[]).concat(v.condition||[]).filter(function(y){ return String(y.pn||'').trim() && !ib[pnKey(y.pn)]; }).length;
+  var ib = ibSet(v), has = function(x){ return ib[pnKey(x.pn)]!==undefined; },
+      c = (v.consumables||[]).filter(has).length, k = (v.condition||[]).filter(has).length,
+      x = (v.consumables||[]).concat(v.condition||[]).filter(function(y){ return String(y.pn||'').trim() && !has(y); }).length;
   return '<b>'+c+'</b> consumable'+(c===1?'':'s')+' and <b>'+k+'</b> based-on-condition part'+(k===1?'':'s')+' ticked'
     +(x ? ' · <b>'+x+'</b> extra part'+(x===1?'':'s')+' not in this IBOM' : '');
 }
@@ -12913,7 +12957,7 @@ window.gvsSpTick = function(i, kind, on){
   v[kind] = v[kind] || []; v[other] = v[other] || [];
   if(on){
     v[other] = v[other].filter(function(x){ if(pnKey(x.pn)===k){ moved = moved || x; return false; } return true; });
-    if(!inList(v[kind], r.pn)) v[kind].push(moved ? { pn:moved.pn, description:moved.description, qty:moved.qty } : { pn:r.pn, description:shortDesc(r.desc), qty:cleanQty(r.qty) });
+    if(!inList(v[kind], r.pn)) v[kind].push({ pn:r.pn, description:G.shortDesc(r.desc), qty:moved ? moved.qty : cleanQty(r.qty) });
   } else v[kind] = v[kind].filter(function(x){ return pnKey(x.pn)!==k; });
   mark();
   var box = document.getElementById('gvs-splists');
@@ -12922,10 +12966,15 @@ window.gvsSpTick = function(i, kind, on){
 /* keep ticks, counts and source tags in step when a PN is typed in the lists */
 function spSync(){
   var v = D && D.sizes[size] && D.sizes[size].variants[vos]; if(!v || !document.getElementById('gvs-spcount')) return;
-  var rows = ibRows(v), ib = ibSet(v);
+  var rows = ibRows(v), ib = ibSet(v), base = 'sizes|'+size+'|variants|'+vos+'|';
+  G.syncSpareDesc(v);
   Array.prototype.forEach.call(document.querySelectorAll('.gvs-spck'), function(c){ var r = rows[+c.getAttribute('data-i')]; if(r) c.checked = inList(v[c.getAttribute('data-k')], r.pn); });
   document.getElementById('gvs-spcount').innerHTML = spCounts(v);
-  ['consumables','condition'].forEach(function(kind){ (v[kind]||[]).forEach(function(it, i){ var el = document.getElementById('gvs-src-'+kind+'-'+i); if(el) el.innerHTML = srcTag(ib, it.pn); }); });
+  ['consumables','condition'].forEach(function(kind){ (v[kind]||[]).forEach(function(it, i){
+    var el = document.getElementById('gvs-src-'+kind+'-'+i); if(el) el.innerHTML = srcTag(ib, it.pn);
+    var dc = document.getElementById('gvs-dsc-'+kind+'-'+i), html = descCell(base+kind, i, it, ib);
+    if(dc && !(/^<input/.test(html) && dc.querySelector('input'))) dc.innerHTML = html;   /* leave a description being typed alone */
+  }); });
   gvsSpFilter();
 }
 window.gvsSpFilter = function(){
@@ -13246,7 +13295,7 @@ window.gvsForce = function(t, on){
 window.gvsCatalog = function(){
   var def = G.blankValve('', D.sizes[size].nominal).variants[vos];
   if(!confirm('Replace the consumables and based-on-condition lists for '+(D.sizes[size].label)+' '+OS_LABEL[vos]+' with the spare parts catalog lists?')) return;
-  var v = D.sizes[size].variants[vos]; v.consumables = def.consumables; v.condition = def.condition; mark(); gvsRender();
+  var v = D.sizes[size].variants[vos]; v.consumables = def.consumables; v.condition = def.condition; G.syncSpareDesc(v); mark(); gvsRender();
 };
 window.gvsCopyTesting = function(){
   if(!confirm('Copy the '+D.sizes[size].label+' testing requirements to every other valve?')) return;
@@ -13472,6 +13521,7 @@ window.gvsIbomApply = function(){
     if(v.pns.map(function(x){ return String(x).toUpperCase(); }).indexOf(IB.ib.pn.toUpperCase())===-1) v.pns.unshift(IB.ib.pn);
   }
   v.ibom = { pn:IB.ib.pn, rev:IB.ib.rev, desc:IB.ib.desc, file:IB.file, importedAt:new Date().toISOString(), rows:IB.ib.rows };
+  G.syncSpareDesc(v);
   D.sizes[sk].balanced = !!(IB.map.bstemPN || IB.map.bsbPN || String(v.bstemPN||'').trim() || String(v.bsbPN||'').trim());
   size = sk; vos = os; tab = 'valves';
   gvsModalClose(); mark(); render();
@@ -13815,7 +13865,7 @@ function build(std, opts){
           + '<div><div class="cap">Based on condition — replaced when found damaged</div>'+tbl(['Part no.','Description','Qty'], (v.condition||[]).map(function(c){ return [e(c.pn), e(c.description), e(c.qty)]; }), 'sp')+'</div></div>';
       });
     });
-    sec('Spares and consumables', '<p>The report uses the lists of the configuration leaving the shop. Studs and nuts in the based-on-condition list are replaced automatically when Studs / Nuts are found damaged.</p>'+sp, true);
+    sec('Spares and consumables', '<p>The report uses the lists of the configuration leaving the shop. Studs (with their hex nuts) in the based-on-condition list are replaced automatically when Studs / Nuts are found damaged. Descriptions of parts in the IBOM are the IBOM descriptions, shortened.</p>'+sp, true);
   }
 
   /* 12 SOW register */
