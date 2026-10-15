@@ -10233,6 +10233,8 @@ var ACTIONS = {
   REPLACE:     { label:'Replace component',          sev:3, tone:'major' },
   WELD:        { label:'Weld repair',                sev:4, tone:'major' },
   MACHINE_OS:  { label:'Oversize machining / HWR',   sev:4, tone:'major' },
+  HWR:         { label:'Hot-weld repair (HWR)',      sev:4, tone:'major' },
+  CWR:         { label:'Weld repair to CWR SOW',     sev:4, tone:'major', auto:true },   /* HWR on a part hot-weld repaired before */
   ENGINEERING: { label:'Refer to Engineering',       sev:5, tone:'eng'   }
 };
 var ACTION_KEYS = Object.keys(ACTIONS);
@@ -10248,9 +10250,11 @@ var RECEIVED = [ ['hal','HAL Tree'], ['neser','NESER Tree'], ['stuck','Pre-Inter
 /* Criteria groups — each critical area belongs to one. */
 var GROUP_LABELS = {
   seatPocket:  'Seat pocket (ID and face)',
-  ringGroove:  'Ring grooves (body and bonnets)',
-  backSeat:    'Back seat / back seat angle',
-  packingBore: 'UV packing area',
+  ringGroove:  'GV body ring grooves (top and bottom)',
+  backSeat:    'GV body back seat angle',
+  bonnetRG:    'Bonnet ring grooves (main and balance stem bonnet)',
+  bonnetBackSeat: 'Main bonnet back seat',
+  packingBore: 'Bonnet UV packing area (main and balance stem bonnet)',
   testPort:    'Test port thread and face',
   gate:        'Gate hard face and bore edges',
   seat:        'Seat hard face, back face and bore edges',
@@ -10264,21 +10268,23 @@ var COMPONENTS = [
       meas:[ {k:'pocketId', l:'Seat pocket ID (in)', min:'pocketIdMin', max:'pocketIdMax'},
              {k:'pocketF2F', l:'Face to face (in)',  min:'f2fMin',      max:'f2fMax'} ] },
     { id:'body_rg_top', label:'Top Ring Groove',    group:'ringGroove' },
-    { id:'body_rg_lhs', label:'LHS Ring Groove',    group:'ringGroove' },
-    { id:'body_rg_rhs', label:'RHS Ring Groove',    group:'ringGroove' },
+    { id:'body_rg_lhs', label:'LHS Ring Groove',    group:'ringGroove', flange:true, hint:'End flange — measure the flange thickness when damaged',
+      meas:[ {k:'flangeThkL', l:'LHS flange thickness (in)', flange:true} ] },
+    { id:'body_rg_rhs', label:'RHS Ring Groove',    group:'ringGroove', flange:true, hint:'End flange — measure the flange thickness when damaged',
+      meas:[ {k:'flangeThkR', l:'RHS flange thickness (in)', flange:true} ] },
     { id:'body_rg_btm', label:'Bottom Ring Groove', group:'ringGroove' },
     { id:'body_backseat', label:'Back Seat Angle',  group:'backSeat' },
     { id:'body_nc', label:'Non-sealing and non-critical areas', hint:'Gate slot, ID, main bore, bottom face', mode:'nc' }
   ]},
   { id:'bonnet', n:'2', title:'Main Bonnet', snpn:true, replaceKey:'bonnetPN', points:[
-    { id:'bon_rg',       label:'Ring Groove',               group:'ringGroove' },
-    { id:'bon_backseat', label:'Back Seat',                 group:'backSeat' },
+    { id:'bon_rg',       label:'Ring Groove',               group:'bonnetRG' },
+    { id:'bon_backseat', label:'Back Seat',                 group:'bonnetBackSeat' },
     { id:'bon_uv',       label:'UV Packing Area',           group:'packingBore' },
     { id:'bon_port',     label:'Test Port Thread and Face', group:'testPort' },
     { id:'bon_nc',       label:'Non-sealing and non-critical areas', hint:'IDs, bottom face', mode:'nc' }
   ]},
   { id:'bsb', n:'3', title:'Balance Stem Bonnet', snpn:true, replaceKey:'bsbPN', balance:true, points:[
-    { id:'bsb_rg',   label:'Ring Groove',               group:'ringGroove' },
+    { id:'bsb_rg',   label:'Ring Groove',               group:'bonnetRG' },
     { id:'bsb_uv',   label:'UV Packing Area',           group:'packingBore' },
     { id:'bsb_port', label:'Test Port Thread and Face', group:'testPort' },
     { id:'bsb_nc',   label:'Non-sealing and non-critical areas', hint:'IDs, bottom face', mode:'nc' }
@@ -10332,6 +10338,16 @@ function e(s){ return (typeof esc==='function') ? esc(s) : String(s==null?'':s);
 function today(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
 /* ── default standards ────────────────────────────────────────────────── */
+/* End flange sizes. Thicknesses are entered by Engineering in Settings. */
+var FLANGE_BY_NOMINAL = { '3-1/16':'F3_15K', '5-1/8':'F5_15K', '7-1/16':'F7_15K' };
+function defaultFlanges(){
+  return [ { id:'F3_15K', label:'3-1/16" 15K (6BX)', nominal:'', min:'' },
+           { id:'F5_15K', label:'5-1/8" 15K (6BX)',  nominal:'', min:'' },
+           { id:'F7_15K', label:'7-1/16" 15K (6BX)', nominal:'', min:'' } ];
+}
+function flangeFor(std, sk){ var z = std.sizes[sk]; if(!z) return null; return (std.flanges||[]).filter(function(f){ return f.id===z.flange; })[0] || null; }
+function BONNET_HWR_TEXT(area){ return 'Damage exceeds the tolerance — hot-weld repair (HWR) the bonnet '+area+' and re-machine to drawing per the bonnet HWR SOW. Hardness check and NDE after welding.'; }
+var OLD_UV_TEXT = 'Defect in the UV packing area exceeds the polish limit — replace the bonnet.';
 /* A valve in the standards ("valve family"): its own name, nominal size,
    photo and three configurations, each with part numbers, IBOM, component
    PNs, spares, SOW and dimensions. The three standard valves keep their old
@@ -10357,7 +10373,10 @@ function blankValve(label, nominal, image){
   var ck = catalogKeyFor(nominal||''), v = {};
   OS_KEYS.forEach(function(os){ v[os] = blankVariant(ck, os); });
   return { label:label||'', nominal:nominal||'', image:image===undefined ? ck : image, variants:v,
-           cwrSow:null, cwrNewPN:'' };   /* CWR SOW: used instead of HWR when the valve was hot-weld repaired before */
+           cwrSow:null, cwrNewPN:'',    /* CWR SOW: used instead of HWR when the valve was hot-weld repaired before */
+           bonHwrSow:null, bonCwrSow:null, bsbHwrSow:null, bsbCwrSow:null,   /* bonnet body weld repair SOWs */
+           rgHwrSow:null, rgCwrSow:null,                                     /* end flange ring groove weld repair SOWs */
+           flange:FLANGE_BY_NOMINAL[nominal||''] || '' };                    /* end flange size (Settings → Flange ring grooves) */
 }
 function defaultTesting(){
   return {
@@ -10399,9 +10418,17 @@ function defaultStd(){
           { max:0.002, action:'POLISH', text:'Polish back seat with Scotch-Brite. No high points or sharp edges.' },
           { max:0.005, action:'SKIM',   text:'Skim-machine the back seat angle within drawing tolerance.' } ],
         over:{ action:'WELD', text:'Weld-repair the back seat and re-machine to drawing. Hardness check and NDE after welding.' } },
+      bonnetRG: { bands:[
+          { max:0.002, action:'POLISH', text:'Polish the bonnet ring groove with Scotch-Brite. Remove compression marks; no high points or sharp edges. Verify ring groove dimensions per API 6A.' },
+          { max:0.005, action:'SKIM',   text:'Skim-machine the bonnet ring groove to remove the defect. Verify ring groove dimensions per API 6A and the drawing.' } ],
+        over:{ action:'HWR', text:BONNET_HWR_TEXT('ring groove') } },
+      bonnetBackSeat: { bands:[
+          { max:0.002, action:'POLISH', text:'Polish the bonnet back seat with Scotch-Brite. No high points or sharp edges.' },
+          { max:0.005, action:'SKIM',   text:'Skim-machine the bonnet back seat within drawing tolerance.' } ],
+        over:{ action:'HWR', text:BONNET_HWR_TEXT('back seat') } },
       packingBore: { bands:[
           { max:0.002, action:'POLISH', text:'Polish / hone the UV packing bore. Surface finish per drawing.' } ],
-        over:{ action:'REPLACE', text:'Defect in the UV packing area exceeds the polish limit — replace the bonnet.' } },
+        over:{ action:'HWR', text:BONNET_HWR_TEXT('UV packing bore') } },
       testPort: { bands:[
           { max:0.002, action:'POLISH', text:'Chase the thread and polish the sealing face. Gauge test the thread.' } ],
         over:{ action:'RETAP', text:'Re-tap or counterbore the test port per SoW. Gauge test after repair.' } },
@@ -10429,6 +10456,10 @@ function defaultStd(){
     /* metal removed by each oversize; a seat pocket defect deeper than what the
        next oversize removes goes to the one after, then to hot-weld repair */
     osAllowance: { OS_030:'0.030', OS_060:'0.060' },
+    /* end flange (LHS / RHS) ring grooves: skim the face if the flange stays above its minimum thickness, else HWR */
+    flanges: defaultFlanges(), flangePolish:'0.002', flangeCleanup:'0',
+    /* seat pocket route: deepest defect (in) each step may take, by the valve's configuration now */
+    seatRoute: { NORMAL:{ OS_030:'0.030', OS_060:'0.060' }, OS_030:{ OS_060:'0.030' } },
     seatsAsPair: true,
     testing: testing,
     advisory: {
@@ -10436,6 +10467,8 @@ function defaultStd(){
       osTo060: 'Machine the seat pockets to oversize .060". Re-identify the valve to the OS .060 part number, fit OS .060 seats and seat seals regardless of seat condition, and re-stamp the nameplate.',
       hotWeld: 'Seat pockets are at the maximum oversize (.060"). Hot-weld repair the seat pockets and re-machine to the standard (Normal) bore. Re-identify the valve to the Normal part number, fit Normal seats and seat seals, and re-stamp the nameplate. Hardness check and NDE after welding per procedure.',
       hotWeldDepth: 'Defect depth exceeds the maximum oversize allowance (.060"). Hot-weld repair the seat pockets and re-machine to the standard (Normal) bore. Re-identify the valve to the Normal part number, fit Normal seats and seat seals, and re-stamp the nameplate. Hardness check and NDE after welding per procedure.',
+      flangeCwr: 'This ring groove was weld repaired before. The weld repair shall be carried out to the flange ring groove CWR scope of work, not the HWR scope of work.',
+      compCwr: 'This bonnet was hot-weld repaired before (HWR). The weld repair shall be carried out to the bonnet CWR scope of work, not the HWR scope of work.',
       cwr: 'This valve was hot-weld repaired before (HWR). A second weld repair shall be carried out to the CWR scope of work, not the HWR scope of work.',
       nameplate: 'Change the name plate to the modified part number given in the SOW. Re-stamp or replace the name plate before release.',
       general: 'Replace every consumable listed for the final valve configuration. Grease, drift and count turns, paint, mark and stencil per the operation and maintenance manual before release.',
@@ -10449,6 +10482,15 @@ var STD = null;
 /* Older saved standards had fixed body/seat test pressures. */
 var OLD_TEST_NOTE = 'Default values follow the API 6A 15K rating. Engineering to confirm against TST10065665.';
 function migrate(got){
+  if(got && !got.seatRoute && got.osAllowance){   /* route limits from the older oversize allowances */
+    var a30 = num(got.osAllowance.OS_030), a60 = num(got.osAllowance.OS_060);
+    if(a30===null) a30 = 0.030; if(a60===null) a60 = 0.060;
+    got.seatRoute = { NORMAL:{ OS_030:a30.toFixed(3), OS_060:a60.toFixed(3) }, OS_030:{ OS_060:(a60-a30).toFixed(3) } };
+  }
+  if(got && got.groups && !got.groups.bonnetRG){
+    var pb = got.groups.packingBore;
+    if(pb && pb.over && pb.over.action==='REPLACE' && pb.over.text===OLD_UV_TEXT) pb.over = { action:'HWR', text:BONNET_HWR_TEXT('UV packing bore') };
+  }
   if(!got || !got.testing) return got;
   var def = defaultStd().testing;
   Object.keys(got.testing).forEach(function(sk){
@@ -10466,10 +10508,12 @@ function normalise(std){
   var removed = std.removed || (std.removed = []);
   removed.forEach(function(k){ delete std.sizes[k]; delete std.testing[k]; });
   Object.keys(std.sizes).forEach(function(k){
+    var hadFlange = std.sizes[k] && std.sizes[k].flange!==undefined;
     if(DEFAULT_KEYS.indexOf(k)===-1) std.sizes[k] = fill(blankValve('', ''), std.sizes[k]);
     std.testing[k] = fill(defaultTesting(), std.testing[k]);
     var z = std.sizes[k];
     if(typeof z.balanced!=='boolean') z.balanced = deriveBalanced(z);
+    if(!hadFlange || z.flange===null) z.flange = FLANGE_BY_NOMINAL[z.nominal||''] || '';
   });
   var order = (std.valveOrder||[]).filter(function(k, i, a){ return std.sizes[k] && a.indexOf(k)===i; });
   Object.keys(std.sizes).forEach(function(k){ if(order.indexOf(k)===-1) order.push(k); });
@@ -10527,6 +10571,8 @@ function project(std, sk){
     rev:std.rev, approvedBy:std.approvedBy, updatedAt:std.updatedAt, sizeKey:sk,
     size:size, groups:clone(std.groups), choices:clone(std.choices),
     forceEngTypes:(std.forceEngTypes||[]).slice(), seatsAsPair:!!std.seatsAsPair,
+    osAllowance:clone(std.osAllowance||{}), seatRoute:clone(std.seatRoute||{}),
+    flange:clone(flangeFor(std, sk)), flangePolish:std.flangePolish, flangeCleanup:std.flangeCleanup,
     testing:clone(std.testing[sk]||{}), advisory:clone(std.advisory)
   };
 }
@@ -10562,7 +10608,7 @@ function detect(pn, std){
 /* ── evaluation ───────────────────────────────────────────────────────── */
 function newEval(){
   return { receivedFrom:'', receivedOther:'', variantSrc:'', detectedPN:'', autoDesc:'',
-           comp:{}, pts:{}, meas:{}, small:{}, nameplate:'', plate:null, prevHWR:false, prevHWRSrc:'', prevHWRRefs:[], notes:'',
+           comp:{}, pts:{}, meas:{}, small:{}, nameplate:'', plate:null, prevHWR:false, prevHWRSrc:'', prevHWRRefs:[], compHWR:{}, ptHWR:{}, notes:'',
            engRequest:false, engRemarks:'', engBy:'', engDate:'',
            inspDate:today(), rev1:'', rev1Date:'', rev2:'', rev2Date:'',
            reworkTimestamps:{}, std:null };
@@ -10600,7 +10646,7 @@ function measCheck(r, pt, std){
 }
 
 function evalPoint(r, pt, std){
-  var g = r.gvEval, s = g.pts[pt.id] || {}, res = null, pending = false;
+  var g = r.gvEval, s = g.pts[pt.id] || {}, res = null, pending = false, pendingMsg = '';
   if(s.st==='good'){
     res = { action:'ACCEPT', text:'Good condition — no action.', src:'insp' };
   } else if(s.st){
@@ -10608,6 +10654,10 @@ function evalPoint(r, pt, std){
     if(pt.mode){
       var ch = (std.choices[pt.mode]||{})[s.st];
       if(ch) res = { action:ch.action, text:ch.text, src:'choice' };
+    } else if(pt.flange){
+      var fd = num(s.depth);
+      if(!s.type || fd===null) pending = true;
+      else { var fc = flangeCheck(r, pt, std, fd); if(fc.pending){ pending = true; pendingMsg = fc.msg; } else res = fc.res; }
     } else {
       var d = num(s.depth);
       if(!s.type || d===null) pending = true;
@@ -10641,7 +10691,30 @@ function evalPoint(r, pt, std){
     var pl = planRoute(std, r.gvScenario, res.src==='depth' ? num(s.depth) : null);
     res.text += ' Route: '+(pl.type==='hotweld' ? 'hot-weld repair back to Normal' : OS_LABEL[r.gvScenario]+' → '+OS_LABEL[pl.target]+(pl.jump?' (direct)':''))+'.';
   }
-  return { res:res, pending:pending, answered: !!s.st && !pending, s:s };
+  return { res:res, pending:pending, pendingMsg:pending ? pendingMsg : '', answered: !!s.st && !pending, s:s };
+}
+
+/* ── end flange ring groove: skim within the flange thickness tolerance ──
+   Skimming the face removes the defect depth (plus any clean-up cut set by
+   Engineering). If the flange stays at or above its minimum thickness →
+   skim and re-cut the groove; otherwise → hot-weld repair (CWR if that ring
+   groove was weld repaired before). */
+function flangeCheck(r, pt, std, d){
+  var F = std.flange || {}, pol = num(std.flangePolish), cu = num(std.flangeCleanup) || 0;
+  if(pol===null) pol = 0.002;
+  if(d <= pol + 1e-9) return { res:{ action:'POLISH', src:'depth',
+    text:'Polish the ring groove with Scotch-Brite. Remove compression marks; no high points or sharp edges. Verify ring groove dimensions per API 6A. (Depth '+d+' in — within the '+pol+' in polish limit.)' } };
+  var m = (pt.meas||[])[0], T = m ? num((r.gvEval.meas||{})[m.k]) : null, Tmin = num(F.min), fl = F.label || 'this flange';
+  if(Tmin===null) return { res:{ action:'ENGINEERING', src:'flange', text:'Minimum flange thickness for '+fl+' is not set in Settings — refer to Engineering.' } };
+  if(T===null) return { pending:true, msg:'Measure the flange thickness — the app checks whether skimming the face clears the '+d+' in defect without going below the '+Tmin+' in minimum for '+fl+'.' };
+  var cut = +(d + cu).toFixed(4), after = +(T - cut).toFixed(4), f3 = function(x){ return (+x).toFixed(3); };
+  var cutTxt = f3(cut)+' in'+(cu ? ' (defect '+f3(d)+' + clean-up '+f3(cu)+')' : '');
+  if(T < Tmin - 1e-9) return { res:{ action:'HWR', src:'flange',
+    text:'Flange thickness '+f3(T)+' in is already below the '+f3(Tmin)+' in minimum for '+fl+' — hot-weld repair (HWR) the ring groove and re-machine to drawing per the flange HWR SOW. Hardness check and NDE after welding.' } };
+  if(after >= Tmin - 1e-9) return { res:{ action:'SKIM', src:'flange',
+    text:'Skim-machine the flange face '+cutTxt+' and re-cut the ring groove per API 6A and the drawing. Flange thickness after skim '+f3(after)+' in — within the '+f3(Tmin)+' in minimum for '+fl+'.' } };
+  return { res:{ action:'HWR', src:'flange',
+    text:'Skimming '+cutTxt+' would leave '+f3(after)+' in, below the '+f3(Tmin)+' in minimum flange thickness for '+fl+' — hot-weld repair (HWR) the ring groove and re-machine to drawing per the flange HWR SOW. Hardness check and NDE after welding.' } };
 }
 
 /* ── seat pocket route by defect depth ─────────────────────────────────
@@ -10654,17 +10727,31 @@ function allowance(std, os){
   var v = num((std.osAllowance||{})[os]);
   return v===null ? (os==='OS_030' ? 0.030 : 0.060) : v;
 }
+/* Engineering sets, per starting configuration, the deepest seat pocket
+   defect each oversize may take (Settings → Seat pocket route). An empty
+   limit means that step is not used. */
+function routeLimit(std, from, to){
+  var sr = std.seatRoute;
+  if(sr && sr[from] && Object.prototype.hasOwnProperty.call(sr[from], to)) return num(sr[from][to]);
+  return +(allowance(std, to) - allowance(std, from)).toFixed(4);   /* standards without a route table */
+}
+function polishLimit(std){
+  var b = ((std.groups||{}).seatPocket||{}).bands||[];
+  return b.length ? num(b[b.length-1].max) : null;
+}
 function planRoute(std, from, depth){
-  var i0 = OS_ORDER.indexOf(from), base = allowance(std, from);
+  var i0 = OS_ORDER.indexOf(from), first = true;
   for(var i=i0+1;i<OS_ORDER.length;i++){
-    if(depth===null || depth <= allowance(std, OS_ORDER[i]) - base + 1e-9)
-      return { type:'os', target:OS_ORDER[i], jump:i>i0+1 };
+    var lim = routeLimit(std, from, OS_ORDER[i]);
+    if(lim===null) continue;
+    if(depth===null || depth <= lim + 1e-9) return { type:'os', target:OS_ORDER[i], jump:!first, limit:lim };
+    first = false;
   }
   return { type:'hotweld', target:'NORMAL', jump:from!=='OS_060' };
 }
 function routeTable(std, from){
-  var base = allowance(std, from), out = [], i0 = OS_ORDER.indexOf(from);
-  for(var i=i0+1;i<OS_ORDER.length;i++) out.push({ upTo:+(allowance(std, OS_ORDER[i])-base).toFixed(4), type:'os', target:OS_ORDER[i] });
+  var out = [], i0 = OS_ORDER.indexOf(from);
+  for(var i=i0+1;i<OS_ORDER.length;i++){ var lim = routeLimit(std, from, OS_ORDER[i]); if(lim!==null) out.push({ upTo:lim, type:'os', target:OS_ORDER[i] }); }
   out.push({ upTo:null, type:'hotweld', target:'NORMAL' });
   return out;
 }
@@ -10677,6 +10764,11 @@ function analyse(r){
   a.known = true; a.incomplete = false; a.balanced = isBalanced(std);
   componentsFor(std).forEach(function(c){ c.points.forEach(function(pt){
     var ev = evalPoint(r, pt, std); ev.pt = pt; ev.comp = c;
+    var ch = (g.compHWR||{})[c.id], ph = (g.ptHWR||{})[pt.id];
+    if(ev.res && ev.res.action==='HWR' && pt.flange && ph && ph.on)
+      ev.res = { action:'CWR', src:ev.res.src, text:pt.label+' was weld repaired before — weld repair to the CWR SOW, not HWR. '+ev.res.text.replace(/hot-weld repair \(HWR\)/i,'weld repair').replace(/the flange HWR SOW/i,'the flange CWR SOW') };
+    else if(ev.res && ev.res.action==='HWR' && ch && ch.on)
+      ev.res = { action:'CWR', src:ev.res.src, text:c.title+' was hot-weld repaired before — weld repair to the CWR SOW, not HWR. '+ev.res.text.replace(/hot-weld repair \(HWR\)/i,'weld repair').replace(/the bonnet HWR SOW/i,'the bonnet CWR SOW') };
     a.points.push(ev); a.total++;
     if(ev.answered) a.answered++; else a.incomplete = true;
     if(ev.res && ev.res.action!=='ACCEPT'){
@@ -10692,7 +10784,7 @@ function analyse(r){
     var pl = planRoute(std, r.gvScenario, depth), adv = std.advisory, text;
     if(pl.type==='os'){
       text = adv[pl.target==='OS_030' ? 'osTo030' : 'osTo060'] || '';
-      if(pl.jump) text = 'Defect depth '+depth+' in exceeds the '+OS_LABEL.OS_030+' allowance — machine directly to '+OS_LABEL[pl.target]+'. '+text;
+      if(pl.jump) text = 'Defect depth '+depth+' in is too deep for '+OS_LABEL.OS_030+' — machine directly to '+OS_LABEL[pl.target]+' (limit '+pl.limit.toFixed(3)+' in). '+text;
     } else {
       text = (r.gvScenario==='OS_060' ? adv.hotWeld : (adv.hotWeldDepth || adv.hotWeld)) || '';
       if(depth!==null && r.gvScenario!=='OS_060') text = 'Defect depth '+depth+' in. '+text;
@@ -10716,6 +10808,25 @@ function analyse(r){
   }
   a.sow = a.sows.length ? a.sows[0].meta : null;
   a.nameplate = nameplateDisp(r, a, std);
+  /* bonnet body weld repairs (HWR, or CWR when that bonnet was HWR'd before) */
+  a.compWeld = [];
+  ['bonnet','bsb'].forEach(function(cid){
+    var evs = a.points.filter(function(ev){ return ev.comp.id===cid && ev.res && (ev.res.action==='HWR' || ev.res.action==='CWR'); });
+    if(!evs.length) return;
+    var cw = evs.some(function(ev){ return ev.res.action==='CWR'; }), z = std.size, ch = (g.compHWR||{})[cid] || {};
+    var sow = cid==='bonnet' ? (cw ? z.bonCwrSow : z.bonHwrSow) : (cw ? (z.bsbCwrSow || z.bonCwrSow) : (z.bsbHwrSow || z.bonHwrSow));
+    var slot = (cid==='bonnet' ? 'BON_' : 'BSB_')+(cw ? 'CWR' : 'HWR');
+    a.compWeld.push({ cid:cid, title:evs[0].comp.title, action:cw ? 'CWR' : 'HWR', areas:evs.map(function(ev){ return ev.pt.label; }),
+                      refs:ch.refs || [], sow:sow || null, slot:slot, label:SOW_LABEL[slot] });
+  });
+  var fevs = a.points.filter(function(ev){ return ev.pt.flange && ev.res && (ev.res.action==='HWR' || ev.res.action==='CWR'); });
+  if(fevs.length){
+    var fcw = fevs.some(function(ev){ return ev.res.action==='CWR'; }), frefs = [];
+    fevs.forEach(function(ev){ (((g.ptHWR||{})[ev.pt.id]||{}).refs||[]).forEach(function(q){ if(!frefs.some(function(z){ return z.id===q.id; })) frefs.push(q); }); });
+    var fslot = fcw ? 'RG_CWR' : 'RG_HWR';
+    a.compWeld.push({ cid:'flange', title:'GV body flange ring groove', action:fcw ? 'CWR' : 'HWR', areas:fevs.map(function(ev){ return ev.pt.label; }),
+                      refs:frefs, sow:(fcw ? std.size.rgCwrSow : std.size.rgHwrSow) || null, slot:fslot, label:SOW_LABEL[fslot] });
+  }
   a.globalEng = !!g.engRequest && !String(g.engRemarks||'').trim();
   a.engInvolved = !!g.engRequest || a.actionPts.some(function(ev){ return ev.res.action==='ENGINEERING'; });
   if(a.incomplete) a.disp = 'incomplete';
@@ -10733,12 +10844,19 @@ function psi(n){ return Math.round(n).toLocaleString('en-US'); }
 function testPlan(std, a){
   var t = (std && std.testing) || {}, wp = num(String(t.workingPsi||'').replace(/,/g,''));
   var f = num(t.hwrFactor) || 1.5, route = a && a.route || { type:'none' };
-  var weld = route.type==='hotweld' && (!route.cwr || t.cwrUseFactor===true);
-  var basis = route.type==='hotweld' ? (route.cwr ? 'CWR' : 'Hot-weld repair')
-            : route.type==='os' ? 'Oversize machining to '+OS_LABEL[route.target] : 'Standard redress';
+  var cw = (a && a.compWeld) || [], cwrF = t.cwrUseFactor===true;
+  var weldRoute = route.type==='hotweld' && (!route.cwr || cwrF);
+  var weldComp = cw.filter(function(x){ return x.action==='HWR' || cwrF; });
+  var weld = weldRoute || weldComp.length>0;
+  var parts = [];
+  if(route.type==='hotweld') parts.push(route.cwr ? 'CWR' : 'Hot-weld repair');
+  else if(route.type==='os') parts.push('Oversize machining to '+OS_LABEL[route.target]);
+  cw.forEach(function(x){ parts.push(x.title+' '+(x.action==='CWR' ? 'CWR' : 'HWR')); });
+  var basis = parts.length ? parts.join(' + ') : 'Standard redress';
   var rows = [];
   if(wp!==null){
-    rows.push(['Body test', psi(weld ? wp*f : wp)+' psi — '+(weld ? f+' × working pressure ('+basis+')' : 'working pressure')+(t.bodyHold?' — '+t.bodyHold:'')]);
+    var why = (weldRoute ? ['seat pocket hot-weld repair'] : []).concat(weldComp.map(function(x){ return x.title.toLowerCase()+' '+(x.action==='CWR'?'CWR':'HWR'); }));
+    rows.push(['Body test', psi(weld ? wp*f : wp)+' psi — '+(weld ? f+' × working pressure (after '+why.join(' and ')+')' : 'working pressure')+(t.bodyHold?' — '+t.bodyHold:'')]);
     rows.push(['Gate / seat test', psi(wp)+' psi — working pressure'+(t.seatHold?' — '+t.seatHold:'')]);
   }
   if(t.lowPsi) rows.push(['Low pressure seat test', t.lowPsi+' psi'+(t.lowHold?' — '+t.lowHold:'')]);
@@ -10774,6 +10892,38 @@ function valveHistory(r, list){
     h.done = h.disp==='rework_complete';
     return h;
   }).sort(function(p, q){ return String(q.date).localeCompare(String(p.date)); });
+}
+/* Bonnet history: earlier reports for the same bonnet serial number (or,
+   when the bonnet serial is not entered, the same valve serial) that weld-
+   repaired that bonnet or recorded it as hot-weld repaired before. */
+function compHistory(r, cid, list){
+  var g = r && r.gvEval; if(!g) return [];
+  var snC = bareSN((g.comp[cid]||{}).sn), snV = bareSN(r.header && r.header.serialNo), byBonnet = snC.length>=4;
+  if(!byBonnet && snV.length<4) return [];
+  list = list || (typeof reports!=='undefined' ? reports : []);
+  return list.filter(function(x){
+    if(!x || x===r || x.id===r.id || !x.gvEval) return false;
+    return byBonnet ? bareSN(((x.gvEval.comp||{})[cid]||{}).sn)===snC : bareSN(x.header && x.header.serialNo)===snV;
+  }).map(function(x){
+    var h = { id:x.id, date:x.savedAt||x.createdAt||'', weld:'', prev:!!(((x.gvEval.compHWR||{})[cid]||{}).on), done:x.disposition==='rework_complete', by:byBonnet?'bonnet':'valve' };
+    try{ var a = analyse(x), w = (a.compWeld||[]).filter(function(q){ return q.cid===cid; })[0]; if(w) h.weld = w.action; }catch(err){}
+    return h;
+  }).filter(function(h){ return h.weld || h.prev; })
+    .sort(function(p, q){ return String(q.date).localeCompare(String(p.date)); });
+}
+/* Ring groove weld history: earlier reports for the same valve serial that
+   weld-repaired this ring groove or recorded it as weld repaired before. */
+function ptHistory(r, pid, list){
+  var snV = bareSN(r && r.header && r.header.serialNo);
+  if(snV.length<4) return [];
+  list = list || (typeof reports!=='undefined' ? reports : []);
+  return list.filter(function(x){ return x && x!==r && x.id!==r.id && x.gvEval && bareSN(x.header && x.header.serialNo)===snV; })
+    .map(function(x){
+      var h = { id:x.id, date:x.savedAt||x.createdAt||'', weld:'', prev:!!(((x.gvEval.ptHWR||{})[pid]||{}).on), done:x.disposition==='rework_complete' };
+      try{ var ev = analyse(x).points.filter(function(q){ return q.pt.id===pid; })[0]; if(ev && ev.res && (ev.res.action==='HWR' || ev.res.action==='CWR' || ev.res.action==='WELD')) h.weld = ev.res.action; }catch(err){}
+      return h;
+    }).filter(function(h){ return h.weld || h.prev; })
+    .sort(function(p, q){ return String(q.date).localeCompare(String(p.date)); });
 }
 /* weld repair on record: an earlier report routed to HWR/CWR, or said the valve had been HWR'd */
 function hwrEvidence(hist){ return (hist||[]).filter(function(h){ return h.hwr || h.prevHWR; }); }
@@ -10834,6 +10984,9 @@ function outcome(a, r){
     o = { tone:'major', title:'REPAIR — HOT-WELD SEAT POCKETS TO NORMAL', text:a.route.text };
   else if(a.route.type==='os')
     o = { tone:'major', title:'REPAIR — MACHINE TO '+OS_LABEL[a.route.target].toUpperCase(), text:a.route.text };
+  else if(a.compWeld && a.compWeld.length)
+    o = { tone:'major', title:'REPAIR — '+a.compWeld.map(function(x){ return x.title.toUpperCase()+' '+x.action; }).join(' + '),
+          text:'Weld-repair the bonnet body as listed, re-machine to drawing, then the standard redress.' };
   else if(sevMax>=3)
     o = { tone:'major', title:'REDRESS WITH REPAIRS', text:'Carry out the repairs listed against each finding, then the standard redress.' };
   else if(sevMax>=1)
@@ -10847,6 +11000,14 @@ function outcome(a, r){
     var refs = (r && r.gvEval && r.gvEval.prevHWRRefs) || [];
     if(refs.length) o.cwr += ' Previous HWR on record: '+refs.map(function(x){ return x.id+(x.date?' ('+String(x.date).slice(0,10)+')':''); }).join(', ')+'.';
   }
+  o.compWeld = (a.compWeld||[]).map(function(x){
+    var t = x.title+' — '+(x.action==='CWR' ? 'weld repair to the CWR SOW' : 'hot-weld repair (HWR)')+' ('+x.areas.join(', ')+').';
+    if(x.action==='CWR'){
+      t += ' '+(x.cid==='flange' ? std_adv(a, 'flangeCwr') : std_adv(a, 'compCwr').replace(/^This bonnet/, 'The '+x.title.toLowerCase()));
+      if(x.refs.length) t += ' Previous weld repair on record: '+x.refs.map(function(q){ return q.id+(q.date?' ('+String(q.date).slice(0,10)+')':''); }).join(', ')+'.';
+    }
+    return { cid:x.cid, title:x.title, action:x.action, text:t, sow:x.sow, label:x.label };
+  });
   if(a.route.type!=='none'){
     var fp = a.nameplate.fromPN || '—', tp = a.nameplate.toPN || 'PN not set';
     o.pnChange = { from:fp, fromCfg:OS_LABEL[a.route.from], to:tp, toCfg:OS_LABEL[a.route.target] };
@@ -10860,15 +11021,20 @@ function outcome(a, r){
 }
 
 function std_adv(a, k){ return (a.std && a.std.advisory && a.std.advisory[k]) || ''; }
-var SOW_LABEL = { NORMAL:'Normal → OS .030"', OS_030:'OS .030" → OS .060"', OS_060:'Hot-weld repair (HWR) → Normal', CWR:'CWR — valve hot-weld repaired before' };
+var SOW_LABEL = { NORMAL:'Normal → OS .030"', OS_030:'OS .030" → OS .060"', OS_060:'Hot-weld repair (HWR) → Normal', CWR:'CWR — valve hot-weld repaired before',
+  BON_HWR:'Main bonnet — hot-weld repair (HWR)', BON_CWR:'Main bonnet — CWR (bonnet hot-weld repaired before)',
+  BSB_HWR:'Balance stem bonnet — hot-weld repair (HWR)', BSB_CWR:'Balance stem bonnet — CWR (bonnet hot-weld repaired before)',
+  RG_HWR:'GV body flange ring groove (LHS / RHS) — hot-weld repair (HWR)', RG_CWR:'GV body flange ring groove (LHS / RHS) — CWR (weld repaired before)' };
 window.GVEval = {
   fromJSON:fromJSON, factoryStd:factoryStd, embeddedRev:function(){ var e = embedded(); return e ? e.rev : ''; },
-  valveHistory:valveHistory, hwrEvidence:hwrEvidence, bareSN:bareSN,
+  valveHistory:valveHistory, hwrEvidence:hwrEvidence, bareSN:bareSN, compHistory:compHistory, ptHistory:ptHistory,
+  flangeFor:flangeFor, defaultFlanges:defaultFlanges, flangeCheck:flangeCheck, FLANGE_BY_NOMINAL:FLANGE_BY_NOMINAL,
   componentsFor:componentsFor, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
   keys:valveKeys, newValveId:newValveId, blankValve:blankValve, defaultTesting:defaultTesting, valvesByNominal:valvesByNominal,
   NOMINALS:['1-13/16','2-1/16','2-9/16','3-1/16','4-1/16','5-1/8','7-1/16'], IMAGES:IMAGES,
   imageKey:function(r){ var st = stdOf(r); return st && st.size && st.size.image!==undefined ? st.size.image : r.gvSize; },
   valveLabel:function(r){ var st = stdOf(r); return (st && st.size && st.size.label) || (typeof GV_SIZES!=='undefined' && GV_SIZES[r.gvSize]) || r.gvSize || ''; },
+  routeLimit:routeLimit, polishLimit:polishLimit, OS_ORDER:OS_ORDER,
   SOW_LABEL:SOW_LABEL, testPlan:testPlan, planRoute:planRoute, routeTable:routeTable, allowance:allowance,
   SIZE_KEYS:SIZE_KEYS, OS_KEYS:OS_KEYS, OS_LABEL:OS_LABEL, SIZE_SHORT:SIZE_SHORT, NEXT:NEXT,
   ACTIONS:ACTIONS, ACTION_KEYS:ACTION_KEYS, DEFECT_TYPES:DEFECT_TYPES, RECEIVED:RECEIVED,
@@ -11168,6 +11334,19 @@ function sowSlot(name, std){
     var v = std.sizes[sk].variants[os], all = [v.bodyPN].concat(v.pns||[]).filter(Boolean).map(function(x){ return String(x).toUpperCase(); });
     if(pns.some(function(p){ return all.indexOf(p)!==-1; })){ hit = { size:sk, os:os }; return true; }
   }); });
+  /* end flange ring groove SOWs: "flange", "ring groove" or "RG" in the name */
+  if(/FLANGE|RING[\s_-]*GROOVE|\bRG\b/.test(t)) return { size:(hit && hit.size) || '', slot:type==='CWR' ? 'RG_CWR' : 'RG_HWR', pnFound:!!hit, pns:pns };
+  /* bonnet body SOWs: "bonnet" / "BSB" / "balance" in the name, or a bonnet part number */
+  var bon = /BONNET|\bBON\b|\bBSB\b|BALANC/.test(t), bsb = /\bBSB\b|BALANC/.test(t), bhit = null;
+  G.keys(std).some(function(sk){ return G.OS_KEYS.some(function(os){
+    var v = std.sizes[sk].variants[os];
+    if(v.bonnetPN && pns.indexOf(String(v.bonnetPN).toUpperCase())!==-1){ bhit = { size:sk, bsb:false }; return true; }
+    if(v.bsbPN && pns.indexOf(String(v.bsbPN).toUpperCase())!==-1){ bhit = { size:sk, bsb:true }; return true; }
+  }); });
+  if(bon || bhit){
+    var isB = bhit ? bhit.bsb : bsb, k = (isB ? 'BSB_' : 'BON_')+(type==='CWR' ? 'CWR' : 'HWR');
+    return { size:(bhit && bhit.size) || (hit && hit.size) || '', slot:k, pnFound:!!(bhit||hit), pns:pns };
+  }
   if(!hit) return { size:'', slot:type, pnFound:false, pns:pns };
   /* the PN names the configuration the valve is in before the conversion */
   return { size:hit.size, slot:type || hit.os, pnFound:true, matchedOS:hit.os, pns:pns };
@@ -11321,7 +11500,7 @@ function detectHTML(){
 /* ── one critical area ────────────────────────────────────────────────── */
 function chipHTML(ev){
   if(!ev) return '';
-  if(ev.pending) return '<span class="gve-chip pend">DEPTH NEEDED</span>';
+  if(ev.pending) return '<span class="gve-chip pend">'+(ev.pendingMsg?'THICKNESS NEEDED':'DEPTH NEEDED')+'</span>';
   if(!ev.res) return ev.s.st ? '' : '<span class="gve-chip pend">TO DO</span>';
   var A=ACTIONS[ev.res.action];
   var lbl = ev.res.action==='ACCEPT' ? 'GOOD' : (ev.res.action==='ENGINEERING' ? 'ENGINEERING' : A.label.toUpperCase());
@@ -11336,7 +11515,7 @@ function ptClass(ev){
 function dispHTML(ev){
   if(!ev) return '';
   var id=ev.pt.id;
-  if(ev.pending) return '<div class="gve-disp pend">Select the defect type and enter the approximate depth — the disposition is set automatically.</div>';
+  if(ev.pending) return '<div class="gve-disp pend">'+e(ev.pendingMsg || 'Select the defect type and enter the approximate depth — the disposition is set automatically.')+'</div>';
   if(!ev.res) return '';
   var A=ACTIONS[ev.res.action], h='';
   var src = ev.res.src==='abnormal' ? 'Inspector flag' : ev.res.src==='type' ? 'Defect type rule' : ev.res.src==='meas' ? 'Measurement rule' : 'Auto · standard';
@@ -11362,7 +11541,7 @@ function ptInner(p, ev, std){
   var s=ptState(p.id), M=g().meas, v=std ? std.size.variants[current.gvScenario] : null, h='';
   h+='<div class="gve-pt-head"><div><div class="gve-pt-label">'+e(p.label)+'</div>'
     +(p.hint?'<div class="gve-pt-hint">'+e(p.hint)+'</div>':'')+'</div><span id="gve-chip-'+p.id+'">'+chipHTML(ev)+'</span></div>';
-  if(p.meas){
+  if(p.meas && !p.flange){
     h+='<div class="gve-meas">'+p.meas.map(function(m){
       var mn=v&&m.min?v[m.min]:'', mx=v&&m.max?v[m.max]:'';
       var lim = (mn||mx) ? (mn&&mx ? mn+' – '+mx : mn ? 'min '+mn : 'max '+mx) : '0.000';
@@ -11380,9 +11559,15 @@ function ptInner(p, ev, std){
     h+='<div'+(needDepth?'':' class="full"')+'><label class="field-label">Defect type'+(p.mode?' (optional)':'')+'</label><select class="field-input" onchange="gveType(\''+p.id+'\',this.value)"><option value="">Select…</option>'
       +G.DEFECT_TYPES.map(function(t){ return '<option value="'+t[0]+'"'+(s.type===t[0]?' selected':'')+'>'+e(t[1])+'</option>'; }).join('')+'</select></div>';
     if(needDepth) h+='<div><label class="field-label">Approx. depth (in)</label><input class="field-input" inputmode="decimal" placeholder="0.000" value="'+e(s.depth||'')+'" oninput="gveDepth(\''+p.id+'\',this.value)"/></div>';
+    if(p.flange){
+      var F=(std&&std.flange)||{}, m0=p.meas[0];
+      h+='<div class="full"><label class="field-label">'+e(m0.l)+'</label><input class="field-input" inputmode="decimal" placeholder="'+e(F.min?'min '+F.min+(F.nominal?' · nominal '+F.nominal:''):'measure')+'" value="'+e(M[m0.k]||'')
+        +'" oninput="gveMeas(\''+m0.k+'\',\''+p.id+'\',this.value)"/><div class="gve-note" style="margin-top:3px">'+(F.label?e(F.label)+(F.min?' — minimum '+e(F.min)+' in. Needed when the defect is deeper than the polish limit.':' — minimum thickness not set in Settings.'):'No flange size set for this valve in Settings.')+'</div></div>';
+    }
     h+='<div class="full"><input class="field-input" placeholder="Location / description of the finding" value="'+e(s.note||'')+'" oninput="gveNote(\''+p.id+'\',this.value)"/></div>';
     h+='<label class="gve-abn full"><input type="checkbox"'+(s.abnormal?' checked':'')+' onchange="gveAbn(\''+p.id+'\',this.checked)"/> Abnormal finding — request Engineering review</label>';
     h+='</div>';
+    if(p.flange) h+='<div id="gve-pthist-'+p.id+'">'+ptHistHTML(p.id)+'</div>';
     if(typeof bfPhotoBtns==='function') h+=bfPhotoBtns('gve_'+p.id);
   }
   h+='<div id="gve-disp-'+p.id+'">'+dispHTML(ev)+'</div>';
@@ -11404,6 +11589,7 @@ function evalHTML(a){
       var mk=(r.photos||{})['gve_mark_'+c.id]||[];
       h+='<div style="margin:-4px 0 10px"><button class="gve-scan-sm" onclick="gveScan(\'comp\',\''+c.id+'\')">'+(G.CAM_ICON||'')+' Scan SN / PN marking</button>'
         +'<div class="photo-thumbs" id="photo-thumbs-gve_mark_'+c.id+'" style="margin-top:6px">'+mk.map(function(p,i){ return '<div class="photo-thumb"><img src="'+p.src+'"/><button class="photo-thumb-del" onclick="removePhoto(\'gve_mark_'+c.id+'\','+i+')">&#x2715;</button></div>'; }).join('')+'</div></div>';
+      if(WELD_COMPS.indexOf(c.id)!==-1) h+='<div id="gve-chist-'+c.id+'" style="margin:-2px 0 10px">'+compHistHTML(c.id)+'</div>';
     }
     c.points.forEach(function(p){
       var ev=evFor(a,p.id);
@@ -11422,6 +11608,10 @@ function outcomeHTML(a){
   if(o.pnChange) h+='<div class="gve-pnchg">Re-identify: <b>'+e(o.pnChange.from)+'</b><span class="cfg">'+e(o.pnChange.fromCfg)+'</span> &rarr; <b>'+e(o.pnChange.to)+'</b><span class="cfg">'+e(o.pnChange.toCfg)+'</span></div>';
   (o.lines||[]).forEach(function(l){ h+='<div class="gve-out-l">&bull; '+e(l)+'</div>'; });
   if(o.cwr) h+='<div class="gve-cwr"><b>CWR required.</b> '+e(o.cwr)+'</div>';
+  (o.compWeld||[]).forEach(function(x){
+    h+=(x.action==='CWR' ? '<div class="gve-cwr"><b>CWR required — '+e(x.title.toLowerCase())+'.</b> ' : '<div class="gve-np"><b>Weld repair:</b> ')+e(x.text)+'</div>';
+    if(G.files) h+= x.sow ? G.files.linkHTML(x.sow, 'Scope of work — '+x.label) : '<div class="gve-out-l" style="color:#d97706">&bull; No SOW file set for '+e(x.label)+' on this valve — Engineering can add it in Settings.</div>';
+  });
   if(a.nameplate && a.nameplate.change) h+='<div class="gve-np"><b>Name plate:</b> '+e(a.nameplate.text)+'</div>';
   if(a.route.type!=='none' && G.files){
     (a.sows||[]).forEach(function(x){
@@ -11481,7 +11671,7 @@ function testingHTML(std, a){
 /* ── whole form ───────────────────────────────────────────────────────── */
 function renderForm(){
   G.setFormRef(current);
-  syncHistory();
+  syncAll();
   var r=current, s=g(), a=G.analyse(r), d0=dispFor(r.disposition=a.disp), h='';
   document.getElementById('form-title').textContent=formTypeLabel(r);
   h+='<div id="eq-hero-slot">'+equipHeroHTML(r)+'</div>';
@@ -11541,6 +11731,59 @@ function syncHistory(){
   if(s.prevHWRSrc==='manual') return;          /* the inspector decided — keep it */
   if(ev.length){ s.prevHWR = true; s.prevHWRSrc = 'history'; s.prevHWRRefs = ev.map(function(x){ return { id:x.id, date:x.date }; }); }
   else if(s.prevHWRSrc==='history'){ s.prevHWR = false; s.prevHWRSrc = ''; s.prevHWRRefs = []; }
+}
+/* bonnet body weld history (per bonnet serial; valve serial when the bonnet serial is blank) */
+var WELD_COMPS = ['bonnet','bsb'], CHIST = {};
+function syncComp(cid){
+  var s=g(); if(!s.compHWR) s.compHWR={};
+  var st = s.compHWR[cid] || (s.compHWR[cid] = { on:false, src:'', refs:[] });
+  CHIST[cid] = G.compHistory(current, cid);
+  if(st.src==='manual') return;
+  if(CHIST[cid].length){ st.on = true; st.src = 'history'; st.refs = CHIST[cid].map(function(x){ return { id:x.id, date:x.date }; }); }
+  else if(st.src==='history'){ st.on = false; st.src = ''; st.refs = []; }
+}
+var FLANGE_PTS = ['body_rg_lhs','body_rg_rhs'], PHIST = {};
+function syncPt(pid){
+  var s=g(); if(!s.ptHWR) s.ptHWR={};
+  var st = s.ptHWR[pid] || (s.ptHWR[pid] = { on:false, src:'', refs:[] });
+  PHIST[pid] = G.ptHistory(current, pid);
+  if(st.src==='manual') return;
+  if(PHIST[pid].length){ st.on = true; st.src = 'history'; st.refs = PHIST[pid].map(function(x){ return { id:x.id, date:x.date }; }); }
+  else if(st.src==='history'){ st.on = false; st.src = ''; st.refs = []; }
+}
+function ptHistHTML(pid){
+  var st=((g().ptHWR)||{})[pid]||{}, list=PHIST[pid]||[];
+  var h='<label class="gve-abn" style="margin-top:8px"><input type="checkbox"'+(st.on?' checked':'')+' onchange="gvePtHWR(\''+pid+'\',this.checked)"/> This ring groove was weld repaired before — a further weld repair follows the CWR SOW'
+    +(st.src==='history' ? ' <span class="gve-chip eng" style="margin-left:4px">FROM HISTORY</span>' : '')+'</label>';
+  if(list.length) h+='<div class="gve-hist"><div class="gve-hist-h">Weld repairs on record for this ring groove — valve serial '+e(current.header.serialNo||'')+'</div>'
+    + list.slice(0,4).map(function(x){ return '<div class="gve-hist-r w"><span class="d">'+e(String(x.date).slice(0,10))+'</span><span class="i">'+e(x.id)+'</span><span class="t">'
+        +(x.weld ? (x.weld==='CWR'?'CWR weld repair':x.weld==='HWR'?'Hot-weld repair (HWR)':'Weld repair')+(x.done?' · rework complete':' · completion not recorded') : 'recorded as weld repaired before')+'</span></div>'; }).join('')+'</div>';
+  return h;
+}
+window.gvePtHWR = function(pid, on){ var s=g(); if(!s.ptHWR) s.ptHWR={}; s.ptHWR[pid] = { on:!!on, src:'manual', refs:on ? ((s.ptHWR[pid]||{}).refs||[]) : [] }; refreshPoint(pid, true); };
+function syncAll(){ syncHistory(); WELD_COMPS.forEach(syncComp); FLANGE_PTS.forEach(syncPt); }
+function compHistHTML(cid){
+  var s=g(), st=(s.compHWR||{})[cid]||{}, cs=(s.comp||{})[cid]||{}, list=CHIST[cid]||[];
+  var nm = cid==='bonnet' ? 'Main bonnet' : 'Balance stem bonnet';
+  var h='<label class="gve-abn"><input type="checkbox"'+(st.on?' checked':'')+' onchange="gveCompHWR(\''+cid+'\',this.checked)"/> '+nm+' was hot-weld repaired before (HWR) — a further weld repair follows the bonnet CWR SOW'
+    +(st.src==='history' ? ' <span class="gve-chip eng" style="margin-left:4px">FROM HISTORY</span>' : '')+'</label>';
+  if(list.length){
+    h+='<div class="gve-hist"><div class="gve-hist-h">'+e(nm)+' weld repairs on record'+(list[0].by==='valve' ? ' — matched by valve serial (enter the bonnet serial to match the bonnet itself)' : ' — bonnet serial '+e(cs.sn||''))+'</div>'
+      + list.slice(0,4).map(function(x){ return '<div class="gve-hist-r w"><span class="d">'+e(String(x.date).slice(0,10))+'</span><span class="i">'+e(x.id)+'</span><span class="t">'
+          +(x.weld ? (x.weld==='CWR' ? 'CWR weld repair' : 'Hot-weld repair (HWR)')+(x.done?' · rework complete':' · completion not recorded') : 'recorded as previously HWR')+'</span></div>'; }).join('')+'</div>';
+  } else if(!String(cs.sn||'').trim() && !String(current.header.serialNo||'').trim()){
+    h+='<div class="gve-note" style="margin-top:2px">Enter the bonnet serial number to check its weld repair history.</div>';
+  }
+  return h;
+}
+function refreshComp(cid){
+  var a=G.analyse(current);
+  a.points.filter(function(ev){ return ev.comp.id===cid; }).forEach(function(ev){
+    var box=document.getElementById('gve-pt-'+ev.pt.id);
+    if(box){ box.className='gve-pt '+ptClass(ev); set('gve-chip-'+ev.pt.id, chipHTML(ev)); set('gve-disp-'+ev.pt.id, dispHTML(ev)); }
+  });
+  set('gve-chist-'+cid, compHistHTML(cid));
+  status(a);
 }
 function routeText(x){
   if(x.route==='hotweld') return x.cwr ? 'CWR weld repair to Normal' : 'HWR to Normal';
@@ -11653,10 +11896,13 @@ window.gveManual = function(which, v){
 window.gveRecv = function(v){ var s=g(); s.receivedFrom = s.receivedFrom===v ? '' : v; set('gve-recv', recvHTML()); };
 window.gveG = function(k, v){ g()[k]=v; };
 window.gvePrevHWR = function(on){ var s=g(); s.prevHWR=!!on; s.prevHWRSrc='manual'; if(!on) s.prevHWRRefs=[]; set('gve-hist', historyHTML()); status(); };
-window.gveSN = function(v){ setHeader('serialNo', v); g().prevHWRSrc = g().prevHWRSrc==='manual' ? 'manual' : ''; syncHistory(); set('gve-hist', historyHTML()); status(); };
+window.gveSN = function(v){ setHeader('serialNo', v); syncAll(); set('gve-hist', historyHTML()); WELD_COMPS.forEach(refreshComp);
+  FLANGE_PTS.forEach(function(pid){ set('gve-pthist-'+pid, ptHistHTML(pid)); refreshPoint(pid); }); status(); };
+window.gveCompHWR = function(cid, on){ var s=g(); if(!s.compHWR) s.compHWR={}; s.compHWR[cid] = { on:!!on, src:'manual', refs:on ? ((s.compHWR[cid]||{}).refs||[]) : [] }; refreshComp(cid); };
 window.gveStatus = function(){ status(); };
 window.gveEngReq = function(on){ g().engRequest=!!on; var b=document.getElementById('gve-engbox'); if(b) b.style.display=on?'block':'none'; status(); };
-window.gveComp = function(cid, k, v){ var s=g(); if(!s.comp[cid]) s.comp[cid]={}; s.comp[cid][k]=v; };
+window.gveComp = function(cid, k, v){ var s=g(); if(!s.comp[cid]) s.comp[cid]={}; s.comp[cid][k]=v;
+  if(k==='sn' && WELD_COMPS.indexOf(cid)!==-1){ syncComp(cid); refreshComp(cid); } };
 window.gveSt = function(id, v){
   var s=ptState(id);
   if(s.st===v) { s.st=''; } else s.st=v;
@@ -11779,6 +12025,8 @@ function printDoc(r){
     +(o.pnChange?'<div style="margin-top:4px"><b>Re-identify:</b> '+e(o.pnChange.from)+' ('+e(o.pnChange.fromCfg)+') &rarr; <b>'+e(o.pnChange.to)+'</b> ('+e(o.pnChange.toCfg)+')</div>':'')
     +(o.lines||[]).map(function(l){ return '<div style="color:#b45309">&bull; '+e(l)+'</div>'; }).join('')
     +(o.cwr ? '<div style="margin-top:4px;color:#7e22ce"><b>CWR required.</b> '+e(o.cwr)+'</div>' : '')
+    +(o.compWeld||[]).map(function(x){ return '<div style="margin-top:4px'+(x.action==='CWR'?';color:#7e22ce':'')+'"><b>'+(x.action==='CWR'?'CWR required':'Weld repair')+':</b> '+e(x.text)+'</div>'
+        +(G.files && x.sow ? G.files.printLink(x.sow, 'Scope of work — '+x.label) : '<div style="margin-top:4px;color:#b45309">SOW for '+e(x.label)+' not set</div>'); }).join('')
     +(a.nameplate && a.nameplate.change ? '<div style="margin-top:4px"><b>Name plate:</b> '+e(a.nameplate.text)+'</div>' : '')
     +(a.route.type!=='none' && G.files ? (a.sows||[]).map(function(x){ return x.meta ? G.files.printLink(x.meta,'Scope of work — '+x.label) : '<div style="margin-top:4px;color:#b45309">SOW for '+e(x.label)+' not set</div>'; }).join('')
         +(a.sowNext && a.sowNext.meta ? G.files.printLink(a.sowNext.meta,'If defects remain — '+a.sowNext.label) : '') : '')
@@ -12290,6 +12538,20 @@ var css = ''
  +'.gvs-tag{display:inline-block;font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:999px;letter-spacing:.04em}'
  +'.gvs-tag.sp{background:rgba(22,163,74,.14);color:#16a34a}.gvs-tag.loc{background:rgba(245,158,11,.16);color:#d97706}'
  +'.gvs-map td select{min-width:220px}'
+ +'.gvs-route-pol{display:grid;grid-template-columns:260px 1fr;gap:12px;margin-bottom:12px;align-items:start}'
+ +'.gvs-rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-items:start}'
+ +'.gvs-route-blk{border:1px solid var(--border);border-radius:11px;padding:11px;background:var(--bg3)}'
+ +'.gvs-route-t{font-size:12.5px;font-weight:800;color:var(--text);margin-bottom:8px}'
+ +'.gvs-route-row{display:grid;grid-template-columns:1.1fr auto 1.2fr;gap:6px;align-items:center;padding:5px 0;border-top:1px dashed var(--border2);font-size:12px;color:var(--text2)}'
+ +'.gvs-route-row .lim{display:flex;align-items:center;gap:5px;white-space:nowrap}'
+ +'.gvs-route-row .arr{color:var(--text3);font-weight:800}'
+ +'.gvs-route-row .res{font-weight:800;font-size:11.5px;padding:4px 7px;border-radius:7px;text-align:center}'
+ +'.gvs-route-row .res.ok{background:rgba(245,158,11,.14);color:#d97706}'
+ +'.gvs-route-row .res.os{background:rgba(175,97,255,.16);color:var(--brand)}'
+ +'.gvs-route-row .res.hw{background:rgba(220,38,38,.12);color:#dc2626}'
+ +'.gvs-rin{width:78px!important;padding:5px 7px!important;font-size:12px!important}'
+ +'.gvs-route-sum{margin-top:8px;font-size:10.5px;color:var(--text3);line-height:1.45}'
+ +'@media(max-width:760px){.gvs-rgrid{grid-template-columns:1fr}.gvs-route-pol{grid-template-columns:1fr}}'
  +'.gvs-vbar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;padding:10px;border-radius:11px;background:var(--bg3);border:1px solid var(--border)}'
  +'.gvs-vsel{flex:1;min-width:220px}.gvs-vsel select{font-weight:700}'
  +'.gvs-vact{display:flex;gap:6px;flex-wrap:wrap}'
@@ -12364,7 +12626,7 @@ function area(path, rows, ph){
 function actionSel(path){
   var v = getP(path);
   return '<select class="field-input" onchange="gvsSet(\''+q(path)+'\',this.value);gvsRender()">'
-    + G.ACTION_KEYS.map(function(k){ return '<option value="'+k+'"'+(v===k?' selected':'')+'>'+e(ACTIONS[k].label)+'</option>'; }).join('')+'</select>';
+    + G.ACTION_KEYS.filter(function(k){ return !ACTIONS[k].auto; }).map(function(k){ return '<option value="'+k+'"'+(v===k?' selected':'')+'>'+e(ACTIONS[k].label)+'</option>'; }).join('')+'</select>';
 }
 /* valve selector shown on every tab that works per valve */
 function sizePills(){
@@ -12488,17 +12750,41 @@ function listTable(path, title, tip){
   h += '</tbody></table></div><button class="gvs-add" onclick="gvsAdd(\''+q(path)+'\')">+ Add part</button>';
   return h;
 }
-var SLOTS = ['NORMAL','OS_030','OS_060','CWR'];
-function slotGet(sk, os){ return os==='CWR' ? D.sizes[sk].cwrSow : D.sizes[sk].variants[os].sow; }
-function slotSet(sk, os, m){ if(os==='CWR') D.sizes[sk].cwrSow = m; else D.sizes[sk].variants[os].sow = m; }
+var SLOTS = ['NORMAL','OS_030','OS_060','CWR','RG_HWR','RG_CWR','BON_HWR','BON_CWR','BSB_HWR','BSB_CWR'];
+var SLOT_FIELD = { CWR:'cwrSow', RG_HWR:'rgHwrSow', RG_CWR:'rgCwrSow', BON_HWR:'bonHwrSow', BON_CWR:'bonCwrSow', BSB_HWR:'bsbHwrSow', BSB_CWR:'bsbCwrSow' };
+function slotOf(std, sk, os){ var z = std.sizes[sk]; return SLOT_FIELD[os] ? z[SLOT_FIELD[os]] : z.variants[os].sow; }
+function slotGet(sk, os){ return slotOf(D, sk, os); }
+function slotSet(sk, os, m){ if(SLOT_FIELD[os]) D.sizes[sk][SLOT_FIELD[os]] = m; else D.sizes[sk].variants[os].sow = m; }
+function isBonnetSlot(os){ return /^(BON|BSB|RG)_/.test(os); }
+function sowFileHTML(os, m){
+  if(!m) return '<div style="margin-top:8px"><label class="gvs-add" style="cursor:pointer;display:inline-block">+ Upload SOW<input type="file" accept=".pptx,.ppt,.pdf,.docx,.doc,.xlsx,.xls" style="display:none" onchange="gvsSowFile(\''+os+'\',this)"/></label></div>';
+  return G.files.linkHTML(m, 'SOW file')
+    +'<div style="margin-top:7px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+    +(m.webUrl ? '<span class="gvs-tag sp">ON SHAREPOINT</span>' : '<span class="gvs-tag loc">THIS DEVICE ONLY — uploads to SharePoint on Save when connected</span>')
+    +'<span style="font-size:11px;color:var(--text3)">Added '+e(new Date(m.uploadedAt).toLocaleDateString('en-GB'))+'</span>'
+    +'<label class="gvs-link">Replace<input type="file" accept=".pptx,.ppt,.pdf,.docx,.doc,.xlsx,.xls" style="display:none" onchange="gvsSowFile(\''+os+'\',this)"/></label>'
+    +'<button class="gvs-link" style="color:#dc2626" onclick="gvsSowDel(\''+os+'\')">Remove</button></div>';
+}
 function tabSow(){
   var h = '<div class="card"><div class="section-title">Scope of work files</div>'
     +'<div class="gvs-tip">One SOW per conversion and valve. When the evaluation routes a valve to oversize machining or hot-weld repair, the report links the SOW for that valve. The SOW for a conversion is linked to the valve\'s top level part number through its GV body part number (from the IBOM).</div>'
     +'<div class="gvs-btns" style="margin:0 0 6px"><label class="settings-btn-connect" style="cursor:pointer">Upload SOW files<input type="file" multiple accept=".pptx,.ppt,.pdf,.docx,.doc,.xlsx,.xls" style="display:none" onchange="gvsSowBulk(this)"/></label></div>'
-    +'<div class="gvs-tip" style="margin:0 0 12px">Files are placed automatically from their names — the GV body or valve part number and OS30, OS60 or HWR, for example <b>SoW-OS30-P149968.pptx</b>. Files that cannot be placed are listed for you to choose.</div>'
+    +'<div class="gvs-tip" style="margin:0 0 12px">Files are placed automatically from their names — the GV body or valve part number and OS30, OS60, HWR or CWR, for example <b>SoW-OS30-P149968.pptx</b>. For bonnet SOWs include "Bonnet" or "BSB", or the bonnet body part number, for example <b>SoW-Bonnet-HWR-P166319.pptx</b>. Files that cannot be placed are listed for you to choose.</div>'
     + sizePills();
+  var bal = D.sizes[size].balanced!==false;
   SLOTS.forEach(function(os){
-    var sz = D.sizes[size], v = os==='CWR' ? null : sz.variants[os], m = slotGet(size, os);
+    if(/^BSB_/.test(os) && !bal) return;
+    if(os==='RG_HWR') h += '<div class="section-title" style="margin-top:16px">GV body flange ring groove (LHS / RHS) weld repair</div><div class="gvs-tip">Used when skimming the flange face cannot clear a ring groove defect without going below the minimum flange thickness. CWR applies when that ring groove was weld repaired before.</div>';
+    if(os==='BON_HWR') h += '<div class="section-title" style="margin-top:16px">Bonnet body weld repair</div><div class="gvs-tip">Used when a bonnet sealing area (ring groove, back seat, UV packing area) is damaged beyond tolerance. CWR applies when that bonnet was hot-weld repaired before.'+(bal?' If the balance stem bonnet slots are empty, the main bonnet SOWs are used for it.':'')+'</div>';
+    var sz = D.sizes[size], m = slotGet(size, os);
+    if(isBonnetSlot(os)){
+      var fl = G.flangeFor(D, size);
+      var bpn = /^RG_/.test(os) ? 'End flange <b>'+e(fl ? fl.label : 'not set')+'</b>' : 'Bonnet body <b>'+e((/^BON_/.test(os) ? sz.variants.NORMAL.bonnetPN : sz.variants.NORMAL.bsbPN)||'not set')+'</b>';
+      h += '<div class="gvs-sow"><div class="gvs-sow-h"><div class="gvs-sow-t">'+e(G.SOW_LABEL[os])+'</div><div class="gvs-sow-pn">'+bpn+'</div></div>'
+        + sowFileHTML(os, m) + '</div>';
+      return;
+    }
+    var v = os==='CWR' ? null : sz.variants[os];
     var fromLbl = os==='CWR' ? 'Any configuration, valve hot-weld repaired before' : os==='OS_060' ? 'Any configuration when the defect is deeper than the oversize allowance' : 'Top level <b>'+e((v.pns||[])[0]||'not set')+'</b> · GV body <b>'+e(v.bodyPN||'not set')+'</b>';
     var toOS = (os==='NORMAL') ? 'OS_030' : (os==='OS_030') ? 'OS_060' : 'NORMAL', toV = sz.variants[toOS];
     var npPath = os==='CWR' ? 'sizes|'+size+'|cwrNewPN' : 'sizes|'+size+'|variants|'+os+'|sowNewPN';
@@ -12506,17 +12792,7 @@ function tabSow(){
       +'<div class="gvs-sow-pn">'+fromLbl+'</div></div>'
       +'<div class="gvs-grid" style="margin-top:8px"><div><label class="field-label">Name plate part number after this SOW</label>'+inp(npPath, (toV.pns||[])[0]||'PN')+'</div>'
       +'<div class="gvs-tip" style="margin:18px 0 0">Leave empty to use the '+e(OS_LABEL[toOS])+' part number '+e((toV.pns||[])[0]||'')+'. The report tells the inspector to change the name plate to this number.</div></div>';
-    if(m){
-      h += G.files.linkHTML(m, 'SOW file')
-        +'<div style="margin-top:7px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
-        +(m.webUrl ? '<span class="gvs-tag sp">ON SHAREPOINT</span>' : '<span class="gvs-tag loc">THIS DEVICE ONLY — uploads to SharePoint on Save when connected</span>')
-        +'<span style="font-size:11px;color:var(--text3)">Added '+e(new Date(m.uploadedAt).toLocaleDateString('en-GB'))+'</span>'
-        +'<label class="gvs-link">Replace<input type="file" accept=".pptx,.ppt,.pdf,.docx,.doc,.xlsx,.xls" style="display:none" onchange="gvsSowFile(\''+os+'\',this)"/></label>'
-        +'<button class="gvs-link" style="color:#dc2626" onclick="gvsSowDel(\''+os+'\')">Remove</button></div>';
-    } else {
-      h += '<div style="margin-top:8px"><label class="gvs-add" style="cursor:pointer;display:inline-block">+ Upload SOW<input type="file" accept=".pptx,.ppt,.pdf,.docx,.doc,.xlsx,.xls" style="display:none" onchange="gvsSowFile(\''+os+'\',this)"/></label></div>';
-    }
-    h += '</div>';
+    h += sowFileHTML(os, m) + '</div>';
   });
   return h+'</div>';
 }
@@ -12533,12 +12809,140 @@ function tabSpares(){
   return h+'</div>';
 }
 
+/* ── GV body seat pocket route by defect depth ─────────────────────────── */
+function rinp(path, ph){
+  var v = getP(path);
+  return '<input class="field-input gvs-rin" inputmode="decimal" value="'+e(v==null?'':v)+'" placeholder="'+e(ph||'not used')+'" oninput="gvsSet(\''+q(path)+'\',this.value,\'num\')"/>';
+}
+function routeSummary(from){
+  var pol = G.polishLimit(D), rt = G.routeTable(D, from), parts = [];
+  parts.push('up to '+(pol===null?'—':pol.toFixed(3))+'" → polish');
+  rt.forEach(function(x){ parts.push(x.type==='os' ? 'up to '+x.upTo.toFixed(3)+'" → '+OS_LABEL[x.target] : 'deeper → HWR back to Standard'); });
+  return parts.join(' · ');
+}
+function tabRoute(){
+  var pol = 'groups|seatPocket|bands|0|max', h = '<div class="card"><div class="section-title">GV body — seat pocket route by defect depth</div>'
+    +'<div class="gvs-tip">When the inspector records seat pocket damage (ID and face) the defect depth decides the route. The valve goes to the first step whose limit is not exceeded; deeper than every limit goes to hot-weld repair (HWR) back to Standard, or CWR if the valve was hot-weld repaired before. Depths in inches. Leave a limit empty to stop using that step. These limits apply to every valve.</div>'
+    +'<div class="gvs-route-pol"><div><label class="field-label">Polish limit — all configurations</label>'+rinp(pol,'0.002')+'</div>'
+    +'<div class="gvs-tip" style="margin:16px 0 0">Defect up to this depth: polish the seat pocket, no machining.</div></div>';
+  var block = function(from, title, steps){
+    var b = '<div class="gvs-route-blk"><div class="gvs-route-t">'+e(title)+'</div>'
+      +'<div class="gvs-route-row"><span class="lim">≤ polish limit</span><span class="arr">→</span><span class="res ok">Polish</span></div>';
+    steps.forEach(function(st){
+      b += '<div class="gvs-route-row"><span class="lim">up to '+rinp('seatRoute|'+from+'|'+st[0])+'</span><span class="arr">→</span><span class="res os">'+e(st[1])+'</span></div>';
+    });
+    b += '<div class="gvs-route-row"><span class="lim">deeper</span><span class="arr">→</span><span class="res hw">HWR to Standard</span></div>'
+      +'<div class="gvs-route-sum" id="gvs-rsum-'+from+'">'+e(routeSummary(from))+'</div></div>';
+    return b;
+  };
+  h += '<div class="gvs-rgrid">'
+    + block('NORMAL', 'Valve is Standard (Normal)', [['OS_030','Machine to OS .030"'],['OS_060','Machine directly to OS .060"']])
+    + block('OS_030', 'Valve is OS .030"', [['OS_060','Machine to OS .060"']])
+    + block('OS_060', 'Valve is OS .060"', [])
+    + '</div>';
+  h += '<div class="gvs-tip" style="margin-top:10px">Seat pocket ID over its maximum with no depth recorded moves the valve one step (the next step in use). The SOWs, new part numbers, seats and name plate change follow the route automatically.</div></div>';
+  h += '<div class="card"><div class="section-title">Try the route</div><div class="gvs-test"><div><label class="field-label">Valve is</label><select class="field-input" id="gvs-r-from" onchange="gvsRouteTry()">'
+    + G.OS_KEYS.map(function(k){ return '<option value="'+k+'">'+e(k==='NORMAL'?'Standard (Normal)':OS_LABEL[k])+'</option>'; }).join('')+'</select></div>'
+    +'<div><label class="field-label">Seat pocket defect depth (in)</label><input class="field-input" id="gvs-r-d" inputmode="decimal" placeholder="0.000" oninput="gvsRouteTry()"/></div><div></div></div>'
+    +'<div class="gvs-test-out" id="gvs-r-out"></div></div>';
+  return h;
+}
+window.gvsRouteTry = function(){
+  G.OS_KEYS.forEach(function(k){ var el = document.getElementById('gvs-rsum-'+k); if(el) el.textContent = routeSummary(k); });
+  var out = document.getElementById('gvs-r-out'); if(!out) return;
+  var from = (document.getElementById('gvs-r-from')||{}).value, d = num((document.getElementById('gvs-r-d')||{}).value);
+  if(!from || d===null){ out.innerHTML = '<div class="gvs-tip" style="margin:0">Enter a depth to see the route.</div>'; return; }
+  var pol = G.polishLimit(D), res;
+  if(pol!==null && d <= pol + 1e-9) res = { tone:'minor', t:'Polish', x:'Within the polish limit — no machining.' };
+  else {
+    var pl = G.planRoute(D, from, d);
+    res = pl.type==='os' ? { tone:'major', t:'Machine to '+OS_LABEL[pl.target]+(pl.jump?' (direct)':''), x:'Within the '+pl.limit.toFixed(3)+'" limit for this step.' }
+                         : { tone:'major', t:'Hot-weld repair (HWR) back to Standard', x:'Deeper than every oversize step in use. CWR instead if the valve was hot-weld repaired before.' };
+  }
+  out.innerHTML = '<div class="gve-disp t-'+res.tone+'"><div class="gve-disp-h"><span class="gve-act">'+e(res.t)+'</span><span class="gve-auto">Result</span></div>'+e(res.x)+'</div>';
+};
+function routeProblems(std){
+  var out = [], pol = G.polishLimit(std);
+  var n30 = G.routeLimit(std,'NORMAL','OS_030'), n60 = G.routeLimit(std,'NORMAL','OS_060'), o60 = G.routeLimit(std,'OS_030','OS_060');
+  if(pol===null) out.push('Seat pocket route: set the polish limit');
+  [['Standard → OS .030"', n30], ['Standard → OS .060"', n60], ['OS .030" → OS .060"', o60]].forEach(function(x){
+    if(x[1]!==null && pol!==null && x[1] <= pol) out.push('Seat pocket route: '+x[0]+' limit must be deeper than the polish limit');
+  });
+  if(n30!==null && n60!==null && n60 <= n30) out.push('Seat pocket route: Standard → OS .060" limit must be deeper than the OS .030" limit');
+  return out;
+}
+/* ── end flange ring grooves (LHS / RHS) ─────────────────────────────── */
+function tabFlange(){
+  var fl = D.flanges || (D.flanges = []), h = '';
+  h += '<div class="card"><div class="section-title">GV body end flange ring grooves (LHS / RHS)</div>'
+    +'<div class="gvs-tip">For the side ring grooves the inspector records the defect depth and measures the flange thickness. Skimming the flange face removes the defect depth'+' plus the clean-up cut below. If the flange stays at or above its minimum thickness → skim the face and re-cut the ring groove. Otherwise → hot-weld repair (HWR), or CWR when that ring groove was weld repaired before. Depths and thicknesses in inches.</div>'
+    +'<div class="gvs-grid"><div><label class="field-label">Polish limit — no machining up to</label>'+rinp('flangePolish','0.002')+'</div>'
+    +'<div><label class="field-label">Clean-up cut added to the defect depth</label>'+rinp('flangeCleanup','0')+'</div></div></div>';
+  h += '<div class="card"><div class="section-title">Flange thickness tolerance by flange size</div>'
+    +'<div class="gvs-tip">The minimum thickness is the limit after skimming. A ring groove defect beyond the polish limit on a flange without a minimum set is referred to Engineering.</div>'
+    +'<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th>Flange size</th><th style="width:130px">Nominal thickness</th><th style="width:130px">Minimum thickness</th><th style="width:120px">Max skim from nominal</th><th style="width:40px"></th></tr></thead><tbody>';
+  fl.forEach(function(f, i){
+    var nm = num(f.nominal), mn = num(f.min), room = (nm!==null && mn!==null) ? (nm-mn).toFixed(3)+'"' : '—';
+    h += '<tr><td>'+inp('flanges|'+i+'|label','e.g. 3-1/16" 15K (6BX)')+'</td><td>'+inp('flanges|'+i+'|nominal','0.000','num')+'</td><td>'+inp('flanges|'+i+'|min','0.000','num')+'</td>'
+      +'<td class="k" style="padding-top:10px" id="gvs-fl-room-'+i+'">'+room+'</td><td><button class="gvs-del" onclick="gvsFlangeDel('+i+')">&times;</button></td></tr>';
+  });
+  if(!fl.length) h += '<tr><td colspan="5" style="color:var(--text3)">No flange sizes.</td></tr>';
+  h += '</tbody></table></div><button class="gvs-add" onclick="gvsFlangeAdd()">+ Add flange size</button>';
+  var missing = fl.filter(function(f){ return num(f.min)===null; }).map(function(f){ return f.label||'(unnamed)'; });
+  if(missing.length) h += '<div class="gvs-warn">Minimum thickness not set: '+missing.map(e).join(', ')+'. Side ring groove defects beyond the polish limit on these flanges go to Engineering.</div>';
+  h += '</div>';
+  h += '<div class="card"><div class="section-title">End flange of each valve</div><div class="gvs-scroll"><table class="gvs-tbl"><tbody>'
+    + G.keys(D).map(function(k){ var v = D.sizes[k];
+        return '<tr><td class="k" style="padding-top:10px">'+e(v.label)+'</td><td><select class="field-input" onchange="gvsSet(\'sizes|'+k+'|flange\',this.value);gvsRender()"><option value="">Not set</option>'
+          + fl.map(function(f){ return '<option value="'+e(f.id)+'"'+(v.flange===f.id?' selected':'')+'>'+e(f.label||f.id)+'</option>'; }).join('')+'</select></td></tr>'; }).join('')
+    +'</tbody></table></div></div>';
+  h += '<div class="card"><div class="section-title">Try it</div><div class="gvs-test">'
+    +'<div><label class="field-label">Flange</label><select class="field-input" id="gvs-f-f" onchange="gvsFlangeTry()">'+fl.map(function(f, i){ return '<option value="'+i+'">'+e(f.label||f.id)+'</option>'; }).join('')+'</select></div>'
+    +'<div><label class="field-label">Measured flange thickness</label><input class="field-input" id="gvs-f-t" inputmode="decimal" placeholder="0.000" oninput="gvsFlangeTry()"/></div>'
+    +'<div><label class="field-label">Ring groove defect depth</label><input class="field-input" id="gvs-f-d" inputmode="decimal" placeholder="0.000" oninput="gvsFlangeTry()"/></div></div>'
+    +'<label class="gvs-check" style="margin-top:8px"><input type="checkbox" id="gvs-f-w" onchange="gvsFlangeTry()"/> Ring groove weld repaired before</label>'
+    +'<div class="gvs-test-out" id="gvs-f-out"></div></div>';
+  return h;
+}
+window.gvsFlangeAdd = function(){ (D.flanges = D.flanges||[]).push({ id:'F'+Date.now().toString(36), label:'', nominal:'', min:'' }); mark(); gvsRender(); };
+window.gvsFlangeDel = function(i){
+  var f = D.flanges[i]; if(!f) return;
+  var users = G.keys(D).filter(function(k){ return D.sizes[k].flange===f.id; });
+  if(!confirm('Remove flange size '+(f.label||'')+'?'+(users.length?' '+users.length+' valve(s) use it and will need another flange size.':''))) return;
+  users.forEach(function(k){ D.sizes[k].flange = ''; });
+  D.flanges.splice(i,1); mark(); gvsRender();
+};
+window.gvsFlangeTry = function(){
+  (D.flanges||[]).forEach(function(f, i){ var el = document.getElementById('gvs-fl-room-'+i); if(el){ var nm = num(f.nominal), mn = num(f.min); el.textContent = (nm!==null && mn!==null) ? (nm-mn).toFixed(3)+'"' : '—'; } });
+  var out = document.getElementById('gvs-f-out'); if(!out) return;
+  var F = (D.flanges||[])[+(document.getElementById('gvs-f-f')||{}).value], d = num((document.getElementById('gvs-f-d')||{}).value), T = (document.getElementById('gvs-f-t')||{}).value;
+  if(!F || d===null){ out.innerHTML = '<div class="gvs-tip" style="margin:0">Enter a defect depth (and the measured thickness) to see the disposition.</div>'; return; }
+  var pt = G.COMPONENTS[0].points.filter(function(p){ return p.id==='body_rg_lhs'; })[0];
+  var res = G.flangeCheck({ gvEval:{ meas:{ flangeThkL:T } } }, pt, { flange:F, flangePolish:D.flangePolish, flangeCleanup:D.flangeCleanup }, d);
+  if(res.pending){ out.innerHTML = '<div class="gve-disp pend">'+e(res.msg)+'</div>'; return; }
+  var r = res.res; if(r.action==='HWR' && (document.getElementById('gvs-f-w')||{}).checked) r = { action:'CWR', text:'Weld repaired before — weld repair to the CWR SOW, not HWR. '+r.text };
+  var A = ACTIONS[r.action];
+  out.innerHTML = '<div class="gve-disp t-'+A.tone+'"><div class="gve-disp-h"><span class="gve-act">'+e(A.label)+'</span><span class="gve-auto">Result</span></div>'+e(r.text)+'</div>';
+};
+function flangeProblems(std){
+  var out = [];
+  (std.flanges||[]).forEach(function(f){
+    var nm = num(f.nominal), mn = num(f.min), lb = f.label || '(unnamed flange)';
+    if(!String(f.label||'').trim()) out.push('Flange ring grooves: every flange size needs a name');
+    if(nm!==null && mn!==null && mn >= nm) out.push('Flange ring grooves: '+lb+' minimum thickness must be less than its nominal thickness');
+    if(mn!==null && mn<=0) out.push('Flange ring grooves: '+lb+' minimum thickness must be more than zero');
+  });
+  return out;
+}
 function tabCriteria(){
   var h = '<div class="card"><div class="section-title">Depth criteria</div>'
     +'<div class="gvs-tip">For each kind of critical area, the inspector\'s defect depth is checked against the bands in order. The first band whose limit is not exceeded sets the action; anything deeper than the last band gets the "above the last band" action. Depths in inches.</div></div>';
+  h += '<div class="card"><div class="section-title">'+e(G.GROUP_LABELS.seatPocket)+'</div><div class="gvs-tip" style="margin:0">The GV body seat pocket — polish limit and when to go to OS .030", OS .060" or hot-weld repair — is set on the <button class="gvs-link" onclick="gvsTab(\'route\')">Seat pocket route</button> tab.</div></div>';
   Object.keys(G.GROUP_LABELS).forEach(function(gk){
+    if(gk==='seatPocket') return;
     var g = D.groups[gk] || (D.groups[gk] = { bands:[], over:{ action:'ENGINEERING', text:'' } });
-    var used = []; G.COMPONENTS.forEach(function(c){ c.points.forEach(function(p){ if(p.group===gk) used.push(c.title+' — '+p.label); }); });
+    var used = []; G.COMPONENTS.forEach(function(c){ c.points.forEach(function(p){ if(p.group===gk && !p.flange) used.push(c.title+' — '+p.label); }); });
+    if(gk==='ringGroove') used.push('(LHS and RHS end flange ring grooves are set on the Flange ring grooves tab)');
     h += '<div class="card"><div class="section-title">'+e(G.GROUP_LABELS[gk])+'</div>'
       +'<div class="gvs-tip">Applies to: '+e(used.join(' · '))+'</div>';
     h += '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:110px">Depth up to</th><th style="width:180px">Action</th><th>Disposition text</th><th style="width:40px"></th></tr></thead><tbody>';
@@ -12552,11 +12956,6 @@ function tabCriteria(){
     if(gk==='seatPocket') h += '<div class="gvs-tip" style="margin-top:8px">"Machine to next oversize" moves the valve along the route: Normal → OS .030" → OS .060" → hot-weld repair to Normal.</div>';
     h += '</div>';
   });
-  h += '<div class="card"><div class="section-title">Seat pocket route by defect depth</div>'
-    +'<div class="gvs-tip">When a seat pocket defect is over the polish limit, the valve goes to the smallest oversize that removes it. Deeper than the last oversize allows → hot-weld repair (HWR) back to Normal. A valve already at an oversize only has the difference left (OS .030" → OS .060" removes '+(G.allowance(D,'OS_060')-G.allowance(D,'OS_030')).toFixed(3)+'").</div>'
-    +'<div class="gvs-grid"><div><label class="field-label">OS .030" — metal removed (in)</label>'+inp('osAllowance|OS_030','0.030','num')+'</div>'
-    +'<div><label class="field-label">OS .060" — metal removed (in)</label>'+inp('osAllowance|OS_060','0.060','num')+'</div></div>'
-    +'<div class="gvs-tip" style="margin:10px 0 0">Normal valve: up to '+G.allowance(D,'OS_030').toFixed(3)+'" → OS .030" · up to '+G.allowance(D,'OS_060').toFixed(3)+'" → OS .060" (direct) · deeper → HWR to Normal.</div></div>';
   h += '<div class="card"><div class="section-title">Non-critical areas and studs / nuts</div>'
     +'<div class="gvs-tip">These are selections rather than depths, as on the evaluation report.</div>'
     +'<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:200px">Inspector selects</th><th style="width:180px">Action</th><th>Disposition text</th></tr></thead><tbody>';
@@ -12586,9 +12985,10 @@ function tabCriteria(){
 function testPlanTable(){
   var std = { testing:D.testing[size] }, rows = [
     ['Standard redress', { type:'none' }], ['Machining to OS .030"', { type:'os', target:'OS_030' }], ['Machining to OS .060"', { type:'os', target:'OS_060' }],
-    ['Hot-weld repair (HWR)', { type:'hotweld', cwr:false }], ['CWR', { type:'hotweld', cwr:true }]];
+    ['Hot-weld repair (HWR)', { type:'hotweld', cwr:false }], ['CWR', { type:'hotweld', cwr:true }],
+    ['Bonnet hot-weld repair (HWR)', { type:'none' }, [{ title:'Main bonnet', action:'HWR' }]], ['Bonnet CWR', { type:'none' }, [{ title:'Main bonnet', action:'CWR' }]]];
   return '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th>Disposition</th><th>Body test</th><th>Gate / seat test</th></tr></thead><tbody>'
-    + rows.map(function(x){ var tp = G.testPlan(std, { route:x[1] }), b = tp.rows[0], s2 = tp.rows[1];
+    + rows.map(function(x){ var tp = G.testPlan(std, { route:x[1], compWeld:x[2]||[] }), b = tp.rows[0], s2 = tp.rows[1];
         return '<tr><td class="k" style="padding-top:6px">'+e(x[0])+'</td><td>'+e(b?b[1].split(' — ').slice(0,2).join(' — '):'—')+'</td><td>'+e(s2?s2[1].split(' — ').slice(0,2).join(' — '):'—')+'</td></tr>'; }).join('')
     +'</tbody></table></div>';
 }
@@ -12618,6 +13018,7 @@ function tabAdvisory(){
            ['hotWeld','Hot-weld repair OS .060" → Normal','Shown when an OS .060" valve needs its seat pockets machined.'],
            ['hotWeldDepth','Hot-weld repair — defect deeper than the oversize allowance','Shown when a Normal or OS .030" valve has a seat pocket defect too deep for oversize machining.'],
            ['cwr','CWR note','Shown when the valve was hot-weld repaired before and needs another weld repair.'],
+           ['compCwr','Bonnet CWR note','Shown when a bonnet that was hot-weld repaired before needs another weld repair.'],
            ['nameplate','Name plate change','General instruction for re-identifying the valve after a conversion.'],
            ['general','General redress advisory','Printed on every report.'],
            ['engPolicy','Engineering involvement policy','Shown to the inspector under Unusual Findings.']];
@@ -12656,9 +13057,9 @@ function render(){
     +'<div class="full"><label class="field-label">Change note</label><input class="field-input" placeholder="What changed in this revision" value="'+e(note)+'" oninput="gvsNote(this.value)"/></div></div>'
     +'<div class="gvs-tip" style="margin:8px 0 0">Saved revision '+e(live.rev)+(live.updatedAt?' · '+e(new Date(live.updatedAt).toLocaleString('en-GB')):' · built-in defaults')
     +'. Saved reports keep the revision they were dispositioned under.</div></div>';
-  var tabs = [['valves','Valves & PNs'],['sow','SOW files'],['spares','Spares'],['criteria','Defect criteria'],['testing','Testing'],['advisory','Advisories'],['backup','Backup & sync']];
+  var tabs = [['valves','Valves & PNs'],['route','Seat pocket route'],['flange','Flange ring grooves'],['sow','SOW files'],['spares','Spares'],['criteria','Defect criteria'],['testing','Testing'],['advisory','Advisories'],['backup','Backup & sync']];
   h += '<div class="gvs-tabs">'+tabs.map(function(t){ return '<button class="gvs-tab'+(tab===t[0]?' on':'')+'" onclick="gvsTab(\''+t[0]+'\')">'+e(t[1])+'</button>'; }).join('')+'</div>';
-  h += tab==='valves' ? tabValves() : tab==='sow' ? tabSow() : tab==='spares' ? tabSpares() : tab==='criteria' ? tabCriteria()
+  h += tab==='valves' ? tabValves() : tab==='route' ? tabRoute() : tab==='flange' ? tabFlange() : tab==='sow' ? tabSow() : tab==='spares' ? tabSpares() : tab==='criteria' ? tabCriteria()
      : tab==='testing' ? tabTesting() : tab==='advisory' ? tabAdvisory() : tabBackup();
   h += '<button class="save-full-btn" onclick="gvsSave()">Save standards</button>';
   body.innerHTML = h;
@@ -12687,6 +13088,8 @@ window.gvsSet  = function(path, v, kind){
   setP(path, v); mark();
   if(tab==='valves' && /\|(pns|seatPN)$/.test(path)){ var r = document.getElementById('gvs-route'); if(r) r.innerHTML = routeHTML(); }
   if(tab==='criteria') gvsTry();
+  if(tab==='route') gvsRouteTry();
+  if(tab==='flange') gvsFlangeTry();
   if(tab==='testing'){ var tpl = document.getElementById('gvs-tplan'); if(tpl) tpl.innerHTML = testPlanTable(); }
 };
 window.gvsDel = function(path, i){ var l = getP(path); if(l){ l.splice(i,1); mark(); gvsRender(); } };
@@ -12757,6 +13160,10 @@ window.gvsSave = function(){
   var dup = duplicates(D), bp = bandProblems(D);
   if(dup.length){ toast('⚠ Duplicate valve part numbers — see Valves & PNs', 4000); tab = 'valves'; render(); return; }
   if(bp.length){ toast('⚠ '+bp[0], 4000); tab = 'criteria'; render(); return; }
+  var rp = routeProblems(D);
+  if(rp.length){ toast('⚠ '+rp[0], 4500); tab = 'route'; render(); return; }
+  var fp = flangeProblems(D);
+  if(fp.length){ toast('⚠ '+fp[0], 4500); tab = 'flange'; render(); return; }
   var unnamed = G.keys(D).filter(function(k){ return !String(D.sizes[k].label||'').trim(); });
   if(unnamed.length){ size = unnamed[0]; tab = 'valves'; render(); toast('⚠ Every valve needs a name', 3500); return; }
   if(!String(D.approvedBy||'').trim()){ toast('⚠ Enter who approved this revision', 3500); window.scrollTo(0,0); return; }
@@ -12941,10 +13348,10 @@ window.gvsIbomView = function(os){
 
 /* ── SOW files ────────────────────────────────────────────────────────── */
 var PEND = null;
-function sowTag(sk, os){ return sk+' '+({NORMAL:'Normal-to-OS030', OS_030:'OS030-to-OS060', OS_060:'HWR-to-Normal', CWR:'CWR'}[os]); }
+function sowTag(sk, os){ return sk+' '+({NORMAL:'Normal-to-OS030', OS_030:'OS030-to-OS060', OS_060:'HWR-to-Normal', CWR:'CWR', RG_HWR:'Flange-RG-HWR', RG_CWR:'Flange-RG-CWR', BON_HWR:'Bonnet-HWR', BON_CWR:'Bonnet-CWR', BSB_HWR:'BSB-HWR', BSB_CWR:'BSB-CWR'}[os]); }
 function placeSow(sk, os, file){
   return G.files.addFile(file).then(function(meta){
-    var v = os==='CWR' ? null : D.sizes[sk].variants[os];
+    var v = SLOT_FIELD[os] ? null : D.sizes[sk].variants[os];
     meta.bodyPN = v ? v.bodyPN || '' : ''; meta.topPN = v ? (v.pns||[])[0] || '' : '';
     slotSet(sk, os, meta); mark();
     if(G.files.spReady()) return G.files.upload(meta, sowTag(sk, os)).then(function(){ return meta; }, function(){ return meta; });
@@ -12999,7 +13406,7 @@ window.gvsSowPlace = function(){
 function uploadPending(std){
   var jobs = [];
   G.keys(std).forEach(function(sk){ SLOTS.forEach(function(os){
-    var m = os==='CWR' ? std.sizes[sk].cwrSow : std.sizes[sk].variants[os].sow;
+    var m = slotOf(std, sk, os);
     if(m && !m.webUrl) jobs.push(G.files.upload(m, sowTag(sk, os)).catch(function(){ return m; }));
   }); });
   return Promise.all(jobs).then(function(){ return jobs.length; });
