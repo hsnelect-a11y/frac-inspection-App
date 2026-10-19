@@ -6654,9 +6654,42 @@ function removeSpare(id){
 }
 function updateSpare(id,key,val){ const s=current.spares.find(x=>x.id===id); if(s) s[key]=val; }
 
+/* Where a report stands, for the SharePoint register and the Teams notifications:
+   Draft       — inspection not finished
+   Engineering — waiting for an Engineering disposition
+   Repair      — disposition given; rework / QC after rework still open
+   Complete    — approved for service, first time or after rework */
+var ENG_REQUEST_RE = /Engineering disposition required|SoW required\. Send to Engineering|FAIL\. Send to Engineering/i;
+function reportStage(r){
+  var d = r.disposition || 'incomplete';
+  if(d==='incomplete') return 'Draft';
+  if(d==='all_pass' || d==='rework_complete') return 'Complete';
+  // Gate valve: the evaluation knows which findings still wait for Engineering
+  if(r.gvEval && window.GVEval){
+    try{
+      var a = GVEval.analyse(r);
+      if(a.incomplete) return 'Draft';
+      return (a.engOpen.length || a.globalEng) ? 'Engineering' : 'Repair';
+    }catch(e){ return 'Engineering'; }
+  }
+  // Flow forms (WECO, Cross, Adapter, Blind Flange): a failed step still carrying the automatic
+  // "send to Engineering" disposition text waits for Engineering. Engineering replaces that
+  // text with its own disposition, and the step moves on to rework.
+  var states = [r.bfState, r.wecoState, r.crossState, r.adapterFlowState].filter(Boolean);
+  if(states.length){
+    var waiting = states.some(function(st){
+      var ed = st.engDisp || {}, rw = st.reworkFindings || {};
+      return Object.keys(ed).some(function(id){ return ENG_REQUEST_RE.test(ed[id]||'') && rw[id]!=='pass'; });
+    });
+    return waiting ? 'Engineering' : 'Repair';
+  }
+  return 'Engineering';   // any other form: let Engineering look at the failure
+}
+
 function saveReport(){
   if(current && current.gvEval && window.GVEval) GVEval.beforeSave(current);
   current.disposition=getDisposition(current.findings,current);
+  current.stage=reportStage(current);
   current.savedAt=new Date().toISOString();
   const idx=reports.findIndex(r=>r.id===current.id);
   if(idx>=0){ reports[idx]=current; } else { reports.unshift(current); }
