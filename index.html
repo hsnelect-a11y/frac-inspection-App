@@ -8626,6 +8626,7 @@ function msVerifyConnection(callback){
     _uploadPromptShown=false;
     setTimeout(maybePromptUploadLocal, 900);
     if(callback) callback();
+    openReportLink();   // a report link waiting for this sign-in
   });
 }
 
@@ -8710,6 +8711,83 @@ function msAutoConnect(){
     }
   }catch(e){}
   showSignInBanner();
+}
+
+// ── Report links: …/frac-inspection-App/?report=FRC-123456 ─────────────
+// The SharePoint register links each report here. Opening the link shows that
+// report. If this device doesn't have it, or SharePoint has a newer copy, only
+// that one report is downloaded. The id is kept in sessionStorage so it
+// survives the Microsoft sign-in round trip (mobile sign-in reloads the app).
+var REPORT_LINK_KEY='frac_open_report';
+function captureReportLink(){
+  var id=null;
+  try{ id=new URLSearchParams(window.location.search).get('report'); }catch(e){}
+  if(!id) return;
+  id=String(id).trim();
+  if(!/^[A-Za-z0-9][A-Za-z0-9_-]{2,40}$/.test(id)) return;   // report ids only
+  try{ sessionStorage.setItem(REPORT_LINK_KEY,id); }catch(e){}
+  // Tidy the address bar so a refresh or bookmark doesn't keep reopening it
+  try{ history.replaceState(null,'',window.location.pathname+window.location.hash); }catch(e){}
+}
+function openReportLink(){
+  var id=null;
+  try{ id=sessionStorage.getItem(REPORT_LINK_KEY); }catch(e){}
+  if(!id) return;
+  var local=reports.find(function(r){ return r.id===id; });
+  if(local) showPreview(id);
+  if(!tokenValid()){
+    if(local){ try{ sessionStorage.removeItem(REPORT_LINK_KEY); }catch(e){} return; }
+    // Keep the id: it opens as soon as the sign-in completes
+    toast('🔒 Sign in to SharePoint to open report '+id, 6000);
+    return;
+  }
+  try{ sessionStorage.removeItem(REPORT_LINK_KEY); }catch(e){}
+  if(!local) toast('☁️ Opening report '+id+'…', 4000);
+  msFetchReport(id, function(sp, status){
+    if(sp && (!local || String(sp.savedAt||sp.createdAt||'') > String(local.savedAt||local.createdAt||''))){
+      sp._spSynced=true;
+      var i=reports.findIndex(function(r){ return r.id===id; });
+      if(i>=0) reports[i]=sp; else reports.unshift(sp);
+      saveReportsToStorage();
+      var onPreview=!document.getElementById('view-preview').classList.contains('hidden');
+      if(!local || (onPreview && previewReport && previewReport.id===id)) showPreview(id);
+      return;
+    }
+    if(sp) return;                                   // this device already has the latest copy
+    if(status==='missing'){
+      if(!local) toast('⚠️ Report '+id+' was not found on SharePoint — it may have been deleted', 6000);
+      else if(local._spSynced) toast('⚠️ Report '+id+' is no longer on SharePoint — it may have been deleted', 6000);
+    } else if(!local){
+      toast('⚠️ Could not open report '+id+' — check your connection and try the link again', 6000);
+    }
+  });
+}
+// Download one report's JSON from the Reports folder.
+// callback(report, status) — status 'ok', 'missing' (no file for this id) or 'error'.
+function msFetchReport(id, callback){
+  msResolveSite(function(ok){
+    if(!ok){ callback(null,'error'); return; }
+    var folder=spConfig.reportsFolder;
+    var auth={ headers:{'Authorization':'Bearer '+msAccessToken} };
+    var check=function(o){ return (o && o.id===id) ? o : null; };
+    var path=(folder+'/'+id+'.json').split('/').map(encodeURIComponent).join('/');
+    fetch('https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/root:/'+path+':/content', auth)
+    .then(function(r){
+      if(r.ok) return r.json().then(function(o){ o=check(o); callback(o, o?'ok':'error'); });
+      if(r.status!==404){ callback(null,'error'); return; }
+      // Not saved under the current name yet: look for older dated copies (FRC-123456_2026-10-15.json)
+      msListFolder(folder, function(items){
+        if(!items){ callback(null,'error'); return; }
+        var m=items.filter(function(f){ return f.name && f.name.indexOf(id+'_')===0 && /\.json$/i.test(f.name); })
+                   .sort(function(a,b){ return a.name<b.name ? 1 : -1; });   // newest date first
+        if(!m.length){ callback(null,'missing'); return; }
+        fetch(m[0]['@microsoft.graph.downloadUrl'] || ('https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/items/'+m[0].id+'/content'), auth)
+          .then(function(r2){ return r2.ok ? r2.json() : null; })
+          .then(function(o){ o=check(o); callback(o, o?'ok':'error'); })
+          .catch(function(){ callback(null,'error'); });
+      });
+    }).catch(function(){ callback(null,'error'); });
+  });
 }
 
 // ── Sync reports from SharePoint ──────────────────────────────────────
@@ -9000,10 +9078,13 @@ loadReports();
 loadConfig();
 applyEquipPhotos();
 showView('home');
+captureReportLink();
 // Auto-connect on startup: try stored token, else show sign-in banner
 if(isConfigured()){
   setTimeout(msAutoConnect, 600);
 }
+// Open a report link (?report=FRC-123456) once the stored token, if any, is in place
+setTimeout(openReportLink, 700);
 </script>
 <script>
 /* Photo lightbox: tap any inspection photo to view full-size; tap image to zoom; X or backdrop to close. */
