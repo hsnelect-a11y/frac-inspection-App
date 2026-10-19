@@ -3,7 +3,7 @@
  * and WITHOUT interfering with Microsoft sign-in.
  * Bump CACHE_VERSION on every deploy.
  */
-const CACHE_VERSION = "frac-2026-07-09d";
+const CACHE_VERSION = "frac-2026-10-19a";
 const APP_SHELL = "./";
 
 function freshFetch(url) {
