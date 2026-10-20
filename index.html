@@ -5296,7 +5296,7 @@ function rgSet(ft,id,val){
   rgRefresh(ft);
 }
 function rgSetComment(ft,id,val){ rgGetState(ft).comments[id]=val; }
-function rgSetEng(ft,id,val){ rgGetState(ft).engDisp[id]=val; }
+function rgSetEng(ft,id,val){ var st=rgGetState(ft); engTouched(ft+':'+id, st.engDisp[id], val); st.engDisp[id]=val; }
 function rgHandleStepInput(inp){
   var ft=inp.dataset.rgft; var fn=inp.dataset.rgstep; var id=inp.dataset.rgid;
   if(fn==='depth') rgSetDepth(ft,id,inp.value);
@@ -5688,7 +5688,7 @@ function wecoSet(id,val){
   wecoRefresh();
 }
 function wecoSet_comment(id,val){ wecoState().comments[id]=val; }
-function wecoSetEng(id,val){ wecoState().engDisp[id]=val; }
+function wecoSetEng(id,val){ engTouched('weco:'+id, wecoState().engDisp[id], val); wecoState().engDisp[id]=val; }
 function wecoSetDepth(id,val){
   setWecoSD(id,'depth',val);
   var d=parseFloat(val);
@@ -6097,7 +6097,7 @@ function bfSet(id, val){
   bfRefresh();
 }
 function bfSetComment(id,val){ bfState().comments[id]=val; }
-function bfSetEng(id,val){ bfState().engDisp[id]=val; }
+function bfSetEng(id,val){ engTouched('bf:'+id, bfState().engDisp[id], val); bfState().engDisp[id]=val; }
 function bfSetDepth(id,val){
   setBFSD(id,'depth',val);
   var d=parseFloat(val);
@@ -6294,6 +6294,7 @@ function updateReworkRow(itemId){
 }
 function setItemDisposition(itemId,val){
   if(!current.itemDispositions) current.itemDispositions={};
+  engTouched('item:'+itemId, current.itemDispositions[itemId], val);
   current.itemDispositions[itemId]=val;
 }
 
@@ -6344,8 +6345,60 @@ function setHeader(key,val){ current.header[key]=val;
   if(key==='partNo') refreshSpareValidation();
   if(key==='partNo'||key==='serialNo'||key==='sizeDesc') refreshEquipHero(); }
 function setInspector(val){ current.inspector=val; }
-function setEngineerName(val){ current.engineerName=val; }
-function setNotes(val){ current.engineeringNotes=val; }
+/* ── Engineering sign-off, filled automatically ─────────────────────────────
+   Whoever types in an Engineering disposition box (or the Engineering notes /
+   remarks) is recorded as the engineer, with the date. If they put the text
+   back the way it was (or clear it), their entry is removed again; when no
+   engineering entry is left, the automatically filled name and date are
+   cleared. A name typed by hand in the engineer field is never overwritten.
+   Text the app fills in by itself (depth paths etc.) does not count.        */
+function engUser(){ return (typeof spConfig!=='undefined' && spConfig.userName) || ''; }
+function engNorm(s){ return String(s||'').replace(/\s+/g,' ').trim(); }
+function engTouched(key, oldVal, newVal){
+  var r = current; if(!r) return;
+  var A = r.engAuthors || (r.engAuthors = {});
+  var rec = A[key];
+  if(!rec){
+    if(engNorm(oldVal)===engNorm(newVal)) return;
+    rec = A[key] = { base: String(oldVal||'') };
+  }
+  rec.by = engUser(); rec.at = new Date().toISOString();
+  if(!engNorm(newVal) || engNorm(newVal)===engNorm(rec.base)) delete A[key];   /* undone or deleted */
+  engApplySignoff(r);
+}
+function engApplySignoff(r){
+  var list = Object.keys(r.engAuthors||{}).map(function(k){ return r.engAuthors[k]; })
+    .filter(function(x){ return x.by; }).sort(function(a,b){ return a.at<b.at ? -1 : 1; });
+  var names = [];
+  list.forEach(function(x){ var i = names.indexOf(x.by); if(i!==-1) names.splice(i,1); names.push(x.by); });   /* latest last */
+  var name = names.join(', '), date = list.length ? list[list.length-1].at.slice(0,10) : '';
+  var gv = r.gvEval && window.GVEval;
+  if(gv){
+    var g = r.gvEval;
+    if(g.engByManual) return;
+    if(name){ g.engBy = name; g.engDate = date; g.engByAuto = true; }
+    else if(g.engByAuto){ g.engBy = ''; g.engDate = ''; g.engByAuto = false; }
+    r.engineerName = g.engBy || '';
+  } else {
+    if(r.engNameManual) return;
+    if(name){ r.engineerName = name; r.engDate = date; r.engNameAuto = true; }
+    else if(r.engNameAuto){ r.engineerName = ''; r.engDate = ''; r.engNameAuto = false; }
+  }
+  engSignoffDOM(r);
+}
+function engSignoffDOM(r){
+  var gv = r.gvEval && window.GVEval, nm = gv ? (r.gvEval.engBy||'') : (r.engineerName||''), dt = gv ? (r.gvEval.engDate||'') : (r.engDate||'');
+  ['hdr-eng-name','eng-by','gve-engby'].forEach(function(id){ var el = document.getElementById(id); if(el && document.activeElement!==el) el.value = nm; });
+  ['eng-date','gve-engdate'].forEach(function(id){ var el = document.getElementById(id); if(el && document.activeElement!==el) el.value = dt; });
+}
+/* the engineer field typed by hand: keep it; cleared by hand: automatic again */
+function setEngineerName(val){
+  current.engineerName = val; current.engNameManual = !!engNorm(val); current.engNameAuto = false;
+  if(!current.engNameManual) engApplySignoff(current); else engSignoffDOM(current);
+}
+function setEngDate(val){ current.engDate = val; }
+
+function setNotes(val){ engTouched('notes', current.engineeringNotes, val); current.engineeringNotes=val; }
 
 function updateProgress(){
   const ft=current.equipType||current.formType;
@@ -6466,7 +6519,7 @@ function renderForm(){
     <div><label class="field-label">Inspector Name</label>
       <input class="field-input" value="${esc(current.inspector||'')}" placeholder="Full name" oninput="setInspector(this.value)"/></div>
     <div><label class="field-label">Engineer in Charge</label>
-      <input class="field-input" value="${esc(current.engineerName||'')}" placeholder="Full name" oninput="setEngineerName(this.value)"/></div>
+      <input class="field-input" id="hdr-eng-name" value="${esc(current.engineerName||'')}" placeholder="Filled when Engineering enters a disposition" oninput="setEngineerName(this.value)"/></div>
   </div>`;
   html+='</div>';
 
@@ -6513,7 +6566,13 @@ function renderForm(){
   // Notes
   html+=`<div class="card"><div class="section-title">Engineering Disposition / Notes</div>
     <textarea class="field-input" rows="4" style="resize:vertical" placeholder="Add engineering notes, disposition details, or additional instructions…"
-      oninput="setNotes(this.value)">${esc(current.engineeringNotes||'')}</textarea></div>`;
+      oninput="setNotes(this.value)">${esc(current.engineeringNotes||'')}</textarea>
+    <div class="header-grid" style="margin-top:10px">
+      <div><label class="field-label">Dispositioned by (Engineering)</label>
+        <input class="field-input" id="eng-by" value="${esc(current.engineerName||'')}" placeholder="Filled automatically" oninput="setEngineerName(this.value)"/></div>
+      <div><label class="field-label">Date</label>
+        <input class="field-input" id="eng-date" type="date" value="${esc(current.engDate||'')}" onchange="setEngDate(this.value)"/></div>
+    </div></div>`;
 
   html+='<button class="save-full-btn" onclick="saveReport()">Save &amp; Complete Report</button>';
   document.getElementById('form-body').innerHTML=html;
@@ -6659,42 +6718,162 @@ function removeSpare(id){
 }
 function updateSpare(id,key,val){ const s=current.spares.find(x=>x.id===id); if(s) s[key]=val; }
 
-/* Where a report stands, for the SharePoint register and the Teams notifications:
-   Draft       — inspection not finished
-   Engineering — waiting for an Engineering disposition
-   Repair      — disposition given; rework / QC after rework still open
-   Complete    — approved for service, first time or after rework */
+/* Where a report stands, for the SharePoint register and the Teams notifications.
+   stage        who is notified
+   Draft        nobody — inspection not finished
+   ReworkFailed QC + Engineering — QC after rework failed (HWR / CWR / machining / skim / polish …)
+   Engineering  Engineering — Engineering advice needed, Engineering review requested for the
+                valve, or a finding flagged abnormal by the inspector
+   Repair       Planner (+ Workshop when polishing is also needed) — inspection complete, needs
+                HWR / CWR / oversize machining / skim machining / weld / replace …
+   Polish       Workshop + Planner — inspection complete, only polishing (or paint touch-up) needed
+   Complete     Planner — all pass, first time or after rework
+   stageDetail says what is needed (it goes to the register's ActionRequired column). */
 var ENG_REQUEST_RE = /Engineering disposition required|SoW required\. Send to Engineering|FAIL\. Send to Engineering/i;
-function reportStage(r){
+var MINOR_WORK = { 'Polish':1, 'Buff (polish)':1, 'Lap (polish)':1, 'Paint touch-up':1 };
+/* the kinds of work named in a disposition / rework instruction */
+function dispWork(t){
+  t = String(t||''); var L = [];
+  var cwr = /\bCWR\b/i.test(t);
+  if(cwr) L.push('CWR');
+  if(/\bHWR\b|hot[\s-]?weld/i.test(t)) L.push('HWR');
+  else if(!cwr && /weld/i.test(t)) L.push('Weld repair');
+  if(/skim/i.test(t)) L.push('Skim machining');
+  else if(/oversize|\bOS[\s-]?0?[36]0\b/i.test(t)) L.push('Machining OS');
+  else if(/machin/i.test(t)) L.push('Machining');
+  if(/replace/i.test(t)) L.push('Replace');
+  if(/re-?tap|counterbore/i.test(t)) L.push('Re-tap / counterbore');
+  if(/polish|scotch|buff|\blap(ping)?\b/i.test(t)) L.push('Polish');
+  if(/paint|re-?coat/i.test(t)) L.push('Paint touch-up');
+  if(!L.length) L.push('Rework');
+  return L;
+}
+function stageInfo(r){
   var d = r.disposition || 'incomplete';
-  if(d==='incomplete') return 'Draft';
-  if(d==='all_pass' || d==='rework_complete') return 'Complete';
-  // Gate valve: the evaluation knows which findings still wait for Engineering
+  var DRAFT = { stage:'Draft', detail:'Inspection in progress' };
+  if(d==='incomplete') return DRAFT;
+  var uai = [], failed = [], eng = [], abn = [], engReq = false, hadRework = false, work = {}, order = [];
+  var addWork = function(list){ list.forEach(function(w){ if(!work[w]){ work[w] = 0; order.push(w); } work[w]++; }); };
   if(r.gvEval && window.GVEval){
     try{
-      var a = GVEval.analyse(r);
-      if(a.incomplete) return 'Draft';
-      return (a.engOpen.length || a.globalEng) ? 'Engineering' : 'Repair';
-    }catch(e){ return 'Engineering'; }
-  }
-  // Flow forms (WECO, Cross, Adapter, Blind Flange): a failed step still carrying the automatic
-  // "send to Engineering" disposition text waits for Engineering. Engineering replaces that
-  // text with its own disposition, and the step moves on to rework.
-  var states = [r.bfState, r.wecoState, r.crossState, r.adapterFlowState].filter(Boolean);
-  if(states.length){
-    var waiting = states.some(function(st){
-      var ed = st.engDisp || {}, rw = st.reworkFindings || {};
-      return Object.keys(ed).some(function(id){ return ENG_REQUEST_RE.test(ed[id]||'') && rw[id]!=='pass'; });
+      var G = GVEval, a = G.analyse(r);
+      if(a.incomplete) return DRAFT;
+      engReq = !!a.globalEng;
+      var GV_WORK = { POLISH:'Polish', BUFF:'Buff (polish)', LAP:'Lap (polish)', SKIM:'Skim machining', RETAP:'Re-tap / counterbore',
+                      REPLACE:'Replace component', WELD:'Weld repair', HWR:'HWR', CWR:'CWR' };
+      a.points.forEach(function(ev){
+        if(!ev.res || ev.res.action==='ACCEPT' || ev.covered) return;
+        hadRework = true;
+        var s = ev.s || {}, where = ev.pt.label;
+        if(s.qc==='pass'){ if(s.useAsIs) uai.push(where); return; }
+        if(s.qc==='fail'){ failed.push(where); return; }
+        var act = ev.res.action;
+        if(act==='ENGINEERING'){
+          if(!String(s.eng||'').trim()) (ev.res.src==='abnormal' ? abn : eng).push(where);
+          else addWork(dispWork(s.eng));
+          return;
+        }
+        if(act==='MACHINE_OS') addWork([a.route.type==='hotweld' ? (a.route.cwr ? 'CWR' : 'HWR') : 'Machining to '+G.OS_LABEL[a.route.target]]);
+        else addWork([GV_WORK[act] || 'Rework']);
+      });
+    }catch(e){ return { stage:'Engineering', detail:'Engineering review (the evaluation could not be read)' }; }
+  } else {
+    printRowsFor(r).forEach(function(x){
+      if(!x.fail || x.viaDepth) return;          /* a ring groove "damage" answer is carried by its depth step */
+      hadRework = true;
+      var where = x.name || x.req || x.grp;
+      if(x.rw==='pass'){ if(x.useAsIs) uai.push(where); return; }
+      if(x.rw==='fail'){ failed.push(where); return; }
+      if(!String(x.ed||'').trim() || ENG_REQUEST_RE.test(x.ed)){ eng.push(where); return; }
+      addWork(dispWork(x.ed));
     });
-    return waiting ? 'Engineering' : 'Repair';
   }
-  return 'Engineering';   // any other form: let Engineering look at the failure
+  var list = function(l){ return l.slice(0,4).join(', ')+(l.length>4 ? ' +'+(l.length-4)+' more' : ''); };
+  var workTxt = order.map(function(w){ return w+(work[w]>1 ? ' x'+work[w] : ''); }).join(', ');
+  var cut = function(s){ return s.length>250 ? s.slice(0,247)+'...' : s; };
+  if(failed.length) return { stage:'ReworkFailed', detail:cut('Failed after rework: '+list(failed)) };
+  if(eng.length || abn.length || engReq){
+    var p = [];
+    if(engReq) p.push('Engineering review requested for this valve');
+    if(abn.length) p.push('Abnormal finding: '+list(abn));
+    if(eng.length) p.push('Engineering advice needed: '+list(eng));
+    return { stage:'Engineering', detail:cut(p.join('; ')) };
+  }
+  if(order.length){
+    var major = order.some(function(w){ return !MINOR_WORK[w]; });
+    return { stage: major ? 'Repair' : 'Polish', detail:cut(workTxt) };
+  }
+  if(d==='has_fails') return { stage:'Engineering', detail:'Engineering review' };   /* failed, but nothing readable: safe side */
+  if(uai.length) return { stage:'Complete', detail:cut('Use as is (Engineering): '+list(uai)) };
+  return { stage:'Complete', detail: hadRework || d==='rework_complete' ? 'All pass after rework' : 'All pass' };
+}
+function reportStage(r){ return stageInfo(r).stage; }
+
+/* ── Engineering follow-up, applied on every save ─────────────────────────
+   1. Rework failed, then a NEW instruction is given (Engineering edits the
+      disposition — e.g. polish failed -> HWR / machining — or, on a gate
+      valve, the area is re-evaluated / flagged abnormal): the failed attempt
+      is kept in the item's rework history and the item is re-opened, so the
+      report moves to the stage of the new instruction.
+   2. Engineering disposition "Use as is": the item is closed (accepted by
+      Engineering), so the report can complete.                              */
+var USE_AS_IS_RE = /\buse[\s-]*as[\s-]*is\b|\baccept(ed)?[\s-]*as[\s-]*is\b/i;
+function engineeringFollowUp(r){
+  var now = new Date().toISOString();
+  var who = r.engineerName || (typeof spConfig!=='undefined' && spConfig.userName) || '';
+  var closeNote = 'Use as is — accepted by Engineering'+(who ? ' ('+who+')' : '');
+  if(r.gvEval && window.GVEval){
+    try{
+      var g = r.gvEval, a = GVEval.analyse(r);
+      if(!g.reworkTimestamps) g.reworkTimestamps = {};
+      a.points.forEach(function(ev){
+        if(!ev.res || ev.res.action==='ACCEPT' || ev.covered) return;
+        var s = g.pts[ev.pt.id]; if(!s) return;
+        var sig = [ev.res.action, s.eng||'', s.depth||'', s.type||'', s.abnormal?1:0].join('|');
+        if(s.qc==='fail'){
+          if(s.qcFailSig===undefined) s.qcFailSig = sig;
+          else if(s.qcFailSig!==sig){
+            var old = s.qcFailSig.split('|');
+            (s.qcHistory = s.qcHistory||[]).push({ result:'fail', action:old[0], eng:old[1], depth:old[2], at:g.reworkTimestamps[ev.pt.id]||now, reopened:now });
+            s.qc = ''; delete s.qcFailSig; delete g.reworkTimestamps[ev.pt.id];
+          }
+        }
+        if(s.qc!=='pass' && ev.res.action==='ENGINEERING' && USE_AS_IS_RE.test(s.eng||'')){
+          s.qc = 'pass'; s.useAsIs = who || true; delete s.qcFailSig; g.reworkTimestamps[ev.pt.id] = now;
+        }
+      });
+    }catch(e){}
+    return;
+  }
+  printRowsFor(r).forEach(function(x){
+    if(!x.fail || x.viaDepth || !x.id || x.grp==='Redress') return;
+    var flow = x.store, st = flow || r, edMap = flow ? (flow.engDisp||{}) : (r.itemDispositions||{});
+    st.reworkFindings = st.reworkFindings || {}; st.reworkComments = st.reworkComments || {};
+    st.reworkPhotos = st.reworkPhotos || {}; st.reworkTimestamps = st.reworkTimestamps || {};
+    var id = x.id, ed = String(edMap[id]||''), rw = st.reworkFindings[id]||'';
+    st.rwFailDisp = st.rwFailDisp || {};
+    if(rw==='fail'){
+      if(st.rwFailDisp[id]===undefined) st.rwFailDisp[id] = ed;            /* the instruction that failed */
+      else if(st.rwFailDisp[id]!==ed && ed.trim()){                         /* Engineering gave a new one */
+        st.reworkHistory = st.reworkHistory || {};
+        (st.reworkHistory[id] = st.reworkHistory[id]||[]).push({ result:'fail', disp:st.rwFailDisp[id], comment:st.reworkComments[id]||'',
+          photos:st.reworkPhotos[id]||[], at:st.reworkTimestamps[id]||now, reopened:now });
+        delete st.reworkFindings[id]; delete st.reworkComments[id]; delete st.reworkPhotos[id]; delete st.reworkTimestamps[id]; delete st.rwFailDisp[id];
+        rw = '';
+      }
+    }
+    if(rw!=='pass' && USE_AS_IS_RE.test(ed)){
+      st.reworkFindings[id] = 'pass'; st.reworkComments[id] = closeNote; st.reworkTimestamps[id] = now;
+      (st.useAsIs = st.useAsIs||{})[id] = true; delete st.rwFailDisp[id];
+    }
+  });
 }
 
 function saveReport(){
   if(current && current.gvEval && window.GVEval) GVEval.beforeSave(current);
+  engineeringFollowUp(current);
   current.disposition=getDisposition(current.findings,current);
-  current.stage=reportStage(current);
+  var si=stageInfo(current); current.stage=si.stage; current.stageDetail=si.detail;
   current.savedAt=new Date().toISOString();
   const idx=reports.findIndex(r=>r.id===current.id);
   if(idx>=0){ reports[idx]=current; } else { reports.unshift(current); }
@@ -6835,9 +7014,10 @@ function printRowsFor(r){
         rw=RW[dep]||''; rwc=rw?(RWC[dep]?'via depth step: '+RWC[dep]:'via depth step rework'):'';
       }
       rows.push({ grp: ring ? 'Ring Groove'+(step.side?' — '+step.side.charAt(0)+step.side.slice(1).toLowerCase():'') : step.label,
-        req: ring ? step.label : (step.sub||''), sub: ring ? step.sub : '', ref: step.ref||'',
+        req: ring ? step.label : (step.sub||''), sub: ring ? step.sub : '', ref: step.ref||'', name: step.label,
         val:res, tone:tone, detail:detail, comment:C[step.id]||'', photos:photosOf(step.id), ed:ED[step.id]||'',
-        fail:fail, rw:rw, rwc:rwc, rwPhotos:rwp, rwStamp:rwStampFor(r,step.id), viaDepth:step.type==='yn'&&val==='yes' });
+        fail:fail, rw:rw, rwc:rwc, rwPhotos:rwp, rwStamp:rwStampFor(r,step.id), viaDepth:step.type==='yn'&&val==='yes',
+        id:step.id, store:st, history:(st.reworkHistory||{})[step.id]||[], useAsIs:!!(st.useAsIs||{})[step.id] });
     });
     return rows;
   }
@@ -6857,7 +7037,8 @@ function printRowsFor(r){
     var id=x.it.id, v=f[id]||'';
     rows.push({ grp:x.grp, req:x.it.label, sub:'', ref:'', val:v?v.toUpperCase():'', tone:v==='pass'?'ok':v==='fail'?'bad':'',
       detail:'', comment:c[id]||'', photos:photosOf(id), ed:idp[id]||'', fail:v==='fail',
-      rw:rwf[id]||'', rwc:rwcm[id]||'', rwPhotos:rwph[id]||[], rwStamp:rwStampFor(r,id) });
+      rw:rwf[id]||'', rwc:rwcm[id]||'', rwPhotos:rwph[id]||[], rwStamp:rwStampFor(r,id),
+      id:id, store:null, history:(r.reworkHistory||{})[id]||[], useAsIs:!!(r.useAsIs||{})[id] });
   });
   /* older gate valve redress steps carry their own findings and photographs */
   if(ft==='GATE_VALVE' && window.GVRedress && GVRedress.printPhotoEntries){
@@ -6925,11 +7106,21 @@ function buildPrintHTML(r){
       +(x.detail?'<div>'+esc(x.detail)+'</div>':'')
       +(x.comment?'<div style="margin-top:3px">'+pre(x.comment)+'</div>':'');
     var disp='';
+    x.history.forEach(function(hst,k){
+      disp+='<div style="margin-bottom:4px;padding:3px 5px;background:#fef2f2;border-left:3px solid #b91c1c"><b>Rework attempt '+(k+1)+': FAILED</b>'
+        +(hst.at?' <span class="tag">('+esc(fmtStamp(hst.at))+')</span>':'')
+        +(hst.disp?'<div class="tag">Instruction: '+esc(hst.disp)+'</div>':'')+(hst.comment?'<div>'+pre(hst.comment)+'</div>':'')
+        +((hst.photos||[]).length?'<div>'+hst.photos.map(function(p){ return img(p,'rw'); }).join('')+'</div>':'')+'</div>';
+    });
+    if(x.history.length && x.fail) disp+='<div class="tag">New instruction — rework attempt '+(x.history.length+1)+':</div>';
     if(x.ed) disp+='<div style="white-space:normal">'+pre(x.ed)+'</div>';
     else if(x.viaDepth) disp+='<span class="tag">Disposition by the defect depth measurement</span>';
     else if(x.fail) disp+='<span class="tag">Engineering disposition not recorded</span>';
     else if(x.tone==='ok') disp+='<span class="act ok">Accept</span>';
-    if(x.fail){
+    if(x.fail && x.useAsIs){
+      disp+='<div style="margin-top:4px"><b>Closed:</b> <span class="res ok">USE AS IS</span>'+(x.rwStamp?' <span class="tag">('+esc(fmtStamp(x.rwStamp))+')</span>':'')+'</div>'
+        +(x.rwc?'<div>'+pre(x.rwc)+'</div>':'');
+    } else if(x.fail){
       disp+='<div style="margin-top:4px"><b>QC after rework:</b> '+(x.rw?'<span class="res '+(x.rw==='pass'?'ok':'bad')+'">'+esc(x.rw.toUpperCase())+'</span>':'Pending')
         +(x.rwStamp?' <span class="tag">('+esc(fmtStamp(x.rwStamp))+')</span>':'')+'</div>'
         +(x.rwc?'<div>'+pre(x.rwc)+'</div>':'')
@@ -6948,7 +7139,7 @@ function buildPrintHTML(r){
   var spares=buildSparesPrintHTML(r);
   if(spares) h+='<div>'+spares.replace(/<table style="width:100%;border-collapse:collapse">/g,'<table>')+'</div>';
   h+='<table style="margin-top:14px;table-layout:fixed"><colgroup><col style="width:13%"><col style="width:22%"><col style="width:6%"><col style="width:9%"><col style="width:13%"><col style="width:22%"><col style="width:6%"><col style="width:9%"></colgroup><tr><td style="'+LB+'width:auto">Inspected By</td><td style="'+B+'">'+esc(r.inspector||'')+'</td><td style="'+LB+'width:auto">Date</td><td style="'+B+'">'+esc(fmtDate(r.createdAt))+'</td>'
-    +'<td style="'+LB+'width:auto">Engineer in Charge</td><td style="'+B+'">'+esc(r.engineerName||'')+'</td><td style="'+LB+'width:auto">Date</td><td style="'+B+'">'+esc(r.engineerName?fmtDate(r.savedAt||r.createdAt):'')+'</td></tr>'
+    +'<td style="'+LB+'width:auto">Engineer in Charge</td><td style="'+B+'">'+esc(r.engineerName||'')+'</td><td style="'+LB+'width:auto">Date</td><td style="'+B+'">'+esc(r.engDate?fmtDate(r.engDate):(r.engineerName?fmtDate(r.savedAt||r.createdAt):''))+'</td></tr>'
     +'<tr><td style="'+LB+'width:auto">Reviewed By</td><td style="'+B+'"></td><td style="'+LB+'width:auto">Date</td><td style="'+B+'"></td>'
     +'<td style="'+LB+'width:auto">Reviewed By</td><td style="'+B+'"></td><td style="'+LB+'">Date</td><td style="'+B+'"></td></tr></table>';
   h+='<div class="cls">TechnipFMC | Internal &nbsp;·&nbsp; '+esc(r.id)+' &nbsp;·&nbsp; Last saved '+esc(fmtDate(r.savedAt||r.createdAt))+' &nbsp;·&nbsp; SWI-FRM Rev 1.0 | Date 01-25-22</div>';
@@ -10666,7 +10857,7 @@ window.GVEval = {
     backfill(r);
     formRef = null;
     if(r.gvSize) r.gvEval.std = project(liveStd(), r.gvSize);
-    if(r.gvEval.engBy) r.engineerName = r.gvEval.engBy;
+    r.engineerName = r.gvEval.engBy || '';
   }
 };
 loadStd();
@@ -11380,8 +11571,8 @@ function renderForm(){
   h+='<div class="card"><div class="section-title">Sign-off</div><div class="header-grid">'
     +'<div><label class="field-label">Inspected by</label><input class="field-input" value="'+e(r.inspector||'')+'" oninput="setInspector(this.value)"/></div>'
     +'<div><label class="field-label">Date</label><input class="field-input" type="date" value="'+e(s.inspDate||'')+'" onchange="gveG(\'inspDate\',this.value)"/></div>'
-    +'<div><label class="field-label">Disposed by (Engineering, if involved)</label><input class="field-input" placeholder="Automatic when no Engineering review" value="'+e(s.engBy||'')+'" oninput="gveG(\'engBy\',this.value)"/></div>'
-    +'<div><label class="field-label">Date</label><input class="field-input" type="date" value="'+e(s.engDate||'')+'" onchange="gveG(\'engDate\',this.value)"/></div>'
+    +'<div><label class="field-label">Disposed by (Engineering, if involved)</label><input class="field-input" id="gve-engby" placeholder="Filled when Engineering enters a disposition" value="'+e(s.engBy||'')+'" oninput="gveG(\'engBy\',this.value)"/></div>'
+    +'<div><label class="field-label">Date</label><input class="field-input" id="gve-engdate" type="date" value="'+e(s.engDate||'')+'" onchange="gveG(\'engDate\',this.value)"/></div>'
     +'<div><label class="field-label">Reviewed by</label><input class="field-input" value="'+e(s.rev1||'')+'" oninput="gveG(\'rev1\',this.value)"/></div>'
     +'<div><label class="field-label">Date</label><input class="field-input" type="date" value="'+e(s.rev1Date||'')+'" onchange="gveG(\'rev1Date\',this.value)"/></div>'
     +'<div><label class="field-label">Reviewed by</label><input class="field-input" value="'+e(s.rev2||'')+'" oninput="gveG(\'rev2\',this.value)"/></div>'
@@ -11570,7 +11761,12 @@ window.gveManual = function(which, v){
   refreshAll();
 };
 window.gveRecv = function(v){ var s=g(); s.receivedFrom = s.receivedFrom===v ? '' : v; set('gve-recv', recvHTML()); };
-window.gveG = function(k, v){ g()[k]=v; };
+window.gveG = function(k, v){
+  if(k==='engRemarks' && window.engTouched) engTouched('gv:remarks', g()[k], v);
+  g()[k]=v;
+  if(k==='engBy'){ g().engByManual = !!String(v||'').trim(); g().engByAuto = false; if(!g().engByManual && window.engApplySignoff) engApplySignoff(current); }
+  if(k==='engDate') g().engByManual = g().engByManual || false;
+};
 window.gvePrevHWR = function(on){ var s=g(); s.prevHWR=!!on; s.prevHWRSrc='manual'; if(!on) s.prevHWRRefs=[]; set('gve-hist', historyHTML()); status(); };
 window.gveSN = function(v){ setHeader('serialNo', v); syncAll(); set('gve-hist', historyHTML()); WELD_COMPS.forEach(refreshComp);
   FLANGE_PTS.forEach(function(pid){ set('gve-pthist-'+pid, ptHistHTML(pid)); refreshPoint(pid); }); status(); };
@@ -11591,7 +11787,7 @@ window.gveType  = function(id, v){ ptState(id).type=v; ptState(id).qc=''; refres
 window.gveDepth = function(id, v){ ptState(id).depth=v; refreshPoint(id); };
 window.gveNote  = function(id, v){ ptState(id).note=v; };
 window.gveAbn   = function(id, on){ ptState(id).abnormal=!!on; refreshPoint(id); };
-window.gveEng   = function(id, v){ ptState(id).eng=v; var a=G.analyse(current); set('gve-chip-'+id, chipHTML(evFor(a,id))); status(a); };
+window.gveEng   = function(id, v){ if(window.engTouched) engTouched('gv:'+id, ptState(id).eng, v); ptState(id).eng=v; var a=G.analyse(current); set('gve-chip-'+id, chipHTML(evFor(a,id))); status(a); };
 window.gveMeas  = function(k, id, v){ g().meas[k]=v; refreshPoint(id); };
 window.gveQC    = function(id, v){
   var s=ptState(id); s.qc = s.qc===v ? '' : v; stampRework(g(), id, s.qc); refreshPoint(id);
@@ -11731,7 +11927,11 @@ function printDoc(r){
         else if(A){
           disp='<span class="act">'+e(A.label)+'</span>'+(ev.res.action!=='ACCEPT'?' — '+e(ev.res.text):'');
           if(ev.s.eng && ev.res.action==='ENGINEERING') disp+='<div><b>Engineering:</b> '+e(ev.s.eng)+'</div>';
-          if(ev.res.action!=='ACCEPT' && !ev.covered) disp+='<div style="margin-top:3px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():'Pending')
+          (ev.s.qcHistory||[]).forEach(function(hs,k){ disp+='<div style="margin-top:3px;padding:2px 5px;background:#fef2f2;border-left:3px solid #b91c1c"><b>Rework attempt '+(k+1)+': FAILED</b>'
+            +(hs.at?' <span class="tag">('+e(fmtStamp(hs.at))+')</span>':'')+'<div class="tag">'+e((ACTIONS[hs.action]||{label:hs.action}).label)+(hs.depth?' · depth '+e(hs.depth)+' in':'')+(hs.eng?' · '+e(hs.eng):'')+'</div></div>'; });
+          if(ev.s.useAsIs && ev.s.qc==='pass') disp+='<div style="margin-top:3px"><b>Closed:</b> USE AS IS — accepted by Engineering'+(typeof ev.s.useAsIs==='string'?' ('+e(ev.s.useAsIs)+')':'')
+            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+')':'')+'</div>';
+          else if(ev.res.action!=='ACCEPT' && !ev.covered) disp+='<div style="margin-top:3px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():'Pending')
             +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+')':'')+'</div>';
           disp+='<div class="tag">'+(ev.res.src==='abnormal'?'Inspector flag':ev.res.src==='type'?'Defect type rule':ev.res.src==='route'?'Seat pocket route — both pockets machined together':'Auto — Standards rev '+e(G.revLabel(std)))+'</div>';
         }
