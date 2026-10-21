@@ -10129,6 +10129,18 @@ var DEFECT_TYPES = [
   ['erosion','Erosion / washout'], ['impact','Impact / dent'], ['galling','Galling'],
   ['thread','Thread damage'], ['crack','Crack'], ['other','Other']
 ];
+/* Engineering can add / rename / remove defect types in Settings (std.defectTypes);
+   standards saved before that use the list above. */
+function defectTypes(std){ var l = std && std.defectTypes; return (l && l.length) ? l : DEFECT_TYPES; }
+function typeLabelOf(t, std){
+  if(!t) return '';
+  var lists = [defectTypes(std)], live = null;
+  try{ live = liveStd(); }catch(e){}
+  if(live) lists.push(defectTypes(live));
+  lists.push(DEFECT_TYPES);
+  for(var i=0;i<lists.length;i++){ var x = lists[i].filter(function(d){ return d[0]===t; })[0]; if(x) return x[1]; }
+  return t;
+}
 var RECEIVED = [ ['hal','HAL Tree'], ['neser','NESER Tree'], ['stuck','Pre-Intervention Stuck'],
                  ['usgv','US GV'], ['other','Others'] ];
 
@@ -10347,6 +10359,7 @@ function defaultStd(){
       }
     },
     forceEngTypes: ['crack'],
+    defectTypes: DEFECT_TYPES.map(function(x){ return x.slice(); }),
     /* metal removed by each oversize; a seat pocket defect deeper than what the
        next oversize removes goes to the one after, then to hot-weld repair */
     osAllowance: { OS_030:'0.030', OS_060:'0.060' },
@@ -10512,6 +10525,7 @@ function project(std, sk){
     rev:std.rev, draft:!!std.draft, approvedBy:std.approvedBy, updatedAt:std.updatedAt, sizeKey:sk,
     size:size, groups:clone(std.groups), choices:clone(std.choices),
     forceEngTypes:(std.forceEngTypes||[]).slice(), seatsAsPair:!!std.seatsAsPair,
+    defectTypes:defectTypes(std).map(function(x){ return x.slice(); }),
     osAllowance:clone(std.osAllowance||{}), seatRoute:clone(std.seatRoute||{}),
     seatRouteFace:std.seatRouteFace ? clone(std.seatRouteFace) : undefined,
     flange:clone(flangeFor(std, sk)), flangePolish:std.flangePolish, flangeCleanup:std.flangeCleanup,
@@ -10616,7 +10630,7 @@ function evalPoint(r, pt, std){
       }
     }
     if(forced){
-      var tl = (DEFECT_TYPES.filter(function(t){ return t[0]===s.type; })[0]||[,s.type])[1];
+      var tl = typeLabelOf(s.type, std);
       res = { action:'ENGINEERING', text:'Defect type "'+tl+'" always needs Engineering review.', src:'type' };
       pending = false;
     }
@@ -11048,7 +11062,7 @@ window.GVEval = {
   routeLimit:routeLimit, polishLimit:polishLimit, OS_ORDER:OS_ORDER, ROUTE_KIND:ROUTE_KIND, routeRank:routeRank, splitPocket:splitPocket,
   SOW_LABEL:SOW_LABEL, testPlan:testPlan, planRoute:planRoute, routeTable:routeTable, allowance:allowance,
   SIZE_KEYS:SIZE_KEYS, OS_KEYS:OS_KEYS, OS_LABEL:OS_LABEL, SIZE_SHORT:SIZE_SHORT, NEXT:NEXT,
-  ACTIONS:ACTIONS, ACTION_KEYS:ACTION_KEYS, DEFECT_TYPES:DEFECT_TYPES, RECEIVED:RECEIVED,
+  ACTIONS:ACTIONS, ACTION_KEYS:ACTION_KEYS, DEFECT_TYPES:DEFECT_TYPES, defectTypes:defectTypes, typeLabel:typeLabelOf, RECEIVED:RECEIVED,
   GROUP_LABELS:GROUP_LABELS, COMPONENTS:COMPONENTS, COMP_PN_FIELDS:COMP_PN_FIELDS, STD_KEY:STD_KEY,
   clone:clone, fill:fill, num:num, e:e, today:today,
   defaultStd:defaultStd, loadStd:loadStd, writeStd:writeStd, liveStd:liveStd, project:project, stdOf:stdOf,
@@ -11516,7 +11530,7 @@ function g(){ return current.gvEval; }
 function pt(id){ var f=null; G.COMPONENTS.forEach(function(c){ c.points.forEach(function(p){ if(p.id===id) f={pt:p,comp:c}; }); }); return f; }
 function evFor(a, id){ for(var i=0;i<a.points.length;i++) if(a.points[i].pt.id===id) return a.points[i]; return null; }
 function set(id, html){ var el=document.getElementById(id); if(el) el.innerHTML=html; }
-function typeLabel(t){ var x=G.DEFECT_TYPES.filter(function(d){ return d[0]===t; })[0]; return x?x[1]:(t||''); }
+function typeLabel(t, std){ return G.typeLabel(t, std); }
 function ptState(id){ var s=g().pts; if(!s[id]) s[id]={}; return s[id]; }
 
 /* ── identification ───────────────────────────────────────────────────── */
@@ -11629,7 +11643,9 @@ function ptInner(p, ev, std){
     var needDepth = !p.mode || (p.mode==='studs' && s.st==='damaged');
     h+='<div class="gve-detail">';
     h+='<div'+(needDepth?'':' class="full"')+'><label class="field-label">Defect type'+(p.mode?' (optional)':'')+'</label><select class="field-input" onchange="gveType(\''+p.id+'\',this.value)"><option value="">Select…</option>'
-      +G.DEFECT_TYPES.map(function(t){ return '<option value="'+t[0]+'"'+(s.type===t[0]?' selected':'')+'>'+e(t[1])+'</option>'; }).join('')+'</select></div>';
+      +(function(){ var L=G.defectTypes(std).slice();
+          if(s.type && !L.some(function(t){ return t[0]===s.type; })) L.push([s.type, typeLabel(s.type, std)+' (no longer in the standards)']);
+          return L.map(function(t){ return '<option value="'+t[0]+'"'+(s.type===t[0]?' selected':'')+'>'+e(t[1])+'</option>'; }).join(''); })()+'</select></div>';
     if(needDepth) h+='<div><label class="field-label">Approx. depth (in)</label><input class="field-input" inputmode="decimal" placeholder="0.000" value="'+e(s.depth||'')+'" oninput="gveDepth(\''+p.id+'\',this.value)"/></div>';
     if(p.flange){
       var F=(std&&std.flange)||{}, m0=p.meas[0];
@@ -12023,14 +12039,14 @@ function recvText(s){
   var x=G.RECEIVED.filter(function(r){ return r[0]===s.receivedFrom; })[0];
   return x ? (x[0]==='other' ? 'Others — '+(s.receivedOther||'') : x[1]) : '—';
 }
-function findingText(ev, M){
+function findingText(ev, M, std){
   var s=ev.s, parts=[];
   if(ev.pt.meas) ev.pt.meas.forEach(function(m){ if(M[m.k]) parts.push(m.l.replace(' (in)','')+': '+M[m.k]+' in'); });
   if(!s.st) parts.push('Not evaluated');
   else if(s.st==='good') parts.push('Good condition');
   else {
     var lbl = s.st==='buff'?'Buffing required':s.st==='severe'?'Severe damage':s.st==='polish'?'Gentle polish required':'Damaged';
-    parts.push(lbl+(s.type?' — '+typeLabel(s.type):'')+(s.depth?', approx. depth '+s.depth+' in':''));
+    parts.push(lbl+(s.type?' — '+typeLabel(s.type, std):'')+(s.depth?', approx. depth '+s.depth+' in':''));
     if(s.note) parts.push(s.note);
     if(s.abnormal) parts.push('Flagged abnormal by the inspector');
   }
@@ -12064,7 +12080,7 @@ function previewHTML(r){
         var A=ev.res?ACTIONS[ev.res.action]:null;
         h+='<div class="preview-item-row" style="padding:8px 0;border-bottom:1px solid var(--border)">'
           +'<div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:12.5px;color:var(--text)">'+e(ev.pt.label)+'</b>'+chipHTML(ev)+'</div>'
-          +'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+findingText(ev,s.meas||{}).map(e).join(' · ')+'</div>'
+          +'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+findingText(ev,s.meas||{},a&&a.std).map(e).join(' · ')+'</div>'
           +(A&&ev.res.action!=='ACCEPT'?'<div class="gve-disp t-'+A.tone+'" style="margin-top:6px"><span class="gve-act">'+e(A.label)+'</span> — '+e(ev.res.text)
             +(ev.s.eng&&ev.res.action==='ENGINEERING'?'<div style="margin-top:4px"><b>Engineering:</b> '+e(ev.s.eng)+'</div>':'')
             +(ev.covered?'':'<div style="margin-top:4px;font-size:11px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():'Pending')
@@ -12164,7 +12180,7 @@ function printDoc(r){
         if(i===0) h+='<td style="'+B+'font-weight:700" rowspan="'+evs.length+'">'+e(c.n+'. '+c.title)+(c.snpn?'<div style="font-weight:400;margin-top:4px">SN: '+e(cs.sn||'')+'<br>PN: '+e(cs.pn||'')+'</div>':'')
           +((r.photos||{})['gve_mark_'+c.id]||[]).map(function(p){ return '<img class="ph" style="width:70px;height:52px" src="'+p.src+'"/>'; }).join('')+'</td>';
         h+='<td style="'+B+'">'+e(ev.pt.label)+(ev.pt.hint?'<div class="tag">'+e(ev.pt.hint)+'</div>':'')+'</td>'
-          +'<td style="'+B+'">'+findingText(ev,s.meas||{}).map(e).join('<br>')+'</td>'
+          +'<td style="'+B+'">'+findingText(ev,s.meas||{},std).map(e).join('<br>')+'</td>'
           +'<td style="'+B+'">'+photos.map(function(p){ return '<img class="ph" src="'+p.src+'"/>'; }).join('')+'</td>'
           +'<td style="'+B+'">'+disp+'</td></tr>';
       });
@@ -12650,6 +12666,14 @@ var css = ''
  +'.gvs-route-pol{display:grid;grid-template-columns:260px 1fr;gap:12px;margin-bottom:12px;align-items:start}'
  +'.gvs-rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-items:start}'
  +'.gvs-route-area{margin-top:14px}'
+ +'.gvs-types{margin-top:8px}.gvs-type-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)}'
+ +'.gvs-type-row .field-input{flex:1;min-width:0;margin:0}.gvs-type-head{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border2)}'
+ +'.gvs-type-head span:first-child{flex:1}.gvs-type-eng{width:62px;flex:0 0 62px;text-align:center;display:flex;justify-content:center;align-items:center}.gvs-type-head .gvs-type-eng{display:block;line-height:1.2}'
+ +'.gvs-type-eng input{width:18px;height:18px}.gvs-type-acts{white-space:nowrap;flex:0 0 auto;width:96px;text-align:right}'
+ +'.gvs-mini{width:28px;height:28px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:13px;cursor:pointer;margin-left:3px}'
+ +'.gvs-mini:disabled{opacity:.35;cursor:default}.gvs-mini.del:not(:disabled):hover{color:#dc2626;border-color:rgba(220,38,38,.5)}'
+ +'.gvs-type-add{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.gvs-type-add .field-input{flex:1;min-width:180px;margin:0}'
+ +'.gvs-addbtn{border:1px solid var(--brand2);background:var(--brand2);color:#fff;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}'
  +'.gvs-route-area-h{font-size:13px;font-weight:800;color:var(--brand);margin-bottom:4px;letter-spacing:.2px}'
  +'.gvs-route-blk{border:1px solid var(--border);border-radius:11px;padding:11px;background:var(--bg3)}'
  +'.gvs-route-t{font-size:12.5px;font-weight:800;color:var(--text);margin-bottom:8px}'
@@ -13244,18 +13268,31 @@ function tabCriteria(){
     h += '<tr><td class="k" style="white-space:normal">'+e(x[2])+'</td><td>'+actionSel(p+'action')+'</td><td>'+area(p+'text',2)+'</td></tr>';
   });
   h += '</tbody></table></div></div>';
-  h += '<div class="card"><div class="section-title">Engineering involvement and seats</div>'
-    +'<label class="field-label">Defect types that always go to Engineering</label><div class="gvs-checks">'
-    + G.DEFECT_TYPES.map(function(t){
+  var TL = G.defectTypes(D);
+  h += '<div class="card" id="gvs-types-card"><div class="section-title">Defect types</div>'
+    +'<div class="gvs-tip">The list the inspector picks from when an area is damaged. Tick <b>Always Engineering</b> for a type that must never be dispositioned automatically. '
+    +'Renaming keeps existing reports linked; a removed type still shows on the reports that used it.</div>'
+    +'<div class="gvs-types"><div class="gvs-type-row gvs-type-head"><span>Defect type</span><span class="gvs-type-eng">Always Eng.</span><span class="gvs-type-acts"></span></div>'
+    + TL.map(function(t, i){
         var on = (D.forceEngTypes||[]).indexOf(t[0])!==-1;
-        return '<label class="gvs-check"><input type="checkbox"'+(on?' checked':'')+' onchange="gvsForce(\''+t[0]+'\',this.checked)"/>'+e(t[1])+'</label>'; }).join('')
-    +'</div><div class="gvs-tip" style="margin-top:6px">Every other finding is dispositioned automatically. The inspector can still flag any finding as abnormal to request Engineering review.</div>'
+        return '<div class="gvs-type-row"><input class="field-input" value="'+e(t[1])+'" placeholder="Defect type name" oninput="gvsTypeLabel('+i+',this.value)"/>'
+          +'<label class="gvs-type-eng" title="Always refer to Engineering"><input type="checkbox"'+(on?' checked':'')+' onchange="gvsForce(\''+t[0]+'\',this.checked)"/></label>'
+          +'<span class="gvs-type-acts"><button class="gvs-mini" title="Move up" onclick="gvsTypeMove('+i+',-1)"'+(i===0?' disabled':'')+'>&uarr;</button>'
+          +'<button class="gvs-mini" title="Move down" onclick="gvsTypeMove('+i+',1)"'+(i===TL.length-1?' disabled':'')+'>&darr;</button>'
+          +'<button class="gvs-mini del" title="Remove" onclick="gvsTypeDel('+i+')"'+(TL.length<2?' disabled':'')+'>&#10005;</button></span></div>';
+      }).join('')
+    +'</div>'
+    +'<div class="gvs-type-add"><input class="field-input" id="gvs-newtype" placeholder="New defect type, e.g. Fretting" onkeydown="if(event.key===\'Enter\')gvsTypeAdd()"/>'
+    +'<label class="gvs-check" style="margin:0"><input type="checkbox" id="gvs-newtype-eng"/> Always Engineering</label>'
+    +'<button class="gvs-addbtn" onclick="gvsTypeAdd()">+ Add type</button></div></div>';
+  h += '<div class="card"><div class="section-title">Engineering involvement and seats</div>'
+    +'<div class="gvs-tip" style="margin-top:0">Every finding is dispositioned automatically, except the defect types ticked <b>Always Engineering</b> above. The inspector can still flag any finding as abnormal to request Engineering review.</div>'
     +'<label class="gvs-check" style="margin-top:6px"><input type="checkbox"'+(D.seatsAsPair?' checked':'')+' onchange="gvsSet(\'seatsAsPair\',this.checked,\'bool\')"/> Replace seats as a pair when one seat is damaged</label></div>';
   h += '<div class="card"><div class="section-title">Try the criteria</div>'
     +'<div class="gvs-test"><div><label class="field-label">Area</label><select class="field-input" id="gvs-t-g" onchange="gvsTry()">'
     + Object.keys(G.GROUP_LABELS).map(function(gk){ return '<option value="'+gk+'">'+e(G.GROUP_LABELS[gk])+'</option>'; }).join('')+'</select></div>'
     +'<div><label class="field-label">Defect type</label><select class="field-input" id="gvs-t-t" onchange="gvsTry()">'
-    + G.DEFECT_TYPES.map(function(t){ return '<option value="'+t[0]+'">'+e(t[1])+'</option>'; }).join('')+'</select></div>'
+    + G.defectTypes(D).map(function(t){ return '<option value="'+t[0]+'">'+e(t[1])+'</option>'; }).join('')+'</select></div>'
     +'<div><label class="field-label">Depth (in)</label><input class="field-input" id="gvs-t-d" inputmode="decimal" placeholder="0.000" oninput="gvsTry()"/></div></div>'
     +'<div class="gvs-test-out" id="gvs-t-out"></div></div>';
   return h;
@@ -13393,6 +13430,29 @@ window.gvsAddBand = function(gk){
   var last = b.length ? num(b[b.length-1].max)||0 : 0;
   b.push({ max:+(last+0.002).toFixed(4), action:'POLISH', text:'' }); mark(); gvsRender();
 };
+/* defect types (the list is copied into the draft on the first change) */
+function typeList(){ if(!D.defectTypes || !D.defectTypes.length) D.defectTypes = G.defectTypes(D).map(function(x){ return x.slice(); }); return D.defectTypes; }
+window.gvsTypeLabel = function(i, v){ var L = typeList(); if(L[i]){ L[i][1] = v; mark(); } };
+window.gvsTypeMove = function(i, d){ var L = typeList(), j = i+d; if(j<0 || j>=L.length) return; var x = L[i]; L[i] = L[j]; L[j] = x; mark(); gvsRender(); };
+window.gvsTypeDel = function(i){
+  var L = typeList(); if(!L[i] || L.length<2) return;
+  if(!confirm('Remove the defect type "'+(L[i][1]||L[i][0])+'"? Reports that already used it keep showing it.')) return;
+  var id = L[i][0]; L.splice(i,1);
+  var f = D.forceEngTypes||[], k = f.indexOf(id); if(k!==-1) f.splice(k,1);
+  mark(); gvsRender();
+};
+window.gvsTypeAdd = function(){
+  var inp = document.getElementById('gvs-newtype'), name = String((inp||{}).value||'').trim();
+  if(!name){ toast('Type the name of the new defect type'); if(inp) inp.focus(); return; }
+  var L = typeList();
+  if(L.some(function(x){ return String(x[1]).trim().toLowerCase()===name.toLowerCase(); })){ toast('"'+name+'" is already in the list'); return; }
+  var base = 'u_'+name.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,24) || 'u_type', id = base, n = 2;
+  while(L.some(function(x){ return x[0]===id; }) || G.DEFECT_TYPES.some(function(x){ return x[0]===id; })) id = base+'_'+(n++);
+  L.push([id, name]);
+  if((document.getElementById('gvs-newtype-eng')||{}).checked){ (D.forceEngTypes || (D.forceEngTypes = [])).push(id); }
+  mark(); gvsRender();
+  setTimeout(function(){ var c = document.getElementById('gvs-types-card'); if(c) c.scrollIntoView({ block:'center' }); }, 50);
+};
 window.gvsForce = function(t, on){
   var l = D.forceEngTypes || (D.forceEngTypes = []), i = l.indexOf(t);
   if(on && i===-1) l.push(t); if(!on && i!==-1) l.splice(i,1); mark(); gvsTry();
@@ -13459,6 +13519,11 @@ window.gvsSave = function(opts){
   if(rp.length){ toast('⚠ '+rp[0], 4500); tab = 'route'; render(); return; }
   var fp = flangeProblems(D);
   if(fp.length){ toast('⚠ '+fp[0], 4500); tab = 'flange'; render(); return; }
+  if(D.defectTypes){
+    D.defectTypes.forEach(function(x){ x[1] = String(x[1]||'').trim(); });
+    var seen = {}, tp = D.defectTypes.filter(function(x){ var k = x[1].toLowerCase(); var bad = !k || seen[k]; seen[k] = 1; return bad; });
+    if(tp.length){ toast('⚠ Every defect type needs a name, and each name only once', 4000); tab = 'criteria'; render(); setTimeout(function(){ var c = document.getElementById('gvs-types-card'); if(c) c.scrollIntoView({ block:'center' }); }, 60); return; }
+  }
   var unnamed = G.keys(D).filter(function(k){ return !String(D.sizes[k].label||'').trim(); });
   if(unnamed.length){ size = unnamed[0]; tab = 'valves'; render(); toast('⚠ Every valve needs a name', 3500); return; }
   if(!String(D.approvedBy||'').trim()){ toast('⚠ Enter who approved this revision', 3500); window.scrollTo(0,0); return; }
@@ -13960,7 +14025,8 @@ function build(std, opts){
     ['Studs / nuts — damaged', act((ch.studs||{}).damaged && ch.studs.damaged.action), e(((ch.studs||{}).damaged||{}).text||'')]
   ], 'crit');
   dc += '<h3>Engineering involvement and seats</h3>'+kv([
-    ['Defect types always referred to Engineering', v_((std.forceEngTypes||[]).map(function(t){ var x = G.DEFECT_TYPES.filter(function(d){ return d[0]===t; })[0]; return x ? x[1] : t; }).join(', '))],
+    ['Defect types the inspector picks from', v_(G.defectTypes(std).map(function(t){ return t[1]; }).join(', '))],
+    ['Defect types always referred to Engineering', v_((std.forceEngTypes||[]).map(function(t){ return G.typeLabel(t, std); }).join(', '))],
     ['Abnormal findings', 'Any finding flagged abnormal by the inspector is referred to Engineering.'],
     ['Seats', std.seatsAsPair ? 'Replaced as a pair when one seat is damaged.' : 'Replaced individually.'],
     ['Measurements', 'Seat pocket ID above its maximum → seat pocket route; ID below its minimum or face to face out of range → Engineering; gate or seat thickness below its minimum → replace.']
