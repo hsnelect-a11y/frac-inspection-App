@@ -62,9 +62,11 @@
         if (!hadOpener) {
           try {
             if (msg.access_token) {
+              var exp = String(Date.now() + (msg.expires_in - 60) * 1000);
               sessionStorage.setItem('ms_at', msg.access_token);
-              sessionStorage.setItem('ms_at_exp',
-                String(Date.now() + (msg.expires_in - 60) * 1000));
+              sessionStorage.setItem('ms_at_exp', exp);
+              // shared with every window of the app in this browser (no second sign-in)
+              try { localStorage.setItem('ms_at_exp', exp); localStorage.setItem('ms_at', msg.access_token); } catch (e2) {}
             }
           } catch (e) {}
           window.location.replace(APP_URL);

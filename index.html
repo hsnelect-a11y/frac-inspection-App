@@ -164,6 +164,25 @@ html:not([data-theme="dark"]) .home-actions button:hover{color:var(--text)}
 
 /* Theme toggle */
 .conn-chip{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;height:30px;padding:0 10px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.att-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
+.att-ic{font-size:15px}.att-t{flex:1;min-width:0}
+.att-name{background:none;border:none;padding:0;color:var(--brand);font-weight:700;font-size:13px;text-align:left;text-decoration:underline;word-break:break-all;cursor:pointer}
+.att-meta{font-size:11px;color:var(--text3);margin-top:2px}.att-pend{color:#d97706;font-weight:700}
+.att-del:hover{color:#dc2626;border-color:rgba(220,38,38,.5)}
+.att-empty{font-size:12px;color:var(--text3);padding:4px 0 8px}
+.att-add{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:9px 14px;border-radius:9px;border:1px dashed var(--brand);color:var(--brand);font-weight:700;font-size:13px;cursor:pointer}
+.att-hint{font-size:11px;color:var(--text3);margin-top:6px}
+#live-pops{position:fixed;right:16px;bottom:16px;z-index:9000;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 32px))}
+.live-pop{background:var(--bg2);border:1px solid var(--border2);border-left:4px solid #af61ff;border-radius:12px;padding:11px 13px;box-shadow:0 10px 30px rgba(0,0,0,.35);animation:livein .25s ease-out;transition:opacity .25s,transform .25s}
+.live-pop.new{border-left-color:#22c55e}.live-pop.deleted{border-left-color:#dc2626}.live-pop.out{opacity:0;transform:translateY(8px)}
+@keyframes livein{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.live-pop-t{font-weight:800;font-size:13px;color:var(--text)}.live-pop-s{font-size:11.5px;color:var(--text2);margin-top:3px}
+.live-pop-a{display:flex;gap:6px;justify-content:flex-end;margin-top:8px}
+.live-pop-a button,.live-bar-acts button{font:inherit;font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer}
+.live-pop-a button.pri,.live-bar-acts button.pri{background:#af61ff;border-color:#af61ff;color:#fff}
+.live-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin:0 0 12px;padding:10px 12px;border-radius:10px;border:1px solid rgba(245,158,11,.55);background:rgba(245,158,11,.1);color:var(--text);font-size:12.5px}
+.live-bar-acts{display:flex;gap:6px}
+@media (max-width:520px){#live-pops{left:12px;right:12px;bottom:12px;max-width:none}}
 .conn-chip-dot{width:8px;height:8px;border-radius:50%;background:#9ca3af;flex-shrink:0}
 .conn-chip.on{border-color:rgba(22,163,74,.45);color:#16a34a}.conn-chip.on .conn-chip-dot{background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.18)}
 .conn-chip.soon{border-color:rgba(245,158,11,.6);color:#d97706}.conn-chip.soon .conn-chip-dot{background:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.2)}
@@ -6686,6 +6705,7 @@ function renderForm(){
         <input class="field-input" id="eng-date" type="date" value="${esc(current.engDate||'')}" onchange="setEngDate(this.value)"/></div>
     </div></div>`;
 
+  html+=attCardHTML(current,'form');
   html+='<button class="save-full-btn" onclick="saveReport()">Save &amp; Complete Report</button>';
   document.getElementById('form-body').innerHTML=html;
   updateProgress();
@@ -7026,7 +7046,100 @@ function saveReport(){
   showView('history');
 }
 
+/* ══ REPORT ATTACHMENTS ══════════════════════════════════════════════════
+   Extra files for one report (QC / Engineering): photos, test charts, emails,
+   NDE reports… Each file is kept on this device first and uploaded to
+   SharePoint "<attachments folder>/<report id>/". The report JSON lists them.  */
+function attFiles(){ return window.GVEval && GVEval.files; }
+function attDir(r){ return String((spConfig && spConfig.attachFolder) || 'Inspection App/Attachments').replace(/\/+$/,'')+'/'+(r.id||'report'); }
+function attReport(where){ return where==='preview' ? previewReport : current; }
+function attStamp(a){ return [a.by, a.uploadedAt ? fmtStamp(a.uploadedAt) : ''].filter(Boolean).join(' · '); }
+function attCardHTML(r, where){
+  var F = attFiles(), L = (r && r.attachments) || [];
+  var h = '<div class="card att-card" id="att-card-'+where+'"><div class="section-title">Attachments <span class="sub-hint" style="text-transform:none;font-weight:600;letter-spacing:0">— extra files for this report only (QC / Engineering)</span></div>';
+  if(!L.length) h += '<div class="att-empty">No attachments.</div>';
+  L.forEach(function(a){
+    if(F) F.remember(a);
+    h += '<div class="att-row"><span class="att-ic">&#128206;</span><div class="att-t">'
+      +'<button class="att-name" onclick="gveFileOpen(\''+a.id+'\')">'+esc(a.name)+'</button>'
+      +'<div class="att-meta">'+esc(F ? F.fmtSize(a.size) : '')+(attStamp(a)?' · '+esc(attStamp(a)):'')
+      +(a.pending ? ' · <span class="att-pend">on this device — uploads when signed in</span>' : '')+'</div></div>'
+      +'<button class="gvf-btn" onclick="gveFileOpen(\''+a.id+'\')">Open</button>'
+      +'<button class="gvf-btn" onclick="gveFileGet(\''+a.id+'\')">Download</button>'
+      +'<button class="gvf-btn att-del" title="Remove" onclick="attRemove(\''+where+'\',\''+a.id+'\')">&#10005;</button></div>';
+  });
+  h += '<label class="att-add">&#128206; Attach files<input type="file" multiple style="display:none" onchange="attAdd(\''+where+'\',this)"/></label>'
+    + '<div class="att-hint">'+(where==='form' ? 'Saved with the report when you press Save.' : 'Added to the report straight away.')
+    + ' Files go to SharePoint › '+esc(attDir(r||{}))+'.</div></div>';
+  return h;
+}
+function attRefresh(where){
+  var r = attReport(where), el = document.getElementById('att-card-'+where);
+  if(el && r) el.outerHTML = attCardHTML(r, where);
+}
+/* upload the files of a report that are still only on this device */
+function attUploadPending(r){
+  var F = attFiles(), L = (r.attachments||[]).filter(function(a){ return a.pending; });
+  if(!F || !L.length || !tokenValid()) return Promise.resolve(false);
+  return Promise.all(L.map(function(a){
+    return F.upload(a, '', attDir(r)).then(function(m){
+      [reports.find(function(x){ return x.id===r.id; }), current && current.id===r.id ? current : null, previewReport && previewReport.id===r.id ? previewReport : null]
+        .forEach(function(rr){ (rr && rr.attachments || []).forEach(function(b){ if(b.id===m.id){ b.pending = m.pending; b.webUrl = m.webUrl; b.spItemId = m.spItemId; b.spPath = m.spPath; } }); });
+      return m;
+    }).catch(function(){ return a; });
+  })).then(function(){ return true; });
+}
+function attPersist(r){            /* preview: the attachment list changed — save and send the report */
+  r.savedAt = new Date().toISOString();
+  if(r._spSynced || r._spPending) r._spPending = true;
+  r._spSynced = false;
+  saveReportsToStorage();
+  if(tokenValid() && spConfig.reportsFolder) spSyncReport(JSON.parse(JSON.stringify(r)));
+  else setTimeout(showSessionExpired, 300);
+}
+function attAdd(where, input){
+  var F = attFiles(), r = attReport(where), files = Array.prototype.slice.call((input && input.files) || []);
+  if(!F || !r || !files.length) return;
+  var big = files.filter(function(f){ return f.size > 250*1024*1024; });
+  if(big.length){ toast('⚠ '+big[0].name+' is larger than 250 MB'); files = files.filter(function(f){ return big.indexOf(f)===-1; }); }
+  r.attachments = r.attachments || [];
+  var who = (typeof engUser==='function' && engUser()) || r.inspector || '';
+  Promise.all(files.map(function(f){ return F.addFile(f).then(function(meta){ meta.by = who; r.attachments.push(meta); return meta; }); }))
+    .then(function(added){
+      attRefresh(where);
+      toast('📎 '+added.length+' file'+(added.length===1?'':'s')+' attached'+(tokenValid() ? ' — uploading…' : ' — they upload when you are signed in'));
+      return attUploadPending(r).then(function(){ attRefresh(where); if(where==='preview') attPersist(r); });
+    });
+  if(input) input.value = '';
+}
+function attRemove(where, id){
+  var r = attReport(where); if(!r) return;
+  var a = (r.attachments||[]).filter(function(x){ return x.id===id; })[0]; if(!a) return;
+  if(!confirm('Remove "'+a.name+'" from this report?')) return;
+  r.attachments = r.attachments.filter(function(x){ return x.id!==id; });
+  if(a.spItemId) (r._attDelete = r._attDelete || []).push(a.spItemId);   /* deleted from SharePoint once the report is saved */
+  attRefresh(where);
+  if(where==='preview') attPersist(r);
+}
+/* after the report JSON is on SharePoint: delete the files removed from it */
+function attDeleteRemoved(ids){
+  if(!ids || !ids.length || !tokenValid() || !spDriveId) return;
+  ids.forEach(function(itemId){
+    fetch('https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/items/'+itemId, { method:'DELETE', headers:{ 'Authorization':'Bearer '+msAccessToken } }).catch(function(){});
+  });
+}
+function attPrintHTML(r){
+  var F = attFiles(), L = (r && r.attachments) || [];
+  if(!L.length || !F) return '';
+  return '<h3>Attachments</h3><div>'+L.map(function(a){ return F.printLink(a, 'Attachment'+(attStamp(a) ? ' ('+attStamp(a)+')' : '')); }).join('')+'</div>';
+}
+
 function spSyncReport(r){
+  /* attachments still only on this device go up first, so the report lists their SharePoint links */
+  var dels = r._attDelete; delete r._attDelete;
+  attUploadPending(r).then(function(){ spSyncReportNow(r, dels); }, function(){ spSyncReportNow(r, dels); });
+}
+function spSyncReportNow(r, dels){
   var date = (r.savedAt||r.createdAt||'').slice(0,10);
   // One JSON file per report (FRC-123456.json), overwritten on every save
   var filename = (r.id||'report') + '.json';
@@ -7039,7 +7152,8 @@ function spSyncReport(r){
       // Tag report as SP-synced in local storage
       var ri=reports.findIndex(function(x){ return x.id===r.id; });
       /* only if nobody saved a newer version on this device while the upload ran */
-      if(ri>=0 && String(reports[ri].savedAt||'')===String(r.savedAt||'')){ reports[ri]._spSynced=true; delete reports[ri]._spPending; saveReportsToStorage(); renderHistory(); }
+      if(ri>=0 && String(reports[ri].savedAt||'')===String(r.savedAt||'')){ reports[ri]._spSynced=true; delete reports[ri]._spPending; delete reports[ri]._attDelete; saveReportsToStorage(); renderHistory(); }
+      attDeleteRemoved(dels);
       setLastSync();
       toast('✅ Report synced to SharePoint');
       // Remove older dated copies (FRC-123456_2026-10-15.json) saved by earlier versions of the app.
@@ -7278,6 +7392,7 @@ function buildPrintHTML(r){
   h+='</tbody></table>';
   var spares=buildSparesPrintHTML(r);
   if(spares) h+='<div>'+spares.replace(/<table style="width:100%;border-collapse:collapse">/g,'<table>')+'</div>';
+  h+=attPrintHTML(r);
   h+='<table style="margin-top:14px;table-layout:fixed"><colgroup><col style="width:13%"><col style="width:22%"><col style="width:6%"><col style="width:9%"><col style="width:13%"><col style="width:22%"><col style="width:6%"><col style="width:9%"></colgroup><tr><td style="'+LB+'width:auto">Inspected By</td><td style="'+B+'">'+esc(r.inspector||'')+'</td><td style="'+LB+'width:auto">Date</td><td style="'+B+'">'+esc(fmtDate(r.createdAt))+'</td>'
     +'<td style="'+LB+'width:auto">Engineer in Charge</td><td style="'+B+'">'+esc(r.engineerName||'')+'</td><td style="'+LB+'width:auto">Date</td><td style="'+B+'">'+esc(r.engDate?fmtDate(r.engDate):(r.engineerName?fmtDate(r.savedAt||r.createdAt):''))+'</td></tr>'
     +'<tr><td style="'+LB+'width:auto">Reviewed By</td><td style="'+B+'"></td><td style="'+LB+'width:auto">Date</td><td style="'+B+'"></td>'
@@ -7974,7 +8089,7 @@ function previewWecoRows(r){
 }
 
 function renderPreview(r){
-  if(r && r.gvEval && window.GVEval && GVEval.previewHTML){ document.getElementById('preview-body').innerHTML=reportNavHTML(r)+GVEval.previewHTML(r); return; }
+  if(r && r.gvEval && window.GVEval && GVEval.previewHTML){ document.getElementById('preview-body').innerHTML=reportNavHTML(r)+GVEval.previewHTML(r)+attCardHTML(r,'preview'); return; }
   const d=dispFor(r.disposition)||dispFor('incomplete');
   let html=reportNavHTML(r);
   html+=equipHeroHTML(r);
@@ -8030,6 +8145,7 @@ function renderPreview(r){
     html+=`<div class="card"><div class="section-title">Engineering Notes</div>
       <div style="font-size:13px;color:var(--text2);line-height:1.6">${esc(r.engineeringNotes)}</div></div>`;
   }
+  html+=attCardHTML(r,'preview');
   document.getElementById('preview-body').innerHTML=html;
 }
 
@@ -8321,10 +8437,7 @@ function msSignIn(){
     if(event.data.access_token){
       msAccessToken  = event.data.access_token;
       msTokenExpiry  = Date.now() + (event.data.expires_in - 60) * 1000;
-      try{
-        sessionStorage.setItem('ms_at', msAccessToken);
-        sessionStorage.setItem('ms_at_exp', String(msTokenExpiry));
-      }catch(e){}
+      tokenStore(msAccessToken, msTokenExpiry);     /* shared with the app's other windows */
       try{ popup.close(); }catch(e){}
       msVerifyConnection();
     }
@@ -8354,6 +8467,183 @@ function msSignIn(){
     }catch(e){}
   }, 500);
 }
+/* ══ LIVE SYNC ═══════════════════════════════════════════════════════════
+   While signed in, the app asks SharePoint every 15 s (Graph delta query on
+   the library) what changed. A report saved or deleted by someone else is
+   pulled in straight away: History, the open preview and the dashboard
+   refresh by themselves and a pop-up says what happened. A report open in
+   the form is never overwritten — a bar offers to load the new version.
+   Other windows of the app in the same browser are kept in step instantly
+   through the browser's storage event.                                      */
+var LIVE = { link:null, timer:null, busy:false, ticks:0, ids:{}, started:false };
+var STAGE_TEXT = { Draft:'Draft', Engineering:'Awaiting Engineering', Repair:'Awaiting Repair', Polish:'Awaiting Polish',
+                   ReworkFailed:'Rework failed', Complete:'Inspection complete' };
+function liveReportName(n){ var m = /^(FRC-[A-Za-z0-9-]+)\.json$/i.exec(String(n||'')); return m ? m[1] : null; }
+function liveRemember(items){ (items||[]).forEach(function(f){ var id = liveReportName(f.name); if(id && f.id) LIVE.ids[f.id] = id; }); }
+function liveStart(){
+  if(LIVE.started) return; LIVE.started = true;
+  LIVE.timer = setInterval(function(){ liveTick(false); }, 15000);
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) liveTick(true); });
+  window.addEventListener('focus', function(){ liveTick(true); });
+  liveTick(true);
+}
+function liveTick(force){
+  if(LIVE.busy || !tokenValid() || !spConfig.reportsFolder) return;
+  LIVE.ticks++;
+  if(document.hidden && !force && LIVE.ticks % 4) return;          /* background window: once a minute */
+  LIVE.busy = true;
+  msResolveSite(function(ok){
+    if(!ok || !spDriveId){ LIVE.busy = false; return; }
+    var first = !LIVE.link, got = [];
+    var url = LIVE.link || 'https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/root/delta?token=latest';
+    var step = function(u){
+      return fetch(u, { headers:{ 'Authorization':'Bearer '+msAccessToken } }).then(function(r){
+        if(r.status===410){ LIVE.link = null; throw new Error('resync'); }
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        return r.json();
+      }).then(function(j){
+        got = got.concat(j.value||[]);
+        if(j['@odata.nextLink']) return step(j['@odata.nextLink']);
+        if(j['@odata.deltaLink']) LIVE.link = j['@odata.deltaLink'];
+      });
+    };
+    step(url).then(function(){ LIVE.busy = false; if(!first) liveHandle(got); }, function(){ LIVE.busy = false; });
+  });
+}
+function liveInReports(it){
+  var p = it.parentReference && it.parentReference.path;
+  if(!p) return !!LIVE.ids[it.id];
+  try{ p = decodeURIComponent(p); }catch(e){}
+  var want = ('root:/'+String(spConfig.reportsFolder).replace(/^\/+|\/+$/g,'')).toLowerCase(), have = p.toLowerCase().replace(/\/+$/,'');
+  return have.slice(-want.length)===want;
+}
+function liveHandle(items){
+  var seen = {};
+  items.forEach(function(it){
+    if(!liveInReports(it) || it.folder) return;
+    var rid = liveReportName(it.name) || LIVE.ids[it.id];
+    if(!rid || seen[rid+(it.deleted?':d':'')]) return; seen[rid+(it.deleted?':d':'')] = 1;
+    var by = (it.lastModifiedBy && it.lastModifiedBy.user && it.lastModifiedBy.user.displayName) || '';
+    if(it.deleted){ liveDeleted(rid); return; }
+    LIVE.ids[it.id] = rid;
+    fetch('https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/items/'+it.id+'/content', { headers:{ 'Authorization':'Bearer '+msAccessToken } })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(rep){ if(rep && rep.id===rid) liveApply(rep, by, 'sp'); })
+      .catch(function(){});
+  });
+}
+function liveApply(rep, by, src){
+  var i = reports.findIndex(function(x){ return x.id===rep.id; }), loc = i>=0 ? reports[i] : null;
+  if(loc && String(loc.savedAt||loc.createdAt||'') >= String(rep.savedAt||rep.createdAt||'')) return false;   /* nothing new (or our own save) */
+  if(src==='sp'){ rep._spSynced = true; delete rep._spPending; }
+  if(i>=0) reports[i] = rep; else reports.unshift(rep);
+  if(src==='sp') saveReportsToStorage();
+  liveRefreshViews(rep.id, false, by);
+  livePopup(rep, by, loc ? 'updated' : 'new', src);
+  return true;
+}
+function liveDeleted(rid){
+  var i = reports.findIndex(function(x){ return x.id===rid; });
+  if(i<0 || reports[i]._spPending) return;          /* never drop an edit that has not been sent yet */
+  var gone = reports[i]; reports.splice(i,1); saveReportsToStorage();
+  liveRefreshViews(rid, true, '');
+  livePopup(gone, '', 'deleted', 'sp');
+}
+function liveVisible(v){ var el = document.getElementById('view-'+v); return !!el && !el.classList.contains('hidden'); }
+function liveRefreshViews(id, deleted, by){
+  try{ if(typeof updateHomeCount==='function') updateHomeCount(); }catch(e){}
+  if(liveVisible('history')){ var y = window.scrollY; renderHistory(); window.scrollTo(0, y); }
+  if(liveVisible('dashboard') && typeof renderDashboard==='function') renderDashboard();
+  if(liveVisible('preview') && previewReport && previewReport.id===id){
+    if(deleted){ showView('history'); }
+    else { var y2 = window.scrollY; previewReport = reports.find(function(x){ return x.id===id; }); renderPreview(previewReport); refreshPreviewEditBtn(); window.scrollTo(0, y2); }
+  }
+  if(liveVisible('form') && current && current.id===id) liveFormBar(id, deleted, by);
+}
+function liveFormBar(id, deleted, by){
+  var old = document.getElementById('live-bar'); if(old) old.remove();
+  var bar = document.createElement('div'); bar.id = 'live-bar'; bar.className = 'live-bar';
+  bar.innerHTML = deleted
+    ? '<b>This report was deleted on SharePoint.</b> Saving it will put it back.'
+      +'<span class="live-bar-acts"><button onclick="document.getElementById(\'live-bar\').remove()">OK</button></span>'
+    : '<b>Report updated'+(by?' by '+esc(by):'')+'.</b> You are looking at your own version — load the latest to see the changes (your unsaved changes here are lost).'
+      +'<span class="live-bar-acts"><button class="pri" onclick="liveLoadLatest(\''+id+'\')">Load latest</button><button onclick="document.getElementById(\'live-bar\').remove()">Keep mine</button></span>';
+  var body = document.getElementById('form-body'); if(body) body.insertBefore(bar, body.firstChild);
+}
+function liveLoadLatest(id){
+  var r = reports.find(function(x){ return x.id===id; }); if(!r) return;
+  var b = document.getElementById('live-bar'); if(b) b.remove();
+  if(r.gvEval && window.GVEval){ current = JSON.parse(JSON.stringify(r)); renderForm(); }
+  else editReport(id);
+  toast('Latest version loaded');
+}
+function livePopup(r, by, kind, src){
+  var box = document.getElementById('live-pops');
+  if(!box){ box = document.createElement('div'); box.id = 'live-pops'; document.body.appendChild(box); }
+  var what = kind==='deleted' ? 'deleted' : kind==='new' ? 'added' : 'updated';
+  var who = src==='tab' ? 'in another window of the app' : (by ? 'by '+by : '');
+  var meta = [typeof formTypeLabel==='function' ? formTypeLabel(r) : (r.equipType||''), r.header && r.header.serialNo ? 'SN '+r.header.serialNo : '',
+              kind!=='deleted' && r.stage ? (STAGE_TEXT[r.stage]||r.stage) : ''].filter(Boolean).join(' · ');
+  var el = document.createElement('div'); el.className = 'live-pop '+kind;
+  el.innerHTML = '<div class="live-pop-t">Report '+esc(r.id)+' '+what+'</div>'
+    +'<div class="live-pop-s">'+esc([who, meta].filter(Boolean).join(' — '))+'</div>'
+    +'<div class="live-pop-a">'+(kind!=='deleted' ? '<button class="pri" data-id="'+esc(r.id)+'">Open</button>' : '')+'<button class="x">Dismiss</button></div>';
+  var close = function(){ el.classList.add('out'); setTimeout(function(){ el.remove(); }, 250); };
+  el.querySelector('.x').onclick = close;
+  var o = el.querySelector('.pri'); if(o) o.onclick = function(){ close(); if(liveVisible('form') && current){ toast('Save or leave the form first'); return; } showPreview(this.getAttribute('data-id')); };
+  box.appendChild(el);
+  while(box.children.length > 4) box.removeChild(box.firstChild);
+  setTimeout(close, 12000);
+}
+/* other windows of the app in this browser: reports and sign-in are shared through localStorage */
+window.addEventListener('storage', function(ev){
+  if(ev.key==='valve_insp_v2' && ev.newValue){
+    var fresh; try{ fresh = JSON.parse(ev.newValue); }catch(e){ return; }
+    if(!Array.isArray(fresh)) return;
+    var ids = {};
+    fresh.forEach(function(r){ ids[r.id] = 1; liveApply(r, '', 'tab'); });
+    reports.filter(function(r){ return !ids[r.id]; }).forEach(function(r){
+      var i = reports.indexOf(r); if(i>=0) reports.splice(i,1);
+      liveRefreshViews(r.id, true, ''); livePopup(r, '', 'deleted', 'tab');
+    });
+    /* flags (synced / pending) follow the other window too */
+    fresh.forEach(function(r){ var l = reports.find(function(x){ return x.id===r.id; }); if(l && l.savedAt===r.savedAt){ l._spSynced = r._spSynced; l._spPending = r._spPending; } });
+  }
+  if(ev.key==='ms_at'){
+    if(ev.newValue){
+      var exp = 0; try{ exp = parseInt(localStorage.getItem('ms_at_exp')||'0',10); }catch(e){}
+      if(exp > Date.now() && ev.newValue!==msAccessToken){ msAccessToken = ev.newValue; msTokenExpiry = exp; msVerifyConnection(); }
+    } else if(msAccessToken){
+      msAccessToken = null; msTokenExpiry = 0; spConfig.connected = false; updateConnStatus();
+    }
+  }
+});
+/* sign-in shared by every window of the app in this browser */
+function tokenStore(at, exp){
+  try{
+    if(at){ localStorage.setItem('ms_at_exp', String(exp)); localStorage.setItem('ms_at', at); sessionStorage.setItem('ms_at', at); sessionStorage.setItem('ms_at_exp', String(exp)); }
+    else { localStorage.removeItem('ms_at'); localStorage.removeItem('ms_at_exp'); sessionStorage.removeItem('ms_at'); sessionStorage.removeItem('ms_at_exp'); }
+  }catch(e){}
+}
+function tokenLoad(){
+  var best = null;
+  [localStorage, sessionStorage].forEach(function(S){
+    try{ var at = S.getItem('ms_at'), exp = parseInt(S.getItem('ms_at_exp')||'0',10); if(at && exp > Date.now() && (!best || exp > best.exp)) best = { at:at, exp:exp }; }catch(e){}
+  });
+  return best;
+}
+/* installed app (PWA): a report link can open in the window that is already open */
+if('launchQueue' in window && window.launchQueue && launchQueue.setConsumer){
+  launchQueue.setConsumer(function(p){
+    if(!p || !p.targetURL) return;
+    var id = null; try{ id = new URL(p.targetURL).searchParams.get('report'); }catch(e){}
+    if(!id || !/^[A-Za-z0-9][A-Za-z0-9_-]{2,40}$/.test(id)) return;
+    try{ sessionStorage.setItem(REPORT_LINK_KEY, id); }catch(e){}
+    if(liveVisible('form') && current){ toast('Report link received — save or leave the form, then it opens', 6000); return; }
+    openReportLink();
+  });
+}
+
 function msVerifyConnection(callback){
   setConnStatus('connecting','Verifying…');
   msFetch('https://graph.microsoft.com/v1.0/me','GET',null,function(user){
@@ -8370,6 +8660,8 @@ function msVerifyConnection(callback){
     // relying on a once-per-page-load flag.
     _uploadPromptShown=false;
     setTimeout(maybePromptUploadLocal, 900);
+    tokenStore(msAccessToken, msTokenExpiry);
+    liveStart();
     if(callback) callback();
     openReportLink();   // a report link waiting for this sign-in
   });
@@ -8433,7 +8725,7 @@ function msUploadFile(folderPath,filename,content,isJson,callback){
 function disconnectSharePoint(){
   msAccessToken=null; msTokenExpiry=0; spSiteId=null; spDriveId=null;
   _uploadPromptShown=false;   // re-arm: next sign-in should offer the upload again
-  try{ sessionStorage.removeItem('ms_at'); sessionStorage.removeItem('ms_at_exp'); }catch(e){}
+  tokenStore(null);                 /* signs out the app's other windows too */
   spConfig.connected=false; spConfig.userName='';
   try{ localStorage.setItem(CFG_KEY,JSON.stringify(spConfig)); }catch(e){}
   updateConnStatus();
@@ -8444,8 +8736,8 @@ function disconnectSharePoint(){
 // ── Auto-connect on startup using stored session token ────────────────
 function msAutoConnect(){
   try{
-    var at=sessionStorage.getItem('ms_at');
-    var exp=parseInt(sessionStorage.getItem('ms_at_exp')||'0');
+    var tk=tokenLoad();                /* this window's sign-in, or one from another window of the app */
+    var at=tk&&tk.at, exp=tk?tk.exp:0;
     if(at && Date.now()<exp){
       msAccessToken=at; msTokenExpiry=exp;
       // Verify connection then sync reports from SharePoint
@@ -8549,6 +8841,7 @@ function msSyncFromSharePoint(){
     if(!ok) return;
     msListFolder(spConfig.reportsFolder, function(items){
       if(!items) return;
+      liveRemember(items);
       // Filter JSON files only
       var jsonFiles=items.filter(function(f){ return f.name&&f.name.endsWith('.json'); });
       if(jsonFiles.length===0){
@@ -10830,10 +11123,15 @@ function analyse(r){
     var evs = a.points.filter(function(ev){ return ev.comp.id===cid && ev.res && (ev.res.action==='HWR' || ev.res.action==='CWR'); });
     if(!evs.length) return;
     var cw = evs.some(function(ev){ return ev.res.action==='CWR'; }), z = std.size, ch = (g.compHWR||{})[cid] || {};
-    var sow = cid==='bonnet' ? (cw ? z.bonCwrSow : z.bonHwrSow) : (cw ? (z.bsbCwrSow || z.bonCwrSow) : (z.bsbHwrSow || z.bonHwrSow));
-    var slot = (cid==='bonnet' ? 'BON_' : 'BSB_')+(cw ? 'CWR' : 'HWR');
+    /* the balance stem bonnet has its own SOW slots; when none is set in the standards the
+       main bonnet SOW is used — and the report says so instead of labelling it as a BSB SOW */
+    var own = cid==='bonnet' ? (cw ? z.bonCwrSow : z.bonHwrSow) : (cw ? z.bsbCwrSow : z.bsbHwrSow);
+    var main = cw ? z.bonCwrSow : z.bonHwrSow;
+    var fb = cid==='bsb' && !own && !!main;
+    var slot = (cid==='bonnet' ? 'BON_' : 'BSB_')+(cw ? 'CWR' : 'HWR'), mainSlot = 'BON_'+(cw ? 'CWR' : 'HWR');
     a.compWeld.push({ cid:cid, title:evs[0].comp.title, action:cw ? 'CWR' : 'HWR', areas:evs.map(function(ev){ return ev.pt.label; }),
-                      refs:ch.refs || [], sow:sow || null, slot:slot, label:SOW_LABEL[slot] });
+                      refs:ch.refs || [], sow:(own || (fb ? main : null)) || null, slot:fb ? mainSlot : slot,
+                      label:SOW_LABEL[fb ? mainSlot : slot], sowFallback:fb, ownLabel:SOW_LABEL[slot] });
   });
   var fevs = a.points.filter(function(ev){ return ev.pt.flange && ev.res && (ev.res.action==='HWR' || ev.res.action==='CWR'); });
   if(fevs.length){
@@ -11024,7 +11322,8 @@ function outcome(a, r){
       t += ' '+(x.cid==='flange' ? std_adv(a, 'flangeCwr') : std_adv(a, 'compCwr').replace(/^This bonnet/, 'The '+x.title.toLowerCase()));
       if(x.refs.length) t += ' Previous weld repair on record: '+x.refs.map(function(q){ return q.id+(q.date?' ('+String(q.date).slice(0,10)+')':''); }).join(', ')+'.';
     }
-    return { cid:x.cid, title:x.title, action:x.action, text:t, sow:x.sow, label:x.label };
+    return { cid:x.cid, title:x.title, action:x.action, text:t, sow:x.sow, label:x.label, sowFallback:!!x.sowFallback, ownLabel:x.ownLabel,
+             sameAsMain:!!x.sowFallback && (a.compWeld||[]).some(function(q){ return q.cid==='bonnet' && q.sow && x.sow && q.sow.id===x.sow.id; }) };
   });
   if(a.route.type!=='none'){
     var fp = a.nameplate.fromPN || '—', tp = a.nameplate.toPN || 'PN not set';
@@ -11184,13 +11483,13 @@ function putLarge(path, blob){
     });
 }
 /* Upload one SOW. `tag` makes the SharePoint name unique per size and route. */
-function upload(meta, tag){
+function upload(meta, tag, dir){
   if(!spReady()) return Promise.resolve(meta);
   return Promise.all([resolve(), getBlob(meta.id)]).then(function(x){
     if(!x[0] || !x[1]) return meta;
-    var path = sowDir()+'/'+safe((tag?tag+' - ':'')+meta.name);
+    var folder = dir || sowDir(), path = folder+'/'+safe((tag?tag+' - ':'')+meta.name);
     var go = function(){ return x[1].blob.size > 4*1024*1024 ? putLarge(path, x[1].blob) : putSmall(path, x[1].blob); };
-    return go().catch(function(){ return ensureDir().then(go); }).then(function(item){
+    return go().catch(function(){ return ensurePath(folder).then(go); }).then(function(item){
       meta.spItemId = item.id; meta.webUrl = item.webUrl; meta.spPath = path; meta.pending = false;
       return meta;
     });
@@ -11700,7 +11999,12 @@ function outcomeHTML(a){
   if(o.cwr) h+='<div class="gve-cwr"><b>CWR required.</b> '+e(o.cwr)+'</div>';
   (o.compWeld||[]).forEach(function(x){
     h+=(x.action==='CWR' ? '<div class="gve-cwr"><b>CWR required — '+e(x.title.toLowerCase())+'.</b> ' : '<div class="gve-np"><b>Weld repair:</b> ')+e(x.text)+'</div>';
-    if(G.files) h+= x.sow ? G.files.linkHTML(x.sow, 'Scope of work — '+x.label) : '<div class="gve-out-l" style="color:#d97706">&bull; No SOW file set for '+e(x.label)+' on this valve — Engineering can add it in Settings.</div>';
+    if(G.files){
+      if(x.sowFallback) h+='<div class="gve-out-l" style="color:#d97706">&bull; No separate SOW for the '+e(x.title.toLowerCase())+' in the standards — the main bonnet SOW applies'
+        +(x.sameAsMain ? ' (the same file as above).' : ':')+' Engineering can add a '+e(x.ownLabel)+' SOW in Settings.</div>';
+      if(x.sow && !x.sameAsMain) h+=G.files.linkHTML(x.sow, 'Scope of work — '+x.label);
+      else if(!x.sow) h+='<div class="gve-out-l" style="color:#d97706">&bull; No SOW file set for '+e(x.label)+' on this valve — Engineering can add it in Settings.</div>';
+    }
   });
   if(a.nameplate && a.nameplate.change) h+='<div class="gve-np"><b>Name plate:</b> '+e(a.nameplate.text)+'</div>';
   if(a.route.type!=='none' && G.files){
@@ -11812,6 +12116,7 @@ function renderForm(){
     +'<div><label class="field-label">Reviewed by</label><input class="field-input" value="'+e(s.rev2||'')+'" oninput="gveG(\'rev2\',this.value)"/></div>'
     +'<div><label class="field-label">Date</label><input class="field-input" type="date" value="'+e(s.rev2Date||'')+'" onchange="gveG(\'rev2Date\',this.value)"/></div>'
     +'</div></div>';
+  if(typeof attCardHTML==='function') h+=attCardHTML(current,'form');
   h+='<button class="save-full-btn" onclick="saveReport()">Save &amp; Complete Report</button>';
   document.getElementById('form-body').innerHTML=h;
   updateProgress();
@@ -12144,7 +12449,8 @@ function printDoc(r){
     +(o.lines||[]).map(function(l){ return '<div style="color:#b45309">&bull; '+e(l)+'</div>'; }).join('')
     +(o.cwr ? '<div style="margin-top:4px;color:#7e22ce"><b>CWR required.</b> '+e(o.cwr)+'</div>' : '')
     +(o.compWeld||[]).map(function(x){ return '<div style="margin-top:4px'+(x.action==='CWR'?';color:#7e22ce':'')+'"><b>'+(x.action==='CWR'?'CWR required':'Weld repair')+':</b> '+e(x.text)+'</div>'
-        +(G.files && x.sow ? G.files.printLink(x.sow, 'Scope of work — '+x.label) : '<div style="margin-top:4px;color:#b45309">SOW for '+e(x.label)+' not set</div>'); }).join('')
+        +(x.sowFallback ? '<div style="margin-top:4px;color:#b45309">No separate SOW for the '+e(x.title.toLowerCase())+' in the standards — the main bonnet SOW applies'+(x.sameAsMain?' (same file as above).':'.')+'</div>' : '')
+        +(x.sameAsMain ? '' : (G.files && x.sow ? G.files.printLink(x.sow, 'Scope of work — '+x.label) : '<div style="margin-top:4px;color:#b45309">SOW for '+e(x.label)+' not set</div>')); }).join('')
     +(a.nameplate && a.nameplate.change ? '<div style="margin-top:4px"><b>Name plate:</b> '+e(a.nameplate.text)+'</div>' : '')
     +(a.route.type!=='none' && G.files ? (a.sows||[]).map(function(x){ return x.meta ? G.files.printLink(x.meta,'Scope of work — '+x.label) : '<div style="margin-top:4px;color:#b45309">SOW for '+e(x.label)+' not set</div>'; }).join('')
         +(a.sowNext && a.sowNext.meta ? G.files.printLink(a.sowNext.meta,'If defects remain — '+a.sowNext.label) : '') : '')
@@ -12200,6 +12506,7 @@ function printDoc(r){
       +'</table>';
     if(std.advisory&&std.advisory.general) h+='<div style="margin-bottom:10px"><b>Advisory:</b> '+e(std.advisory.general)+'</div>';
   }
+  if(typeof attPrintHTML==='function') h+=attPrintHTML(r);
   var disposedBy = a.engInvolved ? (s.engBy||'Engineering — name outstanding') : 'Automatic — Gate Valve Standards rev '+G.revLabel(std)+(std&&std.approvedBy?' (approved by '+std.approvedBy+')':'');
   h+='<table><tr><td style="'+LB+'width:14%">Inspected By</td><td style="'+B+'">'+e(r.inspector||'')+'</td><td style="'+LB+'width:8%">Date</td><td style="'+B+'width:12%">'+e(s.inspDate||'')+'</td>'
     +'<td style="'+LB+'width:14%">Disposed By</td><td style="'+B+'">'+e(disposedBy)+'</td><td style="'+LB+'width:8%">Date</td><td style="'+B+'width:12%">'+e(s.engDate||(a.engInvolved?'':String(r.savedAt||r.createdAt||'').slice(0,10)))+'</td></tr>'
@@ -12944,6 +13251,7 @@ function tabSow(){
       var fl = G.flangeFor(D, size);
       var bpn = /^RG_/.test(os) ? 'End flange <b>'+e(fl ? fl.label : 'not set')+'</b>' : 'Bonnet body <b>'+e((/^BON_/.test(os) ? sz.variants.NORMAL.bonnetPN : sz.variants.NORMAL.bsbPN)||'not set')+'</b>';
       h += '<div class="gvs-sow"><div class="gvs-sow-h"><div class="gvs-sow-t">'+e(G.SOW_LABEL[os])+'</div><div class="gvs-sow-pn">'+bpn+'</div></div>'
+        + (/^BSB_/.test(os) && !m ? '<div class="gvs-tip" style="margin:6px 0 0;color:#d97706">Not set — reports use the main bonnet '+(os==='BSB_CWR'?'CWR':'HWR')+' SOW and say so. Upload a balance stem bonnet SOW here if it needs its own.</div>' : '')
         + sowFileHTML(os, m) + '</div>';
       return;
     }

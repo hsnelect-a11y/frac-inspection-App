@@ -6,11 +6,18 @@
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "display_override": ["standalone", "fullscreen"],
+  "display_override": [
+    "standalone",
+    "fullscreen"
+  ],
   "orientation": "any",
   "background_color": "#0e0b1f",
   "theme_color": "#17133a",
-  "categories": ["business", "productivity", "utilities"],
+  "categories": [
+    "business",
+    "productivity",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "icon-192.png",
@@ -30,5 +37,12 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "launch_handler": {
+    "client_mode": [
+      "focus-existing",
+      "auto"
+    ]
+  },
+  "handle_links": "preferred"
 }
