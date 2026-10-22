@@ -12797,7 +12797,7 @@ function best(list){
 
 function pnCandidates(text){
   var out = [];
-  var re = /\b[Pp][\s_]?([0-9Oo]{6,11})(-[0-9Oo]{3,4})?\b/g, m;
+  var re = /(?:^|[^A-Za-z0-9])[Pp][\s_]?([0-9OoIl]{6,11})(-[0-9Oo]{3,4})?(?![0-9])/g, m;
   while((m = re.exec(text))){ out.push(('P'+fixDigits(m[1])+(m[2]?fixDigits(m[2]):'')).replace(/[Oo]/g,'0')); }
   var re2 = /\b(\d{2}-\d{3}-\d{3})\b/g;           /* legacy 90-139-067 style */
   while((m = re2.exec(text))){ out.push(m[1]); }
@@ -12836,12 +12836,14 @@ function isRevTok(x){ return /^[A-Z]{1,2}$/.test(x) && x.split('').every(functio
 function parsePlate(raw){
   var text = clean(raw), m, r = { raw:String(raw||'') };
   var pns = pnCandidates(text);
+  r._pnAll = pns.slice();
   r.pnList = best(pns);
   r.assyPN = r.pnList[0] || '';
-  var bare = [], bre = /(?:^|[^A-Za-z0-9-])([0-9OoIl]{6,11})(?![A-Za-z0-9-])/g;
+  var bare = [], bre = /(?:^|[^A-Za-z0-9-])([0-9OoIl]{6,11})(?![0-9-])/g;
   while((m = bre.exec(text))){ var bd = fixDigits(m[1]).replace(/[Oo]/g,'0'); if(/^\d+$/.test(bd) && r.pnList.indexOf('P'+bd)===-1) bare.push(bd); }
   r.pnBare = uniq(bare);
-  r.snList = best(snCandidates(text, pns));
+  r._snAll = snCandidates(text, pns);
+  r.snList = best(r._snAll);
   r.serial = r.snList[0] || '';
   /* rev: a single capital right after the assembly number on the same line */
   if(r.assyPN){
@@ -12865,7 +12867,8 @@ function parsePlate(raw){
   if(r.rev) r.revHow = 'text';
   var sizes = []; var sre = /\b(\d{1,2})\s*-\s*(\d{1,2})\s*\/\s*(\d{1,2})\b/g;
   while((m = sre.exec(text))){ sizes.push(m[1]+'-'+m[2]+'/'+m[3]); }
-  sizes = best(sizes.filter(function(s){ return SIZE_MAP[s]; }));
+  r._sizeAll = sizes.filter(function(s){ return SIZE_MAP[s]; });
+  sizes = best(r._sizeAll);
   r.sizeText = sizes[0] || '';
   r.sizeKey = '';   /* resolved against the valves in the standards when reviewed */
   var ps = []; var pre = /\b(\d{1,2}[,.]?\d{3})\s*PSI\b/gi;
@@ -12975,14 +12978,221 @@ function wordsOf(data){
   (data.blocks||[]).forEach(function(b){ (b.paragraphs||[]).forEach(function(p){ (p.lines||[]).forEach(function(l){ (l.words||[]).forEach(function(w){ var bb = w.bbox||{}; add(w.text, bb.x0, bb.y0, bb.x1, bb.y1, w.confidence); }); }); }); });
   return out;
 }
+
+/* ── image strips: local-contrast threshold and character-sized marks ──── */
+function bandOf(grey, W, H, rc){
+  var x0 = Math.max(0, Math.floor(rc.x0)), x1 = Math.min(W, Math.ceil(rc.x1)), y0 = Math.max(0, Math.floor(rc.y0)), y1 = Math.min(H, Math.ceil(rc.y1));
+  var w = x1-x0, h = y1-y0; if(w < 8 || h < 8) return null;
+  var n = w*h, g = new Float32Array(n), ii = new Float64Array((w+1)*(h+1)), x, y;
+  for(y=0;y<h;y++){ var rs = 0; for(x=0;x<w;x++){ var v = grey[(y0+y)*W + x0 + x]; g[y*w+x] = v; rs += v; ii[(y+1)*(w+1)+x+1] = ii[y*(w+1)+x+1] + rs; } }
+  return { x0:x0, y0:y0, w:w, h:h, n:n, g:g, ii:ii, mean:new Float32Array(n), dark:new Uint8Array(n), lab:new Int32Array(n), stack:new Int32Array(n), R:-1 };
+}
+function darkMap(B, R, C){
+  var w = B.w, h = B.h, ii = B.ii, x, y, i;
+  if(B.R!==R){
+    for(y=0;y<h;y++){ var ya = Math.max(0,y-R), yb = Math.min(h,y+R+1);
+      for(x=0;x<w;x++){ var xa = Math.max(0,x-R), xb = Math.min(w,x+R+1);
+        B.mean[y*w+x] = (ii[yb*(w+1)+xb] - ii[ya*(w+1)+xb] - ii[yb*(w+1)+xa] + ii[ya*(w+1)+xa]) / ((yb-ya)*(xb-xa)); } }
+    B.R = R;
+  }
+  for(i=0;i<B.n;i++) B.dark[i] = B.g[i] < B.mean[i]-C ? 1 : 0;
+}
+function components(B){
+  var w = B.w, h = B.h, dark = B.dark, lab = B.lab, stack = B.stack, comps = [], nl = 0;
+  lab.fill(0);
+  for(var p0=0; p0<B.n; p0++){
+    if(!dark[p0] || lab[p0]) continue;
+    nl++; var sp = 0; stack[sp++] = p0; lab[p0] = nl;
+    var k = { x0:w, y0:h, x1:0, y1:0, area:0 };
+    while(sp){
+      var q = stack[--sp], qx = q % w, qy = (q/w)|0; k.area++;
+      if(qx<k.x0) k.x0=qx; if(qx+1>k.x1) k.x1=qx+1; if(qy<k.y0) k.y0=qy; if(qy+1>k.y1) k.y1=qy+1;
+      for(var dy=-1; dy<=1; dy++){ var ny = qy+dy; if(ny<0 || ny>=h) continue;
+        for(var dx=-1; dx<=1; dx++){ var nx = qx+dx; if(nx<0 || nx>=w) continue; var nq = ny*w+nx; if(dark[nq] && !lab[nq]){ lab[nq] = nl; stack[sp++] = nq; } } }
+    }
+    k.edge = k.x0===0 || k.y0===0 || k.x1===w || k.y1===h;    /* cut by the strip edge: part of something else */
+    comps.push(k);
+  }
+  return comps;
+}
+/* cut a rectangle of the dark map into a white canvas: pad (source px) of white around, scaled by sc;
+   horizontal runs longer than erase (an underline) are left out */
+function cropCanvas(B, gx0, gy0, gx1, gy1, pad, sc, erase){
+  gx0 = Math.max(0, gx0); gy0 = Math.max(0, gy0); gx1 = Math.min(B.w, gx1); gy1 = Math.min(B.h, gy1);
+  var cw = gx1-gx0+2*pad, chh = gy1-gy0+2*pad, hsh = 5381, x, y, i;
+  var c1 = document.createElement('canvas'); c1.width = cw; c1.height = chh;
+  var x1c = c1.getContext('2d'), id = x1c.createImageData(cw, chh), d = id.data;
+  for(i=0;i<d.length;i++) d[i] = 255;
+  for(y=gy0; y<gy1; y++){
+    var run = 0;
+    for(x=gx0; x<=gx1; x++){
+      var on = x<gx1 ? B.dark[y*B.w+x] : 0;
+      if(on){ run++; continue; }
+      if(run && !(erase && run>=erase)){
+        for(var xx=x-run; xx<x; xx++){ var o = ((y-gy0+pad)*cw + (xx-gx0+pad))*4; d[o] = d[o+1] = d[o+2] = 0; hsh = ((hsh*33) ^ (xx*7+y)) >>> 0; }
+      }
+      run = 0;
+    }
+  }
+  x1c.putImageData(id, 0, 0);
+  var c2 = document.createElement('canvas'); c2.width = Math.max(1, Math.round(cw*sc)); c2.height = Math.max(1, Math.round(chh*sc));
+  var x2 = c2.getContext('2d'); x2.fillStyle = '#fff'; x2.fillRect(0, 0, c2.width, c2.height); x2.imageSmoothingEnabled = true; x2.drawImage(c1, 0, 0, c2.width, c2.height);
+  return { canvas:c2, key:cw+'x'+chh+':'+hsh };
+}
+function greyOf(canvas){
+  var W = canvas.width, H = canvas.height, px = canvas.getContext('2d').getImageData(0, 0, W, H).data, grey = new Uint8Array(W*H);
+  for(var i=0;i<W*H;i++) grey[i] = px[i*4];                     /* the prepared photo is already grey */
+  return grey;
+}
+/* read a list of small canvases; identical cut-outs are read once */
+function readJobs(w, jobs, stop, prog){
+  var cur = {}, seen = {}, out = [];
+  var step = function(k){
+    if(prog) prog(k, jobs.length);
+    if(k >= jobs.length || (stop && k && stop(out))) return Promise.resolve(out);
+    var j = jobs[k], key = j.key+'|'+j.psm+'|'+j.wl;
+    if(seen.hasOwnProperty(key)){ out.push(seen[key]); return step(k+1); }
+    var need = cur.psm!==j.psm || cur.wl!==j.wl;
+    return (need ? w.setParameters({ tessedit_pageseg_mode:j.psm, tessedit_char_whitelist:j.wl }).then(function(){ cur = { psm:j.psm, wl:j.wl }; }) : Promise.resolve())
+      .then(function(){ return w.recognize(j.canvas, {}, OUT_FMT); })
+      .then(function(res){ var dt = res && res.data || {}; seen[key] = dt; out.push(dt); return step(k+1); });
+  };
+  return step(0);
+}
+function resetParams(w){ return w.setParameters({ tessedit_char_whitelist:'', tessedit_pageseg_mode:'6' }).catch(function(){}); }
+
+/* ── second look at the serial, assembly number and size ─────────────────
+   On this plate layout each value is printed on the line just above its
+   label ("Serial Number", "Assembly Number", "Size"). The labels are large
+   and read reliably, so the line above each is found on the photo, cut out
+   and read again as a single line with only the characters that field can
+   hold. The extra reads vote with the full-page reads. */
+var FIELD_WL = { pn:'P0123456789', sn:'0123456789-ABCDEFGHJKLMNPRSTUVWXYZ', size:'0123456789-/' };
+function letters(x){ return String(x||'').replace(/[^A-Za-z]/g,''); }
+function fieldBands(words, W, H, r){
+  var out = [], has = {};
+  /* 1. the value itself, where the page read found it: a focused second read of the same spot */
+  var pns = r ? (r.pnList||[]).concat((r.pnBare||[]).map(function(b){ return 'P'+b; })).map(normTok).filter(function(x){ return x.length>=6; }) : [];
+  words.forEach(function(w){
+    var tx = String(w.t), tk = normTok(fixDigits(tx)), kind = null;
+    if(!has.sn && /(?:19|20)\d{2}\s*-\s*(?:0[1-9]|1[0-2])\s*-\s*[0-9OoIl]{3}/.test(tx)) kind = 'sn';
+    else if(!has.pn && tk.length>=6 && pns.some(function(x){ return tk.indexOf(x)!==-1 || tk===x.replace(/^P/,''); })) kind = 'pn';
+    else if(!has.size && /\d{1,2}\s*-\s*\d{1,2}\s*\/\s*\d{1,2}/.test(tx)) kind = 'size';
+    if(!kind) return;
+    var len = Math.max(3, normTok(tx).length), ch = Math.min(w.y1-w.y0, 1.1*(w.x1-w.x0)/len), cy = (w.y0+w.y1)/2;
+    if(ch < 8) return;
+    has[kind] = 1;
+    out.push({ kind:kind, near:true, hl:ch, x0:w.x0-1.5*ch, x1:w.x1+1.5*ch, y0:cy-1.6*ch, y1:cy+1.6*ch });
+  });
+  /* 2. otherwise the line just above its label */
+  words.forEach(function(w){
+    var lt = letters(w.t), kind = /^assembl/i.test(lt) ? 'pn' : /^seri?al$/i.test(lt) ? 'sn' : /^size$/i.test(lt) ? 'size' : null;
+    if(!kind || has[kind] || lt.length < 4) return;
+    var hw = 1.15*(w.x1-w.x0)/lt.length, n2 = null;
+    if(kind!=='size') words.forEach(function(v){
+      if(!/^num/i.test(letters(v.t))) return;
+      var gap = v.x0 - w.x1, dy = Math.abs((v.y0+v.y1)/2 - (w.y0+w.y1)/2);
+      if(gap > -hw && gap < 3*hw && dy < 1.2*hw && (!n2 || v.x0 < n2.x0)) n2 = v;
+    });
+    if(kind!=='size' && !n2) return;                      /* "Serial" / "Assembly" alone is not the label */
+    var ref = n2 || w, hl = n2 ? 1.15*(n2.x1-n2.x0)/Math.max(4, letters(n2.t).length) : Math.min(hw, 0.75*(w.y1-w.y0)), top = ref.y0;
+    if(hl < 8) return;
+    has[kind] = 1;
+    out.push({ kind:kind, hl:hl, x0:w.x0 - 3*hl, x1:ref.x1 + (kind==='size' ? 3 : 2)*hl, y0:top - 3.2*hl, y1:top - 0.2*hl });
+  });
+  return out;
+}
+function fieldJobs(grey, W, H, fb){
+  var B = bandOf(grey, W, H, fb), jobs = [], hl = fb.hl; if(!B) return jobs;
+  [10, 14].forEach(function(C){
+    darkMap(B, Math.max(4, Math.round(0.6*hl)), C);
+    var comps = components(B).filter(function(k){ var h = k.y1-k.y0, w = k.x1-k.x0; return !k.edge && h >= 0.6*hl && h <= 1.6*hl && w >= 0.12*hl && w <= 1.6*hl; });
+    comps.sort(function(a, c){ return (a.y0+a.y1) - (c.y0+c.y1); });
+    var rows = [];
+    comps.forEach(function(k){ var cy = (k.y0+k.y1)/2, last = rows[rows.length-1];
+      if(last && cy - last.cy < 0.45*hl){ last.k.push(k); last.cy = cy; } else rows.push({ cy:cy, k:[k] }); });
+    var most = Math.max.apply(null, [0].concat(rows.map(function(r){ return r.k.length; })));
+    var minN = fb.kind==='size' ? 3 : 4;
+    var okRows = rows.filter(function(r){ return r.k.length >= Math.max(minN, 0.6*most); });
+    var pick = fb.near ? okRows.sort(function(a, c){ return Math.abs(a.cy-B.h/2) - Math.abs(c.cy-B.h/2); })[0]   /* the row the page read found */
+                       : okRows.pop();                                                                          /* the lowest row: the value sits just above its label */
+    if(!pick) return;
+    var rx0 = Math.min.apply(null, pick.k.map(function(k){ return k.x0; })), rx1 = Math.max.apply(null, pick.k.map(function(k){ return k.x1; }));
+    var ry0 = Math.min.apply(null, pick.k.map(function(k){ return k.y0; })), ry1 = Math.max.apply(null, pick.k.map(function(k){ return k.y1; }));
+    var gx0 = Math.round(rx0-0.6*hl), gy0 = Math.round(ry0-0.25*hl), gx1 = Math.round(rx1+0.6*hl), gy1 = Math.round(ry1+0.25*hl);
+    var sc = 48/Math.max(1, Math.min(B.h, gy1)-Math.max(0, gy0)), cut = cropCanvas(B, gx0, gy0, gx1, gy1, Math.round(12/sc), sc, Math.round(2.5*hl));
+    var box = { x0:B.x0+rx0, y0:B.y0+ry0, x1:B.x0+rx1, y1:B.y0+ry1, n:pick.k.length };
+    (fb.kind==='size' ? ['7'] : ['7','8']).forEach(function(psm){ jobs.push({ canvas:cut.canvas, key:cut.key, psm:psm, wl:FIELD_WL[fb.kind], kind:fb.kind, box:box }); });
+  });
+  return jobs;
+}
+/* merge the field reads into the parsed plate */
+function mergeFields(r, results){
+  results.forEach(function(x){
+    var t = String(x.text||'').replace(/\s+/g,''), m, k2;
+    if(!t) return;
+    for(k2 = 0; k2 < (x.psm==='7' ? 2 : 1); k2++) one(x, t);
+  });
+  function one(x, t){
+    var m;
+    if(x.kind==='pn'){
+      var re = /(P?)(\d{6,11})/g;
+      while((m = re.exec(t))){
+        if(m[1]){ r._pnAll.push('P'+m[2]); r.pnBox = r.pnBox || x.box; }
+        else if(r.pnBare.indexOf(m[2])===-1){ r.pnBare.push(m[2]); r.pnBox = r.pnBox || x.box; }
+      }
+    } else if(x.kind==='sn'){
+      m = /((?:19|20)\d{2})-(0[1-9]|1[0-2])-(\d{3,5})([A-Z]?)/.exec(t);
+      if(m) r._snAll.push(m[1]+'-'+m[2]+'-'+m[3]+m[4]);
+      else if((m = /(\d{6,12}-\d{1,3})(?!\d)/.exec(t))) r._snAll.push(m[1]);
+    } else if(x.kind==='size'){
+      m = /(\d{1,2})-(\d{1,2})\/(\d{1,2})/.exec(t);
+      if(m && SIZE_MAP[m[1]+'-'+m[2]+'/'+m[3]]) r._sizeAll.push(m[1]+'-'+m[2]+'/'+m[3]);
+    }
+  }
+  r.pnList = best(r._pnAll); r.assyPN = r.pnList[0] || '';
+  r.pnBare = r.pnBare.filter(function(b){ return r.pnList.indexOf('P'+b)===-1; });
+  r.snList = best(r._snAll); r.serial = r.snList[0] || '';
+  var sz = best(r._sizeAll); r.sizeText = sz[0] || '';
+  if(r.assyPN && !r.rev){                                   /* the number may now carry its rev in the text */
+    var lineRe = new RegExp(r.assyPN.replace(/^P/,'P[\\s_]?')+'[ \\t]*[-_—>]*[ \\t]*([A-Z]{1,2})\\b');
+    var rm = clean(r.raw).match(lineRe); if(rm && isRevTok(rm[1])){ r.rev = rm[1]; r.revHow = 'text'; }
+  }
+  return r;
+}
+function readFields(canvas, words, r, grey, prog){
+  var bands = fieldBands(words||[], canvas.width, canvas.height, r);
+  if(!bands.length) return Promise.resolve(r);
+  var jobs = []; bands.forEach(function(b){ jobs = jobs.concat(fieldJobs(grey, canvas.width, canvas.height, b)); });
+  if(!jobs.length) return Promise.resolve(r);
+  return getWorker().then(function(w){
+    return readJobs(w, jobs, null, prog).then(function(res){
+      var reads = res.map(function(dt, i){ return { kind:jobs[i].kind, box:jobs[i].box, psm:jobs[i].psm, text:dt.text }; });
+      var NAME = { pn:'Assembly number', sn:'Serial number', size:'Size' };
+      r.fieldRaw = reads.map(function(x){ return NAME[x.kind]+': '+String(x.text||'').replace(/\s+/g,' ').trim(); }).join('\n');
+      return resetParams(w).then(function(){ return mergeFields(r, reads); });
+    }, function(err){ return resetParams(w).then(function(){ throw err; }); });
+  });
+}
+
+/* ── Rev letter on a worn plate ───────────────────────────────────────────
+   The Rev letter is often too faint for the full-page read. The assembly
+   number (and a "Rev" label, when read) is located on the photo; the strip
+   beside it is thresholded against its local background at nine settings,
+   character-sized marks are cut out and each is read as a single letter.
+   A letter is proposed only when several settings agree — and the inspector
+   checks it against the plate. */
 function revBands(words, r, W, H){
-  var bands = [], pns = (r.pnList||[]).map(normTok).filter(function(x){ return x.length>=6; }), pw = null;
+  var bands = [], pns = (r.pnList||[]).concat((r.pnBare||[]).map(function(b){ return 'P'+b; })).map(normTok).filter(function(x){ return x.length>=6; }), pw = null;
   for(var i=0; i<words.length && !pw; i++){
     var tk = normTok(fixDigits(words[i].t));
     if(tk.length>=6 && pns.some(function(x){ return tk.indexOf(x)!==-1 || tk===x.replace(/^P/,''); })) pw = words[i];
   }
+  var len = 0;
+  if(pw) len = Math.max(4, normTok(pw.t).length);
+  else if(r.pnBox){ pw = r.pnBox; len = Math.max(4, r.pnBox.n); }       /* found by the second look */
   if(pw){                                   /* the strip to the right of the assembly number, same line */
-    var len = Math.max(4, normTok(pw.t).length), ch = Math.min(pw.y1-pw.y0, 1.05*(pw.x1-pw.x0)/len), cy = (pw.y0+pw.y1)/2;
+    var ch = Math.min(pw.y1-pw.y0, 1.05*(pw.x1-pw.x0)/len), cy = (pw.y0+pw.y1)/2;
     bands.push({ x0:pw.x1+ch, x1:W, y0:cy-ch, y1:cy+1.3*ch, ch:ch, ex:[] });
   }
   words.forEach(function(w){                /* around a "Rev" label: above it or to its right */
@@ -12993,37 +13203,18 @@ function revBands(words, r, W, H){
   return bands;
 }
 function revJobs(grey, W, H, b){
-  var bx0 = Math.max(0, Math.floor(b.x0)), bx1 = Math.min(W, Math.ceil(b.x1)), by0 = Math.max(0, Math.floor(b.y0)), by1 = Math.min(H, Math.ceil(b.y1));
-  var bw = bx1-bx0, bh = by1-by0, ch = b.ch, jobs = [], n = bw*bh, x, y, i;
-  if(ch < 8 || bw < 2*ch || bh < 1.5*ch) return jobs;
-  var g = new Float32Array(n), ii = new Float64Array((bw+1)*(bh+1)), mean = new Float32Array(n);
-  for(y=0;y<bh;y++){ var rs = 0; for(x=0;x<bw;x++){ var v = grey[(by0+y)*W + bx0 + x]; g[y*bw+x] = v; rs += v; ii[(y+1)*(bw+1)+x+1] = ii[y*(bw+1)+x+1] + rs; } }
-  var dark = new Uint8Array(n), lab = new Int32Array(n), stack = new Int32Array(n);
-  var excl = function(k){ return (b.ex||[]).some(function(w){ return k.x0+bx0 < w.x1 && k.x1+bx0 > w.x0 && k.y0+by0 < w.y1 && k.y1+by0 > w.y0; }); };
+  var ch = b.ch, jobs = [];
+  if(ch < 8 || b.x1-b.x0 < 2*ch || b.y1-b.y0 < 1.5*ch) return jobs;
+  var B = bandOf(grey, W, H, b); if(!B || B.w < 2*ch || B.h < 1.5*ch) return jobs;
+  var excl = function(k){ return (b.ex||[]).some(function(w){ return k.x0+B.x0 < w.x1 && k.x1+B.x0 > w.x0 && k.y0+B.y0 < w.y1 && k.y1+B.y0 > w.y0; }); };
   [0.4, 0.55, 0.75].forEach(function(rf){
     var R = Math.max(4, Math.round(rf*ch));
-    for(y=0;y<bh;y++){ var ya = Math.max(0,y-R), yb = Math.min(bh,y+R+1);
-      for(x=0;x<bw;x++){ var xa = Math.max(0,x-R), xb = Math.min(bw,x+R+1);
-        mean[y*bw+x] = (ii[yb*(bw+1)+xb] - ii[ya*(bw+1)+xb] - ii[yb*(bw+1)+xa] + ii[ya*(bw+1)+xa]) / ((yb-ya)*(xb-xa)); } }
     [8, 11, 14].forEach(function(C){
-      for(i=0;i<n;i++) dark[i] = g[i] < mean[i]-C ? 1 : 0;
-      lab.fill(0);
-      var comps = [], nl = 0;
-      for(var p0=0; p0<n; p0++){
-        if(!dark[p0] || lab[p0]) continue;
-        nl++; var sp = 0; stack[sp++] = p0; lab[p0] = nl;
-        var k = { x0:bw, y0:bh, x1:0, y1:0, area:0 };
-        while(sp){
-          var q = stack[--sp], qx = q % bw, qy = (q/bw)|0; k.area++;
-          if(qx<k.x0) k.x0=qx; if(qx+1>k.x1) k.x1=qx+1; if(qy<k.y0) k.y0=qy; if(qy+1>k.y1) k.y1=qy+1;
-          for(var dy=-1; dy<=1; dy++){ var ny = qy+dy; if(ny<0 || ny>=bh) continue;
-            for(var dx=-1; dx<=1; dx++){ var nx = qx+dx; if(nx<0 || nx>=bw) continue; var nq = ny*bw+nx; if(dark[nq] && !lab[nq]){ lab[nq] = nl; stack[sp++] = nq; } } }
-        }
+      darkMap(B, R, C);
+      var comps = components(B).filter(function(k){
         var kh = k.y1-k.y0, kw = k.x1-k.x0, fill = k.area/(kh*kw);
-        if(k.x0===0 || k.y0===0 || k.x1===bw || k.y1===bh) continue;          /* cut by the strip edge: part of something else */
-        if(kh < 0.8*ch || kh > 1.4*ch || kw < 0.25*ch || kw > 1.6*ch || fill < 0.12 || fill > 0.85 || excl(k)) continue;
-        comps.push(k);
-      }
+        return !k.edge && kh >= 0.8*ch && kh <= 1.4*ch && kw >= 0.25*ch && kw <= 1.6*ch && fill >= 0.12 && fill <= 0.85 && !excl(k);
+      });
       /* two marks side by side on one baseline: a two-letter rev (AA, AB…) */
       comps.sort(function(a, c){ return a.x0-c.x0; });
       var groups = [], used = {};
@@ -13036,22 +13227,13 @@ function revJobs(grey, W, H, b){
         }
         groups.push(gp);
       });
-      groups.sort(function(a, c){ var s = function(gq){ return gq.reduce(function(t2, k2){ return t2+k2.area; }, 0); }; return s(c)-s(a); });
+      var area = function(gq){ return gq.reduce(function(t2, k2){ return t2+k2.area; }, 0); };
+      groups.sort(function(a, c){ return area(c)-area(a); });
       groups.slice(0, 2).forEach(function(gp){
         var gx0 = Math.min.apply(null, gp.map(function(k2){ return k2.x0; })), gx1 = Math.max.apply(null, gp.map(function(k2){ return k2.x1; }));
         var gy0 = Math.min.apply(null, gp.map(function(k2){ return k2.y0; })), gy1 = Math.max.apply(null, gp.map(function(k2){ return k2.y1; }));
-        var pad = Math.round(0.35*ch), cw = gx1-gx0+2*pad, chh = gy1-gy0+2*pad, key = gp.length+':'+cw+'x'+chh+':', hsh = 5381;
-        var c1 = document.createElement('canvas'); c1.width = cw; c1.height = chh;
-        var x1c = c1.getContext('2d'), id = x1c.createImageData(cw, chh), d = id.data;
-        for(i=0;i<d.length;i++) d[i] = 255;
-        for(y=gy0; y<gy1; y++) for(x=gx0; x<gx1; x++){
-          var on = dark[y*bw+x]; hsh = ((hsh*33) ^ on) >>> 0;
-          if(on){ var o = ((y-gy0+pad)*cw + (x-gx0+pad))*4; d[o] = d[o+1] = d[o+2] = 0; }
-        }
-        x1c.putImageData(id, 0, 0);
-        var sc = 64/(gy1-gy0), c2 = document.createElement('canvas'); c2.width = Math.max(1, Math.round(cw*sc)); c2.height = Math.max(1, Math.round(chh*sc));
-        var x2 = c2.getContext('2d'); x2.fillStyle = '#fff'; x2.fillRect(0, 0, c2.width, c2.height); x2.imageSmoothingEnabled = true; x2.drawImage(c1, 0, 0, c2.width, c2.height);
-        jobs.push({ canvas:c2, n:gp.length, key:key+hsh });
+        var cut = cropCanvas(B, gx0, gy0, gx1, gy1, Math.round(0.35*ch), 64/(gy1-gy0), 0);
+        jobs.push({ canvas:cut.canvas, key:gp.length+':'+cut.key, n:gp.length, psm:gp.length > 1 ? '8' : '10', wl:REV_WL });
       });
     });
   });
@@ -13065,32 +13247,26 @@ function readLetters(data, n){
   if(n===1 && t.length>1 && /^(.)\1+$/.test(t)) t = t.charAt(0);
   return t.length===n && isRevTok(t) ? { t:t, c:c } : null;
 }
-function findRev(canvas, words, r){
+function findRev(canvas, words, r, grey, prog){
   var W = canvas.width, H = canvas.height, bands = revBands(words||[], r, W, H);
   if(!bands.length) return Promise.resolve(null);
-  var px = canvas.getContext('2d').getImageData(0, 0, W, H).data, grey = new Uint8Array(W*H), i;
-  for(i=0;i<W*H;i++) grey[i] = px[i*4];                     /* the prepared photo is already grey */
+  grey = grey || greyOf(canvas);
   var jobs = []; bands.forEach(function(b){ jobs = jobs.concat(revJobs(grey, W, H, b)); });
   if(!jobs.length) return Promise.resolve(null);
+  var tally = function(res){
+    var votes = {};
+    res.forEach(function(dt, i){ var v = readLetters(dt, jobs[i].n); if(!v) return;
+      var o = votes[v.t] || (votes[v.t] = { t:v.t, s:0, n:0 }); o.s += v.c >= 40 ? v.c : 10; o.n++; });
+    return Object.keys(votes).map(function(k){ return votes[k]; }).sort(function(a, c){ return c.s-a.s; });
+  };
+  /* enough: one letter read clearly four times and nothing else */
+  var settled = function(res){ var l = tally(res); return l.length===1 && l[0].n >= 4 && l[0].s >= 200; };
   return getWorker().then(function(w){
-    var votes = {}, seen = {}, mode = '';
-    var tally = function(v){ if(!v) return; var o = votes[v.t] || (votes[v.t] = { t:v.t, s:0, n:0 }); o.s += v.c >= 40 ? v.c : 10; o.n++; };
-    var step = function(k){
-      if(k >= jobs.length) return Promise.resolve();
-      var j = jobs[k];
-      if(seen.hasOwnProperty(j.key)){ tally(seen[j.key]); return step(k+1); }
-      var psm = j.n > 1 ? '8' : '10';
-      return (mode===psm ? Promise.resolve() : w.setParameters({ tessedit_pageseg_mode:psm, tessedit_char_whitelist:REV_WL }).then(function(){ mode = psm; }))
-        .then(function(){ return w.recognize(j.canvas, {}, OUT_FMT); })
-        .then(function(res){ var v = readLetters(res && res.data, j.n); seen[j.key] = v; tally(v); return step(k+1); });
-    };
-    var reset = function(){ return w.setParameters({ tessedit_char_whitelist:'', tessedit_pageseg_mode:'6' }).catch(function(){}); };
-    return step(0).then(function(){
-      var l = Object.keys(votes).map(function(k){ return votes[k]; }).sort(function(a, c){ return c.s-a.s; });
-      var win = l[0], second = l[1];
+    return readJobs(w, jobs, settled, prog).then(function(res){
+      var l = tally(res), win = l[0], second = l[1];
       var ok = win && win.n >= 2 && win.s >= 80 && (!second || win.s >= 2*second.s);
-      return reset().then(function(){ return ok ? { rev:win.t, votes:l } : null; });
-    }, function(err){ return reset().then(function(){ throw err; }); });
+      return resetParams(w).then(function(){ return ok ? { rev:win.t, votes:l } : null; });
+    }, function(err){ return resetParams(w).then(function(){ throw err; }); });
   });
 }
 
@@ -13181,7 +13357,7 @@ window.gveScanFile = function(input){
   open(head(title())+'<img class="gvo-img" src="'+preview+'" alt="Photo"/><div class="gvo-bar"><div></div></div><div class="gvo-st">Preparing the photo…</div>');
   var pass = 0, sess = S;
   onProgress = function(m){
-    if(S!==sess || sess.phase==='rev') return;
+    if(S!==sess || sess.phase) return;
     if(m.status==='recognizing text'){ if(m.progress===0) pass++; stepWork('Reading the text… pass '+Math.max(1,pass)+' of 2', (Math.max(0,pass-1)+m.progress)/2); }
     else stepWork(STATUS[m.status] || m.status, m.progress);
   };
@@ -13195,13 +13371,19 @@ window.gveScanFile = function(input){
     if(S!==sess) return null;
     var res = parsePlate(o.text);
     if(sess.kind!=='plate') return res;
-    applyMatch(res);
-    if(res.rev || !o.words.length) return res;
-    sess.phase = 'rev'; stepWork('Looking for the Rev letter…', 1);
-    return findRev(prepared, o.words, res).then(function(v){
-      if(v){ res.rev = v.rev; res.revHow = 'spot'; res.revVotes = v.votes; }
-      return res;
-    }, function(){ return res; });
+    if(!o.words.length){ applyMatch(res); return res; }
+    var grey = greyOf(prepared);
+    sess.phase = 'more'; stepWork('Checking the serial and assembly numbers…', 0);
+    return readFields(prepared, o.words, res, grey, function(k, n){ if(S===sess) stepWork('Checking the serial and assembly numbers…', k/n); })
+    .catch(function(){ return res; }).then(function(){
+      applyMatch(res);
+      if(res.rev || S!==sess) return res;
+      stepWork('Looking for the Rev letter…', 0);
+      return findRev(prepared, o.words, res, grey, function(k, n){ if(S===sess) stepWork('Looking for the Rev letter…', k/n); }).then(function(v){
+        if(v){ res.rev = v.rev; res.revHow = 'spot'; res.revVotes = v.votes; }
+        return res;
+      }, function(){ return res; });
+    });
   }).then(function(res){
     URL.revokeObjectURL(preview);
     if(!res || S!==sess) return;
@@ -13292,7 +13474,7 @@ function stepReview(){
     h += '<div class="gvo-grid">'+field('sn','Serial number', r.serial, r.snList)+field('pn','Part number', r.assyPN, r.pnList)+'</div>';
   }
   h += '<label class="gve-abn" style="margin-top:10px"><input type="checkbox" id="gvo-att" checked/> Attach the photo to the report</label>';
-  h += '<details class="gvo-raw"><summary>Text read from the photo</summary><pre>'+e(r.raw.trim())+'</pre></details>';
+  h += '<details class="gvo-raw"><summary>Text read from the photo</summary><pre>'+e(r.raw.trim()+(r.fieldRaw ? '\n\n── Second look ──\n'+r.fieldRaw : ''))+'</pre></details>';
   h += '<div class="gvo-acts"><button class="gvo-cancel" onclick="gveScan(\''+S.kind+'\',\''+S.cid+'\')">Retake</button><button class="gvo-apply" onclick="gveScanApply()">Apply</button></div>';
   open(h);
 }
@@ -13345,7 +13527,7 @@ window.gveScanApply = function(){
   toast('✓ Values applied — check them on the form');
 };
 
-G.parsePlate = parsePlate; G.plateSummary = plateSummary; G.matchPN = matchPN; G._ocrWords = wordsOf; G._revBands = revBands; G._ocrPrepare = prepare; G._ocrSource = function(){ return source; };
+G.parsePlate = parsePlate; G.plateSummary = plateSummary; G.matchPN = matchPN; G._ocrWords = wordsOf; G._revBands = revBands; G._fieldBands = fieldBands; G._mergeFields = mergeFields; G._fieldJobs = fieldJobs; G._greyOf = greyOf; G._ocrPrepare = prepare; G._ocrSource = function(){ return source; };
 })();
 
 </script>
