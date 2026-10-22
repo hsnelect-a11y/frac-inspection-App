@@ -13249,23 +13249,35 @@ function readLetters(data, n){
 }
 function findRev(canvas, words, r, grey, prog){
   var W = canvas.width, H = canvas.height, bands = revBands(words||[], r, W, H);
-  if(!bands.length) return Promise.resolve(null);
+  if(!bands.length) return Promise.resolve({ rev:null, diag:'no assembly number position to search from' });
   grey = grey || greyOf(canvas);
   var jobs = []; bands.forEach(function(b){ jobs = jobs.concat(revJobs(grey, W, H, b)); });
-  if(!jobs.length) return Promise.resolve(null);
-  var tally = function(res){
+  if(!jobs.length) return Promise.resolve({ rev:null, diag:'no letter-sized mark beside the assembly number' });
+  var tally = function(vs){
     var votes = {};
-    res.forEach(function(dt, i){ var v = readLetters(dt, jobs[i].n); if(!v) return;
+    vs.forEach(function(v){ if(!v) return;
       var o = votes[v.t] || (votes[v.t] = { t:v.t, s:0, n:0 }); o.s += v.c >= 40 ? v.c : 10; o.n++; });
     return Object.keys(votes).map(function(k){ return votes[k]; }).sort(function(a, c){ return c.s-a.s; });
   };
+  var letters = function(res){ return res.map(function(dt, i){ return readLetters(dt, jobs[i].n); }); };
   /* enough: one letter read clearly four times and nothing else */
-  var settled = function(res){ var l = tally(res); return l.length===1 && l[0].n >= 4 && l[0].s >= 200; };
+  var settled = function(vs){ var l = tally(vs); return l.length===1 && l[0].n >= 4 && l[0].s >= 200; };
   return getWorker().then(function(w){
-    return readJobs(w, jobs, settled, prog).then(function(res){
-      var l = tally(res), win = l[0], second = l[1];
-      var ok = win && win.n >= 2 && win.s >= 80 && (!second || win.s >= 2*second.s);
-      return resetParams(w).then(function(){ return ok ? { rev:win.t, votes:l } : null; });
+    return readJobs(w, jobs, function(res){ return settled(letters(res)); }, prog).then(function(res){
+      var vs = letters(res);
+      if(settled(vs)) return vs;
+      /* second chance: a mark that gave nothing as a single character is read as a one-word line */
+      var again = [], idx = [];
+      vs.forEach(function(v, i){ if(!v && jobs[i].psm==='10'){ again.push({ canvas:jobs[i].canvas, key:jobs[i].key, psm:'8', wl:REV_WL }); idx.push(i); } });
+      if(!again.length) return vs;
+      return readJobs(w, again, null, prog).then(function(res2){ res2.forEach(function(dt, k){ var v = readLetters(dt, 1); if(v){ v.c = Math.min(v.c, 60); vs[idx[k]] = v; } }); return vs; });
+    }).then(function(vs){
+      var l = tally(vs), win = l[0], second = l[1];
+      var ok = !!win && ((win.n >= 2 && win.s >= 80 && (!second || win.s >= 2*second.s))
+                      || (win.n >= 3 && (!second || win.n >= 2*second.n)));
+      var diag = vs.map(function(v){ return v ? v.t+' '+Math.round(v.c) : '–'; }).join(', ');
+      var maybe = !ok && win && win.n >= 2 && (!second || win.s >= 1.5*second.s) ? win.t : null;   /* read twice, nothing close */
+      return resetParams(w).then(function(){ return { rev:ok ? win.t : null, maybe:maybe, votes:l, diag:diag }; });
     }, function(err){ return resetParams(w).then(function(){ throw err; }); });
   });
 }
@@ -13298,6 +13310,7 @@ var css = ''
  +'.gvo-alt button{font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:1px 6px;margin:2px 3px 0 0;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2)}'
  +'.gvo-revs button{font-family:inherit;font-weight:700;min-width:28px;padding:3px 7px}'
  +'.gvo-revs button.on{background:var(--brand);border-color:var(--brand);color:#fff}'
+ +'.gvo-revs button.maybe{border:1.5px dashed var(--brand);color:var(--brand)}'
  +'.gvo-revnote{display:block;margin-bottom:1px}'
  +'.gvo-raw{margin-top:10px;font-size:11px;color:var(--text3)}'
  +'.gvo-raw pre{white-space:pre-wrap;font-size:10.5px;max-height:160px;overflow:auto;background:var(--bg3);padding:8px;border-radius:8px;margin-top:6px}'
@@ -13380,9 +13393,14 @@ window.gveScanFile = function(input){
       if(res.rev || S!==sess) return res;
       stepWork('Looking for the Rev letter…', 0);
       return findRev(prepared, o.words, res, grey, function(k, n){ if(S===sess) stepWork('Looking for the Rev letter…', k/n); }).then(function(v){
-        if(v){ res.rev = v.rev; res.revHow = 'spot'; res.revVotes = v.votes; }
+        if(v){
+          res.revDiag = v.diag;
+          if(v.rev){ res.rev = v.rev; res.revHow = 'spot'; res.revVotes = v.votes; }
+          else if(v.maybe && earlierRevs(res.assyPN).indexOf(v.maybe)!==-1){ res.rev = v.maybe; res.revHow = 'prev'; }   /* a weak read that agrees with earlier reports */
+          else if(v.maybe) res.revMaybe = v.maybe;
+        }
         return res;
-      }, function(){ return res; });
+      }, function(err){ res.revDiag = 'stopped: '+(err && err.message || err); return res; });
     });
   }).then(function(res){
     URL.revokeObjectURL(preview);
@@ -13474,25 +13492,32 @@ function stepReview(){
     h += '<div class="gvo-grid">'+field('sn','Serial number', r.serial, r.snList)+field('pn','Part number', r.assyPN, r.pnList)+'</div>';
   }
   h += '<label class="gve-abn" style="margin-top:10px"><input type="checkbox" id="gvo-att" checked/> Attach the photo to the report</label>';
-  h += '<details class="gvo-raw"><summary>Text read from the photo</summary><pre>'+e(r.raw.trim()+(r.fieldRaw ? '\n\n── Second look ──\n'+r.fieldRaw : ''))+'</pre></details>';
+  var more = [r.fieldRaw, r.revDiag ? 'Rev marks: '+r.revDiag : ''].filter(Boolean).join('\n');
+  h += '<details class="gvo-raw"><summary>Text read from the photo</summary><pre>'+e(r.raw.trim()+(more ? '\n\n── Second look ──\n'+more : ''))+'</pre></details>';
   h += '<div class="gvo-acts"><button class="gvo-cancel" onclick="gveScan(\''+S.kind+'\',\''+S.cid+'\')">Retake</button><button class="gvo-apply" onclick="gveScanApply()">Apply</button></div>';
   open(h);
 }
-function revField(r){
-  var v = r.rev||'', pn = r.assyPN||'';
-  var prev = !pn || typeof reports==='undefined' ? [] : uniq(reports.filter(function(x){ return x && (!current || x.id!==current.id) && String((x.header||{}).assyPN||'').trim().toUpperCase()===pn.toUpperCase(); })
+function earlierRevs(pn){
+  return !pn || typeof reports==='undefined' ? [] : uniq(reports.filter(function(x){ return x && (!current || x.id!==current.id) && String((x.header||{}).assyPN||'').trim().toUpperCase()===pn.toUpperCase(); })
     .map(function(x){ return String(x.header.assyRev||'').trim().toUpperCase(); }).filter(Boolean));
-  var chip = function(l){ return '<button type="button" class="'+(l===v?'on':'')+'" onclick="gveRevPick(this,\''+e(l)+'\')">'+e(l)+'</button>'; };
+}
+function revField(r){
+  var v = r.rev||'', pn = r.assyPN||'', prev = earlierRevs(pn);
+  var mb = !v && r.revMaybe ? r.revMaybe : '';
+  var chip = function(l){ return '<button type="button" class="'+(l===v?'on':l===mb?'maybe':'')+'" onclick="gveRevPick(this,\''+e(l)+'\')">'+e(l)+'</button>'; };
   var note = r.revHow==='spot' ? '<span class="gvo-revnote">Read from a faint mark beside the assembly number — <b>check it on the plate</b>.</span>'
+    : r.revHow==='prev' ? '<span class="gvo-revnote">Faint mark read as '+e(v)+', the same rev as earlier reports of this assembly number — <b>check it on the plate</b>.</span>'
+    : mb ? '<span class="gvo-revnote">Possibly <b>'+e(mb)+'</b> — too faint to fill in. Check the plate and tap the letter:</span>'
     : !v ? '<span class="gvo-revnote">Not read — tap the letter on the plate:</span>' : '';
+  var row = 'ABCDEFGHJK'.split(''); if(mb && mb.length===1 && row.indexOf(mb)===-1) row.push(mb);
   return '<div><label class="field-label">Rev</label><input class="field-input" id="gvo-rev" value="'+e(v)+'" maxlength="3" autocapitalize="characters" style="text-transform:uppercase" oninput="gveRevPick(null,this.value)"/>'
-    + '<div class="gvo-alt gvo-revs">'+note+'<div>'+'ABCDEFGHJK'.split('').map(chip).join('')+'</div>'
+    + '<div class="gvo-alt gvo-revs">'+note+'<div>'+row.map(chip).join('')+'</div>'
     + (prev.length ? '<div>Earlier reports with '+e(pn)+': '+prev.slice(0,4).map(chip).join('')+'</div>' : '')+'</div></div>';
 }
 window.gveRevPick = function(btn, l){
   var inp = document.getElementById('gvo-rev'); if(!inp) return;
   l = String(l||'').toUpperCase(); if(btn) inp.value = l;
-  document.querySelectorAll('.gvo-revs button').forEach(function(b){ b.classList.toggle('on', b.textContent===l); });
+  document.querySelectorAll('.gvo-revs button').forEach(function(b){ b.classList.toggle('on', b.textContent===l); if(l) b.classList.remove('maybe'); });
 };
 function plateOf(r){ return { sizeText:r.sizeText||'', pressure:r.pressure?Number(r.pressure):0, model:r.model||'', matClass:r.matClass||'' }; }
 function val(id){ var el = document.getElementById('gvo-'+id); return el ? String(el.value||'').trim() : ''; }
