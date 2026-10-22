@@ -83,6 +83,9 @@ input,textarea,select{font-family:inherit;font-size:13px}
 .home-title{text-align:center;font-size:24px;font-weight:800;color:#f1f5f9;letter-spacing:-.3px;margin-bottom:2px}
 .home-sub2{text-align:center;font-size:14px;font-weight:700;color:#af61ff;margin-bottom:4px;letter-spacing:.02em}
 .home-sub{text-align:center;color:#64748b;margin-top:2px;font-size:12px}
+.home-ver{text-align:center;font-size:11px;color:var(--text3);margin-top:14px;cursor:pointer;line-height:1.8}
+.home-ver b{color:var(--text2);font-weight:700}
+.home-ver button{margin-left:4px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:800;background:var(--brand);color:#fff;border:none}
 .home-conn{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin:12px auto 0;padding:8px 14px;border-radius:999px;background:var(--bg3);border:1px solid var(--border);width:fit-content;max-width:100%}
 .home-conn-dot{width:8px;height:8px;border-radius:50%;background:#9ca3af;flex-shrink:0}
 .home-conn-dot.online{background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.18)}
@@ -1075,6 +1078,42 @@ body.has-sp-banner{padding-top:44px}
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <link rel="icon" type="image/png" href="favicon-64.png" />
 <script>
+/* ── App version ─────────────────────────────────────────────────────────
+   Same value as CACHE_VERSION in service-worker.js — bump both on every
+   deploy. Shown at the bottom of the home page; a tap (and every start)
+   compares it with the version GitHub is serving and offers an update. */
+var APP_VERSION = 'frac-2026-10-22h';
+function appVersionShow(extra){
+  var el = document.getElementById('home-ver'); if(!el) return;
+  el.innerHTML = 'App version <b>'+APP_VERSION.replace(/^frac-/,'')+'</b>'+(extra||'');
+}
+function appVersionCheck(manual){
+  appVersionShow(manual ? ' · checking…' : '');
+  if(location.protocol.indexOf('http')!==0){ appVersionShow(''); return; }
+  fetch('service-worker.js?v='+Date.now(), { cache:'no-store' })
+    .then(function(r){ return r.ok ? r.text() : ''; })
+    .then(function(tx){
+      var m = /CACHE_VERSION\s*=\s*["']([^"']+)["']/.exec(tx||''), live = m ? m[1] : '';
+      if(!live){ appVersionShow(manual ? ' · could not check' : ''); return; }
+      if(live===APP_VERSION){ appVersionShow(manual ? ' · up to date' : ''); return; }
+      if(live > APP_VERSION){
+        appVersionShow(' · <button type="button" onclick="event.stopPropagation();appVersionUpdate()">Update to '+live.replace(/^frac-/,'')+'</button>');
+        return;
+      }
+      appVersionShow(manual ? ' · GitHub is still publishing '+live.replace(/^frac-/,'') : '');
+    })
+    .catch(function(){ appVersionShow(manual ? ' · offline — could not check' : ''); });
+}
+function appVersionUpdate(){
+  var go = function(){ location.reload(); };
+  if(navigator.serviceWorker && navigator.serviceWorker.getRegistration){
+    navigator.serviceWorker.getRegistration().then(function(reg){ return reg ? reg.update() : null; }).then(go, go);
+  } else go();
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ appVersionCheck(false); });
+else appVersionCheck(false);
+</script>
+<script>
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
       navigator.serviceWorker.register("service-worker.js").catch(function (e) {
@@ -1293,6 +1332,7 @@ body.has-sp-banner{padding-top:44px}
           <span id="settings-conn-dot-home"></span> Settings
         </button>
       </div>
+      <div class="home-ver" id="home-ver" onclick="appVersionCheck(true)" title="Tap to check for a newer version"></div>
     </div>
   </div>
 </div>
