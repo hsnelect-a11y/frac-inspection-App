@@ -10419,7 +10419,7 @@ var ACTION_KEYS = Object.keys(ACTIONS);
 
 var DEFECT_TYPES = [
   ['scratch','Scratch / scoring'], ['pitting','Pitting'], ['corrosion','Corrosion'],
-  ['erosion','Erosion / washout'], ['impact','Impact / dent'], ['galling','Galling'],
+  ['erosion','Erosion / washout'], ['impact','Impact / dent'], ['pressure_cut','Pressure cut'], ['chipping','Chipping'], ['galling','Galling'],
   ['thread','Thread damage'], ['crack','Crack'], ['other','Other']
 ];
 /* Engineering can add / rename / remove defect types in Settings (std.defectTypes);
@@ -10652,6 +10652,8 @@ function defaultStd(){
       }
     },
     forceEngTypes: ['crack'],
+    replaceTypes: ['pressure_cut','chipping'],   /* defect types that replace the component directly (no repair, no Engineering) */
+    stdMigr: ['types_pc_chip_2026_10_22'],
     defectTypes: DEFECT_TYPES.map(function(x){ return x.slice(); }),
     /* metal removed by each oversize; a seat pocket defect deeper than what the
        next oversize removes goes to the one after, then to hot-weld repair */
@@ -10697,6 +10699,27 @@ function migrate(got){
   if(got && got.groups && !got.groups.bonnetRG){
     var pb = got.groups.packingBore;
     if(pb && pb.over && pb.over.action==='REPLACE' && pb.over.text===OLD_UV_TEXT) pb.over = { action:'HWR', text:BONNET_HWR_TEXT('UV packing bore') };
+  }
+  /* 22 Oct 2026: defect types "Pressure cut" and "Chipping" added after "Impact / dent", both set to
+     Replace. Applied once to the standards on each device (a type removed later stays removed). */
+  if(got){
+    var MIG = 'types_pc_chip_2026_10_22', done = got.stdMigr || (got.stdMigr = []);
+    if(done.indexOf(MIG)===-1){
+      var NEWT = [['pressure_cut','Pressure cut'], ['chipping','Chipping']], L = got.defectTypes;
+      var same = function(x, n){ return x[0]===n[0] || String(x[1]||'').trim().toLowerCase()===n[1].toLowerCase(); };
+      if(Array.isArray(L) && L.length){
+        var at = -1; L.forEach(function(x, i){ if(x[0]==='impact') at = i; }); at = at===-1 ? L.length : at+1;
+        NEWT.forEach(function(n){ if(!L.some(function(x){ return same(x, n); })) L.splice(at++, 0, n.slice()); });
+      }
+      var R = got.replaceTypes || (got.replaceTypes = []), F = got.forceEngTypes || [];
+      NEWT.forEach(function(n){
+        var id = n[0];
+        if(Array.isArray(L)) L.forEach(function(x){ if(same(x, n)) id = x[0]; });
+        if(R.indexOf(id)===-1) R.push(id);
+        var k = F.indexOf(id); if(k!==-1) F.splice(k, 1);
+      });
+      done.push(MIG);
+    }
   }
   if(!got || !got.testing) return got;
   var def = defaultStd().testing;
@@ -10817,7 +10840,7 @@ function project(std, sk){
   return {
     rev:std.rev, draft:!!std.draft, approvedBy:std.approvedBy, updatedAt:std.updatedAt, sizeKey:sk,
     size:size, groups:clone(std.groups), choices:clone(std.choices),
-    forceEngTypes:(std.forceEngTypes||[]).slice(), seatsAsPair:!!std.seatsAsPair,
+    forceEngTypes:(std.forceEngTypes||[]).slice(), replaceTypes:(std.replaceTypes||[]).slice(), seatsAsPair:!!std.seatsAsPair,
     defectTypes:defectTypes(std).map(function(x){ return x.slice(); }),
     osAllowance:clone(std.osAllowance||{}), seatRoute:clone(std.seatRoute||{}),
     seatRouteFace:std.seatRouteFace ? clone(std.seatRouteFace) : undefined,
@@ -10896,6 +10919,7 @@ function measCheck(r, pt, std){
   return res;
 }
 
+function componentOf(ptId){ for(var i=0;i<COMPONENTS.length;i++){ if(COMPONENTS[i].points.some(function(p){ return p.id===ptId; })) return COMPONENTS[i]; } return null; }
 function evalPoint(r, pt, std){
   var g = r.gvEval, s = g.pts[pt.id] || {}, res = null, pending = false, pendingMsg = '';
   if(s.st==='good'){
@@ -10922,9 +10946,19 @@ function evalPoint(r, pt, std){
                 text:hitB.text + ' (Depth '+d+' in'+(band?' — within the '+num(band.max)+' in limit':' — above the '+(bands.length?num(bands[bands.length-1].max):0)+' in limit')+'.)' };
       }
     }
+    var repl = !forced && s.type && (std.replaceTypes||[]).indexOf(s.type)!==-1 && (!pt.mode || (pt.mode==='studs' && s.st==='damaged'));
     if(forced){
       var tl = typeLabelOf(s.type, std);
       res = { action:'ENGINEERING', text:'Defect type "'+tl+'" always needs Engineering review.', src:'type' };
+      pending = false;
+    } else if(repl){
+      /* "Replace component" type: the part is replaced straight away — no depth, no repair, no Engineering.
+         The GV body is not a stock replacement part, so for the body Engineering decides. */
+      var tl2 = typeLabelOf(s.type, std), comp = componentOf(pt.id);
+      if(comp && (comp.replaceKey || comp.id==='studs'))
+        res = { action:'REPLACE', text:'Defect type "'+tl2+'" — replace the '+comp.title.toLowerCase()+' with new (no repair).', src:'type' };
+      else
+        res = { action:'ENGINEERING', text:'Defect type "'+tl2+'" is set to replace the component, but the '+(comp ? comp.title : 'part')+' is not replaced from stock — Engineering to decide.', src:'type' };
       pending = false;
     }
   }
@@ -12977,6 +13011,7 @@ var css = ''
  +'.gvs-type-row .field-input{flex:1;min-width:0;margin:0}.gvs-type-head{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border2)}'
  +'.gvs-type-head span:first-child{flex:1}.gvs-type-eng{width:62px;flex:0 0 62px;text-align:center;display:flex;justify-content:center;align-items:center}.gvs-type-head .gvs-type-eng{display:block;line-height:1.2}'
  +'.gvs-type-eng input{width:18px;height:18px}.gvs-type-acts{white-space:nowrap;flex:0 0 auto;width:96px;text-align:right}'
+ +'@media (max-width:440px){.gvs-type-eng{width:48px;flex-basis:48px}.gvs-type-head .gvs-type-eng{font-size:9px}.gvs-type-acts{width:auto}.gvs-type-acts .gvs-mini{width:26px;height:26px;margin-left:2px}}'
  +'.gvs-mini{width:28px;height:28px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-size:13px;cursor:pointer;margin-left:3px}'
  +'.gvs-mini:disabled{opacity:.35;cursor:default}.gvs-mini.del:not(:disabled):hover{color:#dc2626;border-color:rgba(220,38,38,.5)}'
  +'.gvs-type-add{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.gvs-type-add .field-input{flex:1;min-width:180px;margin:0}'
@@ -13578,23 +13613,27 @@ function tabCriteria(){
   h += '</tbody></table></div></div>';
   var TL = G.defectTypes(D);
   h += '<div class="card" id="gvs-types-card"><div class="section-title">Defect types</div>'
-    +'<div class="gvs-tip">The list the inspector picks from when an area is damaged. Tick <b>Always Engineering</b> for a type that must never be dispositioned automatically. '
+    +'<div class="gvs-tip">The list the inspector picks from when an area is damaged. Leave both boxes empty to disposition the type by the depth criteria. '
+    +'Tick <b>Always Eng.</b> for a type that must always go to Engineering, or <b>Replace</b> to replace the component directly — no depth, no repair and no Engineering review '
+    +'(the replacement part is added to the parts list; for the GV body itself Engineering decides). '
     +'Renaming keeps existing reports linked; a removed type still shows on the reports that used it.</div>'
-    +'<div class="gvs-types"><div class="gvs-type-row gvs-type-head"><span>Defect type</span><span class="gvs-type-eng">Always Eng.</span><span class="gvs-type-acts"></span></div>'
+    +'<div class="gvs-types"><div class="gvs-type-row gvs-type-head"><span>Defect type</span><span class="gvs-type-eng">Always Eng.</span><span class="gvs-type-eng">Replace</span><span class="gvs-type-acts"></span></div>'
     + TL.map(function(t, i){
-        var on = (D.forceEngTypes||[]).indexOf(t[0])!==-1;
+        var on = (D.forceEngTypes||[]).indexOf(t[0])!==-1, rp = (D.replaceTypes||[]).indexOf(t[0])!==-1;
         return '<div class="gvs-type-row"><input class="field-input" value="'+e(t[1])+'" placeholder="Defect type name" oninput="gvsTypeLabel('+i+',this.value)"/>'
           +'<label class="gvs-type-eng" title="Always refer to Engineering"><input type="checkbox"'+(on?' checked':'')+' onchange="gvsForce(\''+t[0]+'\',this.checked)"/></label>'
+          +'<label class="gvs-type-eng" title="Replace the component directly"><input type="checkbox"'+(rp?' checked':'')+' onchange="gvsReplaceType(\''+t[0]+'\',this.checked)"/></label>'
           +'<span class="gvs-type-acts"><button class="gvs-mini" title="Move up" onclick="gvsTypeMove('+i+',-1)"'+(i===0?' disabled':'')+'>&uarr;</button>'
           +'<button class="gvs-mini" title="Move down" onclick="gvsTypeMove('+i+',1)"'+(i===TL.length-1?' disabled':'')+'>&darr;</button>'
           +'<button class="gvs-mini del" title="Remove" onclick="gvsTypeDel('+i+')"'+(TL.length<2?' disabled':'')+'>&#10005;</button></span></div>';
       }).join('')
     +'</div>'
     +'<div class="gvs-type-add"><input class="field-input" id="gvs-newtype" placeholder="New defect type, e.g. Fretting" onkeydown="if(event.key===\'Enter\')gvsTypeAdd()"/>'
-    +'<label class="gvs-check" style="margin:0"><input type="checkbox" id="gvs-newtype-eng"/> Always Engineering</label>'
+    +'<label class="gvs-check" style="margin:0"><input type="checkbox" id="gvs-newtype-eng" onchange="if(this.checked)document.getElementById(\'gvs-newtype-rep\').checked=false"/> Always Engineering</label>'
+    +'<label class="gvs-check" style="margin:0"><input type="checkbox" id="gvs-newtype-rep" onchange="if(this.checked)document.getElementById(\'gvs-newtype-eng\').checked=false"/> Replace</label>'
     +'<button class="gvs-addbtn" onclick="gvsTypeAdd()">+ Add type</button></div></div>';
   h += '<div class="card"><div class="section-title">Engineering involvement and seats</div>'
-    +'<div class="gvs-tip" style="margin-top:0">Every finding is dispositioned automatically, except the defect types ticked <b>Always Engineering</b> above. The inspector can still flag any finding as abnormal to request Engineering review.</div>'
+    +'<div class="gvs-tip" style="margin-top:0">Every finding is dispositioned automatically (by depth, or by <b>Replace</b>), except the defect types ticked <b>Always Eng.</b> above. The inspector can still flag any finding as abnormal to request Engineering review.</div>'
     +'<label class="gvs-check" style="margin-top:6px"><input type="checkbox"'+(D.seatsAsPair?' checked':'')+' onchange="gvsSet(\'seatsAsPair\',this.checked,\'bool\')"/> Replace seats as a pair when one seat is damaged</label></div>';
   h += '<div class="card"><div class="section-title">Try the criteria</div>'
     +'<div class="gvs-test"><div><label class="field-label">Area</label><select class="field-input" id="gvs-t-g" onchange="gvsTry()">'
@@ -13747,6 +13786,7 @@ window.gvsTypeDel = function(i){
   if(!confirm('Remove the defect type "'+(L[i][1]||L[i][0])+'"? Reports that already used it keep showing it.')) return;
   var id = L[i][0]; L.splice(i,1);
   var f = D.forceEngTypes||[], k = f.indexOf(id); if(k!==-1) f.splice(k,1);
+  var rl = D.replaceTypes||[], k2 = rl.indexOf(id); if(k2!==-1) rl.splice(k2,1);
   mark(); gvsRender();
 };
 window.gvsTypeAdd = function(){
@@ -13758,13 +13798,20 @@ window.gvsTypeAdd = function(){
   while(L.some(function(x){ return x[0]===id; }) || G.DEFECT_TYPES.some(function(x){ return x[0]===id; })) id = base+'_'+(n++);
   L.push([id, name]);
   if((document.getElementById('gvs-newtype-eng')||{}).checked){ (D.forceEngTypes || (D.forceEngTypes = [])).push(id); }
+  else if((document.getElementById('gvs-newtype-rep')||{}).checked){ (D.replaceTypes || (D.replaceTypes = [])).push(id); }
   mark(); gvsRender();
   setTimeout(function(){ var c = document.getElementById('gvs-types-card'); if(c) c.scrollIntoView({ block:'center' }); }, 50);
 };
-window.gvsForce = function(t, on){
-  var l = D.forceEngTypes || (D.forceEngTypes = []), i = l.indexOf(t);
-  if(on && i===-1) l.push(t); if(!on && i!==-1) l.splice(i,1); mark(); gvsTry();
-};
+/* a type is either "Always Engineering" or "Replace" (or neither) */
+function typeFlag(key, other, t, on){
+  var l = D[key] || (D[key] = []), i = l.indexOf(t);
+  if(on && i===-1) l.push(t); if(!on && i!==-1) l.splice(i,1);
+  var cleared = false;
+  if(on){ var o = D[other] || [], j = o.indexOf(t); if(j!==-1){ o.splice(j,1); cleared = true; } }
+  mark(); if(cleared) gvsRender(); else gvsTry();
+}
+window.gvsForce = function(t, on){ typeFlag('forceEngTypes', 'replaceTypes', t, on); };
+window.gvsReplaceType = function(t, on){ typeFlag('replaceTypes', 'forceEngTypes', t, on); };
 window.gvsCatalog = function(){
   var def = G.blankValve('', D.sizes[size].nominal).variants[vos];
   if(!confirm('Replace the consumables and based-on-condition lists for '+(D.sizes[size].label)+' '+OS_LABEL[vos]+' with the spare parts catalog lists?')) return;
@@ -13777,9 +13824,15 @@ window.gvsCopyTesting = function(){
 window.gvsTry = function(){
   var out = document.getElementById('gvs-t-out'); if(!out) return;
   var gk = (document.getElementById('gvs-t-g')||{}).value, t = (document.getElementById('gvs-t-t')||{}).value, d = num((document.getElementById('gvs-t-d')||{}).value);
-  if(!gk || d===null){ out.innerHTML = '<div class="gvs-tip" style="margin:0">Enter a depth to see the automatic disposition.</div>'; return; }
+  var fixed = (D.forceEngTypes||[]).indexOf(t)!==-1 || (D.replaceTypes||[]).indexOf(t)!==-1;
+  if(!gk || (d===null && !fixed)){ out.innerHTML = '<div class="gvs-tip" style="margin:0">Enter a depth to see the automatic disposition.</div>'; return; }
   var g = D.groups[gk], res;
   if((D.forceEngTypes||[]).indexOf(t)!==-1) res = { action:'ENGINEERING', text:'This defect type always needs Engineering review.' };
+  else if((D.replaceTypes||[]).indexOf(t)!==-1){
+    var cp = G.COMPONENTS.filter(function(c){ return c.points.some(function(p){ return p.group===gk; }); })[0];
+    res = cp && cp.replaceKey ? { action:'REPLACE', text:'This defect type replaces the '+cp.title.toLowerCase()+' with new — no depth, no repair.' }
+                              : { action:'ENGINEERING', text:'This defect type is set to replace the component, but the '+(cp ? cp.title : 'part')+' is not replaced from stock — Engineering decides.' };
+  }
   else {
     var bands = (g.bands||[]).slice().sort(function(a,b){ return num(a.max)-num(b.max); }), band = null;
     for(var i=0;i<bands.length;i++){ if(d <= num(bands[i].max)+1e-9){ band = bands[i]; break; } }
@@ -14335,6 +14388,7 @@ function build(std, opts){
   dc += '<h3>Engineering involvement and seats</h3>'+kv([
     ['Defect types the inspector picks from', v_(G.defectTypes(std).map(function(t){ return t[1]; }).join(', '))],
     ['Defect types always referred to Engineering', v_((std.forceEngTypes||[]).map(function(t){ return G.typeLabel(t, std); }).join(', '))],
+    ['Defect types that replace the component directly', v_((std.replaceTypes||[]).map(function(t){ return G.typeLabel(t, std); }).join(', ')) + ((std.replaceTypes||[]).length ? ' — no depth, no repair, no Engineering review; the replacement part goes on the parts list. On the GV body itself Engineering decides.' : '')],
     ['Abnormal findings', 'Any finding flagged abnormal by the inspector is referred to Engineering.'],
     ['Seats', std.seatsAsPair ? 'Replaced as a pair when one seat is damaged.' : 'Replaced individually.'],
     ['Measurements', 'Seat pocket ID above its maximum → seat pocket route; ID below its minimum or face to face out of range → Engineering; gate or seat thickness below its minimum → replace.']
