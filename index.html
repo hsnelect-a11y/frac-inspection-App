@@ -183,6 +183,17 @@ html:not([data-theme="dark"]) .home-actions button:hover{color:var(--text)}
 .live-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin:0 0 12px;padding:10px 12px;border-radius:10px;border:1px solid rgba(245,158,11,.55);background:rgba(245,158,11,.1);color:var(--text);font-size:12.5px}
 .live-bar-acts{display:flex;gap:6px}
 @media (max-width:520px){#live-pops{left:12px;right:12px;bottom:12px;max-width:none}}
+.num-step{display:flex;gap:6px;align-items:stretch}
+.num-step .field-input{flex:1;min-width:0;text-align:center;margin:0}
+.num-btn{flex:0 0 42px;width:42px;min-height:40px;border-radius:9px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-size:20px;font-weight:700;line-height:1;cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.num-btn:active{background:var(--brand2);color:#fff;border-color:var(--brand2)}
+.bf-step-btn{touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.quick-chips{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 2px}
+.eng-disp-box>.quick-chips{padding:0 10px 10px;margin-top:0}
+.quick-chip{font:inherit;font-size:11px;font-weight:700;padding:4px 9px;border-radius:99px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer}
+.quick-chip:active{background:var(--brand2);color:#fff}
+.hdr-same{margin:8px 0 0;padding:8px 10px;border-radius:9px;border:1px dashed var(--brand);font-size:12px;color:var(--text2);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.hdr-same button{font:inherit;font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:7px;border:1px solid var(--brand2);background:var(--brand2);color:#fff;cursor:pointer}
 .conn-chip-dot{width:8px;height:8px;border-radius:50%;background:#9ca3af;flex-shrink:0}
 .conn-chip.on{border-color:rgba(22,163,74,.45);color:#16a34a}.conn-chip.on .conn-chip-dot{background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.18)}
 .conn-chip.soon{border-color:rgba(245,158,11,.6);color:#d97706}.conn-chip.soon .conn-chip-dot{background:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.2)}
@@ -5299,10 +5310,10 @@ function rgDepthPanel(ft, id){
 function rgStepper(ft, stepId, inputId, val, fn, placeholder){
   val=val?parseFloat(val).toFixed(3):'';
   return '<div class="bf-stepper-wrap">'
-    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onclick="bfStepDown(this)">&#8722;</button>'
+    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onpointerdown="numStepStart(event,this,-1)" onclick="numStepKey(event,this,-1)">&#8722;</button>'
     +'<input class="field-input bf-stepper-input" id="'+inputId+'" type="number" step="0.001" min="0" placeholder="'+placeholder+'"'
     +' value="'+esc(val)+'" data-rgft="'+ft+'" data-rgstep="'+fn+'" data-rgid="'+stepId+'" oninput="rgHandleStepInput(this)"/>'
-    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onclick="bfStepUp(this)">&#43;</button>'
+    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onpointerdown="numStepStart(event,this,1)" onclick="numStepKey(event,this,1)">&#43;</button>'
     +'<span class="bf-stepper-unit">inches</span>'
     +'</div>';
 }
@@ -5615,10 +5626,10 @@ function wecoStepper(inputId,val,fn,placeholder){
   val=val?parseFloat(val).toFixed(3):'';
   var stepId=inputId.replace('weco-depth-','').replace('weco-thick-','');
   return '<div class="bf-stepper-wrap">'
-    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onclick="bfStepDown(this)">&#8722;</button>'
+    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onpointerdown="numStepStart(event,this,-1)" onclick="numStepKey(event,this,-1)">&#8722;</button>'
     +'<input class="field-input bf-stepper-input" id="'+inputId+'" type="number" step="0.001" min="0" placeholder="'+placeholder+'"'
     +' value="'+esc(val)+'" data-wecostep="'+fn+'" data-wecoid="'+stepId+'" oninput="wecoHandleStepInput(this)"/>'
-    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onclick="bfStepUp(this)">&#43;</button>'
+    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onpointerdown="numStepStart(event,this,1)" onclick="numStepKey(event,this,1)">&#43;</button>'
     +'<span class="bf-stepper-unit">inches</span>'
     +'</div>';
 }
@@ -5978,10 +5989,10 @@ function bfStepper(inputId, val, onchangeFn, placeholder){
   var stepId = inputId.replace('bf-depth-','').replace('bf-thick-','');
   // Store stepId and fn type as data attributes; handler reads them
   return '<div class="bf-stepper-wrap">'
-    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onclick="bfStepDown(this)">&#8722;</button>'
+    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onpointerdown="numStepStart(event,this,-1)" onclick="numStepKey(event,this,-1)">&#8722;</button>'
     +'<input class="field-input bf-stepper-input" id="'+inputId+'" type="number" step="0.001" min="0" placeholder="'+placeholder+'"'
     +' value="'+esc(val)+'" data-bfstep="'+onchangeFn+'" data-bfid="'+stepId+'" oninput="bfHandleStepInput(this)"/>'
-    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onclick="bfStepUp(this)">&#43;</button>'
+    +'<button class="bf-step-btn" type="button" data-inputid="'+inputId+'" onpointerdown="numStepStart(event,this,1)" onclick="numStepKey(event,this,1)">&#43;</button>'
     +'<span class="bf-stepper-unit">inches</span>'
     +'</div>';
 }
@@ -6405,7 +6416,148 @@ function renderPhotoThumbs(itemId){
     </div>`).join('');
   if(countEl) countEl.textContent = photos.length ? photos.length + ' photo' + (photos.length > 1 ? 's' : '') + ' attached' : '';
 }
+/* ══ LESS TYPING ═════════════════════════════════════════════════════════
+   1. −/+ on depths and measurements (hold to run). Depth starts at 0.001;
+      a measurement starts at its minimum on + (its maximum on −); steps of
+      0.001. Typing still works.
+   2. Header fields suggest values used on earlier reports.
+   3. Same serial number as an earlier report: one tap fills part no.,
+      description and equipment no.
+   4. Engineering disposition and QC-after-rework boxes get one-tap phrases. */
+function numDp(inp){ var d = parseInt(inp.dataset.dp||'3',10); return isNaN(d) ? 3 : d; }
+function numStepOnce(inp, dir){
+  var fnk = inp.dataset.bfstep || inp.dataset.wecostep || inp.dataset.rgstep;   /* blind flange / WECO / cross / adapter */
+  var kind = inp.dataset.step || (fnk==='thickness' ? 'meas' : 'depth'), mn = parseFloat(inp.dataset.min), mx = parseFloat(inp.dataset.max);
+  if(!isFinite(mn) && fnk==='thickness') mn = 3.880;    /* flange thickness: start at the 3.880" minimum-material check */
+  var v = parseFloat(String(inp.value).replace(',', '.')), dp = numDp(inp), step = Math.pow(10, -dp);
+  if(isNaN(v)){
+    if(kind==='depth'){ if(dir<0) return; v = step; }
+    else v = dir>0 ? (isFinite(mn) ? mn : isFinite(mx) ? mx : 0) : (isFinite(mx) ? mx : isFinite(mn) ? mn : 0);
+  } else {
+    v = v + dir*step;
+    if(kind==='depth' && v < step - 1e-9){ inp.value = ''; return; }
+    if(v < 0) v = 0;
+  }
+  inp.value = v.toFixed(dp);
+}
+var _ns = null;
+function numStepStart(ev, btn, dir){
+  if(ev.button!==undefined && ev.button!==0) return;
+  ev.preventDefault();
+  var inp = btn.parentNode.querySelector('input'); if(!inp) return;
+  numStepOnce(inp, dir);
+  if(_ns) clearTimeout(_ns.t);
+  _ns = { inp:inp, t:0 };
+  var rep = function(){ if(!_ns) return; numStepOnce(inp, dir); _ns.t = setTimeout(rep, 70); };
+  _ns.t = setTimeout(rep, 450);
+  var end = function(){
+    document.removeEventListener('pointerup', end); document.removeEventListener('pointercancel', end);
+    if(!_ns) return; clearTimeout(_ns.t); var i = _ns.inp; _ns = null;
+    i.dispatchEvent(new Event('input', { bubbles:true }));
+  };
+  document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
+}
+function numStepKey(ev, btn, dir){            /* keyboard (Enter / Space) */
+  if(ev.detail!==0) return;
+  var inp = btn.parentNode.querySelector('input'); if(!inp) return;
+  numStepOnce(inp, dir); inp.dispatchEvent(new Event('input', { bubbles:true }));
+}
+function stepWrap(inputHTML){
+  return '<div class="num-step"><button type="button" class="num-btn" aria-label="Decrease" onpointerdown="numStepStart(event,this,-1)" onclick="numStepKey(event,this,-1)">&minus;</button>'
+    + inputHTML + '<button type="button" class="num-btn" aria-label="Increase" onpointerdown="numStepStart(event,this,1)" onclick="numStepKey(event,this,1)">+</button></div>';
+}
+
+/* ── 2. suggestions from earlier reports ────────────────────────────── */
+var HDR_KEYS = ['partNo','assyPN','partRev','assyRev','serialNo','sn','so','notification','equipmentNo','sizeDesc','inteservJob'];
+function hdrKeyOf(inp){
+  var a = inp.getAttribute('oninput') || '', m = /setHeader\('(\w+)'/.exec(a) || /gvePN\('(\w+)'/.exec(a);
+  if(m) return m[1];
+  if(/gveSN\(/.test(a)) return 'serialNo';
+  return null;
+}
+function hdrLists(){
+  var host = document.getElementById('hdr-dl-host');
+  if(!host){ host = document.createElement('div'); host.id = 'hdr-dl-host'; host.style.display = 'none'; document.body.appendChild(host); }
+  var sorted = reports.slice().sort(function(a,b){ return String(b.savedAt||b.createdAt||'') < String(a.savedAt||a.createdAt||'') ? -1 : 1; });
+  host.innerHTML = HDR_KEYS.map(function(k){
+    var seen = {}, vals = [];
+    sorted.forEach(function(r){ var v = String((r.header||{})[k]||'').trim(); if(v && !seen[v.toLowerCase()]){ seen[v.toLowerCase()] = 1; vals.push(v); } });
+    return '<datalist id="dl-hdr-'+k+'">'+vals.slice(0,40).map(function(v){ return '<option value="'+esc(v)+'"></option>'; }).join('')+'</datalist>';
+  }).join('');
+}
+/* ── 3. same serial as an earlier report ───────────────────────────── */
+function hdrSameSerial(){
+  if(!current || current.gvEval) return;
+  var sn = String((current.header||{}).serialNo||'').trim().toLowerCase(), box = document.getElementById('hdr-same');
+  var grid = document.querySelector('#form-body .header-grid');
+  if(!grid) return;
+  if(!box){ box = document.createElement('div'); box.id = 'hdr-same'; grid.parentNode.insertBefore(box, grid.nextSibling); }
+  var ft = current.equipType || current.formType;
+  var prev = !sn ? null : reports.filter(function(r){ return r.id!==current.id && (r.equipType||r.formType)===ft && String((r.header||{}).serialNo||'').trim().toLowerCase()===sn; })
+    .sort(function(a,b){ return String(b.savedAt||b.createdAt||'') < String(a.savedAt||a.createdAt||'') ? -1 : 1; })[0];
+  var F = [['partNo','Part no.'],['sizeDesc','Description'],['equipmentNo','Equipment no.'],['sn','SN']];
+  var fill = prev ? F.filter(function(f){ return String((prev.header||{})[f[0]]||'').trim() && !String(current.header[f[0]]||'').trim(); }) : [];
+  if(!prev || !fill.length){ box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="hdr-same"><span>Same serial as <b>'+esc(prev.id)+'</b> ('+esc(fmtDate(prev.savedAt||prev.createdAt))+')</span>'
+    +'<button type="button" onclick="hdrFillFrom(\''+prev.id+'\')">Fill '+fill.map(function(f){ return f[1]; }).join(', ')+'</button></div>';
+}
+function hdrFillFrom(id){
+  var prev = reports.find(function(r){ return r.id===id; }); if(!prev || !current) return;
+  ['partNo','sizeDesc','equipmentNo','sn'].forEach(function(k){
+    var v = String((prev.header||{})[k]||'').trim(); if(!v || String(current.header[k]||'').trim()) return;
+    current.header[k] = v;
+    var inp = document.querySelector('#form-body input[oninput*="setHeader(\''+k+'\'"]'); if(inp) inp.value = v;
+  });
+  var b = document.getElementById('hdr-same'); if(b) b.innerHTML = '';
+  toast('Filled from '+id);
+}
+/* ── 4. one-tap phrases ──────────────────────────────────────────────── */
+var QUICK_ENG = [['Use as is','Use as is'],['Polish','Polish with Scotch-Brite — no high points or sharp edges'],['Skim machine','Skim machine per drawing'],
+  ['Machine per drawing','Machine per drawing, verify dimensions'],['HWR per SOW','HWR per SOW'],['CWR per SOW','CWR per SOW'],['Re-tap','Re-tap / counterbore per SoW, re-gauge'],['Replace','Replace with new']];
+var QUICK_QC = [['Defect removed','Defect removed'],['Within tolerance','Dimensions within tolerance'],['No sharp edges','No high points or sharp edges'],
+  ['Still visible','Defect still visible after rework'],['Out of tolerance','Out of tolerance after rework']];
+var QUICK_ENG_SEL = 'textarea.eng-disp-input, .fail-disp-box textarea, textarea[oninput^="gveEng("], textarea[oninput^="gveReEng("], textarea[oninput*="gveG(\'engRemarks\'"]';
+var QUICK_QC_SEL = 'textarea[placeholder^="QC comments"], input[placeholder^="QC comments"]';
+function quickAdd(btn){
+  var box = btn.parentNode, el = box && box.previousElementSibling; if(!el || !('value' in el)) return;
+  var t = btn.getAttribute('data-t'), v = String(el.value||'').trim();
+  if(v.toLowerCase().indexOf(t.toLowerCase())!==-1) return;
+  el.value = v ? v.replace(/[.;\s]*$/,'')+'; '+t : t;
+  el.dispatchEvent(new Event('input', { bubbles:true }));
+}
+function quickHTML(list){
+  return list.map(function(q){ return '<button type="button" class="quick-chip" data-t="'+esc(q[1])+'" onclick="quickAdd(this)">'+esc(q[0])+'</button>'; }).join('');
+}
+function decorateForm(){
+  var root = document.getElementById('form-body'); if(!root) return;
+  [[QUICK_ENG_SEL, QUICK_ENG], [QUICK_QC_SEL, QUICK_QC]].forEach(function(x){
+    root.querySelectorAll(x[0]).forEach(function(el){
+      if(el.dataset.quick) return; el.dataset.quick = '1';
+      var nx = el.nextElementSibling; if(nx && nx.classList.contains('quick-chips')) return;
+      var d = document.createElement('div'); d.className = 'quick-chips'; d.innerHTML = quickHTML(x[1]);
+      el.parentNode.insertBefore(d, el.nextSibling);
+    });
+  });
+  var lists = false;
+  root.querySelectorAll('input.field-input').forEach(function(inp){
+    if(inp.getAttribute('list')) return;
+    var k = hdrKeyOf(inp); if(!k || HDR_KEYS.indexOf(k)===-1) return;
+    if(!lists){ hdrLists(); lists = true; }
+    inp.setAttribute('list', 'dl-hdr-'+k);
+  });
+}
+(function(){
+  var t = null, start = function(){
+    var root = document.getElementById('form-body'); if(!root || !window.MutationObserver) return;
+    new MutationObserver(function(){ clearTimeout(t); t = setTimeout(decorateForm, 40); }).observe(root, { childList:true, subtree:true });
+    /* keep the tracker at the top in step with typing (dispositions, comments…) */
+    var tt = null; root.addEventListener('input', function(){ clearTimeout(tt); tt = setTimeout(function(){ try{ renderTodo(); }catch(e){} }, 350); });
+  };
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+
 function setHeader(key,val){ current.header[key]=val;
+  if(key==='serialNo') hdrSameSerial();
   if(key==='partNo') refreshSpareValidation();
   if(key==='partNo'||key==='serialNo'||key==='sizeDesc') refreshEquipHero(); }
 function setInspector(val){ current.inspector=val; }
@@ -10632,10 +10784,10 @@ function defaultStd(){
           { max:0.002, action:'POLISH', text:'Chase the thread and polish the sealing face. Gauge test the thread.' } ],
         over:{ action:'RETAP', text:'Re-tap or counterbore the test port per SoW. Gauge test after repair.' } },
       gate: { bands:[
-          { max:0.001, action:'LAP', text:'Lap the gate hard-face sides. Verify flatness and thickness.' } ],
+          { max:0.002, action:'LAP', text:'Lap the gate hard-face sides. Verify flatness and thickness.' } ],
         over:{ action:'REPLACE', text:'Hard-face damage exceeds the lap limit — replace the gate.' } },
       seat: { bands:[
-          { max:0.001, action:'LAP', text:'Lap the seat face. Verify flatness and thickness.' } ],
+          { max:0.002, action:'LAP', text:'Lap the seat face. Verify flatness and thickness.' } ],
         over:{ action:'REPLACE', text:'Seat damage exceeds the lap limit — replace the seats.' } },
       stem: { bands:[
           { max:0.001, action:'POLISH', text:'Polish the stem sealing surface. No high points.' } ],
@@ -10653,7 +10805,7 @@ function defaultStd(){
     },
     forceEngTypes: ['crack'],
     replaceTypes: ['pressure_cut','chipping'],   /* defect types that replace the component directly (no repair, no Engineering) */
-    stdMigr: ['types_pc_chip_2026_10_22'],
+    stdMigr: ['types_pc_chip_2026_10_22', 'gate_seat_polish_002_2026_10_22'],
     defectTypes: DEFECT_TYPES.map(function(x){ return x.slice(); }),
     /* metal removed by each oversize; a seat pocket defect deeper than what the
        next oversize removes goes to the one after, then to hot-weld repair */
@@ -10719,6 +10871,28 @@ function migrate(got){
         var k = F.indexOf(id); if(k!==-1) F.splice(k, 1);
       });
       done.push(MIG);
+    }
+  }
+  /* 22 Oct 2026: gate and seat polish / lap limit 0.001" -> 0.002" (only where it was still 0.001").
+     A change of criteria, so it is recorded as a new revision of the standards. */
+  if(got && got.groups){
+    var MIG2 = 'gate_seat_polish_002_2026_10_22', done2 = got.stdMigr || (got.stdMigr = []);
+    if(done2.indexOf(MIG2)===-1){
+      var changed = [];
+      ['gate','seat'].forEach(function(gk){
+        var gg = got.groups[gk]; if(!gg || !gg.bands) return;
+        gg.bands.forEach(function(b){ if(/^(POLISH|LAP|BUFF)$/.test(b.action) && Math.abs((num(b.max)||0) - 0.001) < 1e-9){ b.max = 0.002; changed.push(gk); } });
+      });
+      if(changed.length && got.updatedAt){
+        var TS = '2026-10-22T13:00:00.000Z';
+        var NOTE = 'Gate and seat polish limit raised from 0.001" to 0.002". Defect types Pressure cut and Chipping added after Impact / dent, both set to replace the component.';
+        got.log = got.log || [];
+        var lastE = got.log[got.log.length-1];
+        if(got.draft && lastE) lastE.note = [lastE.note, NOTE].filter(Boolean).join(' · ');
+        else { var mm = String(got.rev||'').match(/^(.*?)(\d+)$/); got.rev = mm ? mm[1]+(parseInt(mm[2],10)+1) : got.rev; got.log.push({ rev:got.rev, by:'ENGINEERING', at:TS, note:NOTE }); }
+        if(String(got.updatedAt) < TS) got.updatedAt = TS;
+      }
+      done2.push(MIG2);
     }
   }
   if(!got || !got.testing) return got;
@@ -11956,6 +12130,7 @@ function dispHTML(ev){
   }
   return h+'</div>';
 }
+function measDp(a, b){ var d = 3; [a,b].forEach(function(x){ var m = /\.(\d+)$/.exec(String(x||'').trim()); if(m) d = Math.max(d, Math.min(4, m[1].length)); }); return d; }
 function ptInner(p, ev, std){
   var s=ptState(p.id), M=g().meas, v=std ? std.size.variants[current.gvScenario] : null, h='';
   h+='<div class="gve-pt-head"><div><div class="gve-pt-label">'+e(p.label)+'</div>'
@@ -11964,8 +12139,8 @@ function ptInner(p, ev, std){
     h+='<div class="gve-meas">'+p.meas.map(function(m){
       var mn=v&&m.min?v[m.min]:'', mx=v&&m.max?v[m.max]:'';
       var lim = (mn||mx) ? (mn&&mx ? mn+' – '+mx : mn ? 'min '+mn : 'max '+mx) : '0.000';
-      return '<div><label class="field-label">'+e(m.l)+'</label><input class="field-input" inputmode="decimal" placeholder="'+e(lim)+'" value="'+e(M[m.k]||'')
-        +'" oninput="gveMeas(\''+m.k+'\',\''+p.id+'\',this.value)"/></div>'; }).join('')+'</div>';
+      return '<div><label class="field-label">'+e(m.l)+'</label>'+stepWrap('<input class="field-input" data-step="meas" data-min="'+e(mn)+'" data-max="'+e(mx)+'" data-dp="'+measDp(mn,mx)+'" inputmode="decimal" placeholder="'+e(lim)+'" value="'+e(M[m.k]||'')
+        +'" oninput="gveMeas(\''+m.k+'\',\''+p.id+'\',this.value)"/>')+'</div>'; }).join('')+'</div>';
   }
   var opts = p.mode==='nc'    ? [['good','Good condition','ok'],['buff','Buffing required','warn'],['severe','Severe damage','bad']]
            : p.mode==='studs' ? [['good','Good / fit for function','ok'],['polish','Gentle polish','warn'],['damaged','Damaged','bad']]
@@ -11979,13 +12154,13 @@ function ptInner(p, ev, std){
       +(function(){ var L=G.defectTypes(std).slice();
           if(s.type && !L.some(function(t){ return t[0]===s.type; })) L.push([s.type, typeLabel(s.type, std)+' (no longer in the standards)']);
           return L.map(function(t){ return '<option value="'+t[0]+'"'+(s.type===t[0]?' selected':'')+'>'+e(t[1])+'</option>'; }).join(''); })()+'</select></div>';
-    if(needDepth) h+='<div><label class="field-label">Approx. depth (in)</label><input class="field-input" inputmode="decimal" placeholder="0.000" value="'+e(s.depth||'')+'" oninput="gveDepth(\''+p.id+'\',this.value)"/></div>';
+    if(needDepth) h+='<div><label class="field-label">Approx. depth (in)</label>'+stepWrap('<input class="field-input" data-step="depth" inputmode="decimal" placeholder="0.000" value="'+e(s.depth||'')+'" oninput="gveDepth(\''+p.id+'\',this.value)"/>')+'</div>';
     if(p.flange){
       var F=(std&&std.flange)||{}, m0=p.meas[0];
       var hasMin=String(F.min||'').trim()!=='', hasMax=String(F.max||'').trim()!=='';
       var tolTxt=hasMin&&hasMax ? 'tolerance '+F.min+' – '+F.max+' in' : hasMin ? 'min '+F.min+' in' : hasMax ? 'max '+F.max+' in' : '';
-      h+='<div class="full"><label class="field-label">'+e(m0.l)+'</label><input class="field-input" inputmode="decimal" placeholder="'+e(tolTxt||'measure')+'" value="'+e(M[m0.k]||'')
-        +'" oninput="gveMeas(\''+m0.k+'\',\''+p.id+'\',this.value)"/><div class="gve-note" style="margin-top:3px">'+(F.label?e(F.label)+(hasMin&&hasMax?' — thickness tolerance '+e(F.min)+' – '+e(F.max)+' in. Needed when the defect is deeper than the polish limit.':' — '+(hasMin?'maximum':hasMax?'minimum':'minimum and maximum')+' thickness not set in Settings.'):'No flange size set for this valve in Settings.')+'</div></div>';
+      h+='<div class="full"><label class="field-label">'+e(m0.l)+'</label>'+stepWrap('<input class="field-input" data-step="meas" data-min="'+e(hasMin?F.min:'')+'" data-max="'+e(hasMax?F.max:'')+'" data-dp="'+measDp(F.min,F.max)+'" inputmode="decimal" placeholder="'+e(tolTxt||'measure')+'" value="'+e(M[m0.k]||'')
+        +'" oninput="gveMeas(\''+m0.k+'\',\''+p.id+'\',this.value)"/>')+'<div class="gve-note" style="margin-top:3px">'+(F.label?e(F.label)+(hasMin&&hasMax?' — thickness tolerance '+e(F.min)+' – '+e(F.max)+' in. Needed when the defect is deeper than the polish limit.':' — '+(hasMin?'maximum':hasMax?'minimum':'minimum and maximum')+' thickness not set in Settings.'):'No flange size set for this valve in Settings.')+'</div></div>';
     }
     h+='<div class="full"><input class="field-input" placeholder="Location / description of the finding" value="'+e(s.note||'')+'" oninput="gveNote(\''+p.id+'\',this.value)"/></div>';
     h+='<label class="gve-abn full"><input type="checkbox"'+(s.abnormal?' checked':'')+' onchange="gveAbn(\''+p.id+'\',this.checked)"/> Abnormal finding — request Engineering review</label>';
@@ -12628,16 +12803,25 @@ function pnCandidates(text){
   while((m = re2.exec(text))){ out.push(m[1]); }
   return out;
 }
+function digitCount(s){ return (String(s).match(/\d/g)||[]).length; }
+/* date-style serials, e.g. 2018-11-0559S (year - month - sequence, optional letter) */
+function dateSerial(tok){
+  var m = /^((?:19|20)\d{2})\s*-\s*(0[1-9]|1[0-2])\s*-\s*([0-9OoIl]{3,5})([A-Z]?)$/.exec(String(tok||'').trim());
+  return m ? m[1]+'-'+m[2]+'-'+m[3].replace(/[Oo]/g,'0').replace(/[Il]/g,'1')+m[4] : null;
+}
 function snCandidates(text, pns){
   var out = [], m;
   var re = /\b([0-9Oo]{6,12}-[0-9Oo]{1,3})\b/g;    /* 301056219-3 style */
   while((m = re.exec(text))){ out.push(fixDigits(m[1]).replace(/[Oo]/g,'0')); }
+  var rd = /\b((?:19|20)\d{2}\s*-\s*(?:0[1-9]|1[0-2])\s*-\s*[0-9OoIl]{3,5}[A-Z]?)(?![A-Za-z0-9])/g;   /* 2018-11-0559S style */
+  while((m = rd.exec(text))){ var ds = dateSerial(m[1]); if(ds) out.push(ds); }
   /* token on the line above a "Serial" label */
   var lines = text.split(/\n/);
   lines.forEach(function(l, i){
     if(/seri?al|s\/n\b|\bsn\b/i.test(l) && i>0){
-      var prev = lines[i-1].split(/\s+/).filter(function(t){ return /\d{5,}/.test(t); });
-      if(prev[0]) out.push(fixDigits(prev[0].replace(/^[^\w]+|[^\w]+$/g,'')));
+      var prev = lines[i-1].split(/\s+/).map(function(t){ return t.replace(/^[^\w]+|[^\w]+$/g,''); })
+        .filter(function(t){ return digitCount(t)>=5 && !/^P\d/i.test(t); });
+      if(prev[0]) out.push(dateSerial(prev[0]) || fixDigits(prev[0]));
       var after = l.match(/(?:serial(?:\s*(?:no\.?|number))?|s\/n|\bsn)\s*[:.#]?\s*([A-Z0-9-]{5,})/i);
       if(after) out.push(fixDigits(after[1]));
     }
@@ -12646,18 +12830,39 @@ function snCandidates(text, pns){
   return out.filter(function(s){ return (s.match(/\d/g)||[]).length>=4 && !/^P\d/.test(s) && !bare[s] && !/^\d{2}-\d{3}-\d{3}$/.test(s); });
 }
 
+/* revision letters (ASME Y14.35: I, O, Q, S, X and Z are not used) */
+var REV_WL = 'ABCDEFGHJKLMNPRTUVWY';
+function isRevTok(x){ return /^[A-Z]{1,2}$/.test(x) && x.split('').every(function(c){ return REV_WL.indexOf(c)!==-1; }); }
 function parsePlate(raw){
   var text = clean(raw), m, r = { raw:String(raw||'') };
   var pns = pnCandidates(text);
   r.pnList = best(pns);
   r.assyPN = r.pnList[0] || '';
+  var bare = [], bre = /(?:^|[^A-Za-z0-9-])([0-9OoIl]{6,11})(?![A-Za-z0-9-])/g;
+  while((m = bre.exec(text))){ var bd = fixDigits(m[1]).replace(/[Oo]/g,'0'); if(/^\d+$/.test(bd) && r.pnList.indexOf('P'+bd)===-1) bare.push(bd); }
+  r.pnBare = uniq(bare);
   r.snList = best(snCandidates(text, pns));
   r.serial = r.snList[0] || '';
   /* rev: a single capital right after the assembly number on the same line */
   if(r.assyPN){
-    var lineRe = new RegExp(r.assyPN.replace(/^P/,'P[\\s_]?')+'\\s*[-_—>]*\\s*([A-Z]{1,2})\\b');
-    var rm = text.match(lineRe); if(rm && !/^(PSI|PSL|PRL)$/.test(rm[1])) r.rev = rm[1];
+    var lineRe = new RegExp(r.assyPN.replace(/^P/,'P[\\s_]?')+'[ \\t]*[-_—>]*[ \\t]*([A-Z]{1,2})\\b');
+    var rm = text.match(lineRe); if(rm && isRevTok(rm[1])) r.rev = rm[1];
   }
+  /* rev: "Rev. G" / "REV: G" on one line, or a lone letter on the line above a "Rev." label */
+  if(!r.rev){
+    var rl = text.match(/\b[Rr][Ee][Vv](?:ision|ISION)?\.?[ \t]*[:#-]?[ \t]*([A-Z]{1,2})\b/);
+    if(rl && isRevTok(rl[1])) r.rev = rl[1];
+  }
+  if(!r.rev){
+    var tl = text.split(/\n/);
+    for(var li=1; li<tl.length && !r.rev; li++){
+      if(!/\b[Rr][Ee][Vv]\b/.test(tl[li])) continue;
+      var all = tl[li-1].split(/\s+/).map(function(x){ return x.replace(/^[^\w]+|[^\w]+$/g,''); }).filter(Boolean);
+      var toks = all.filter(isRevTok), hasPN = r.assyPN && normTok(tl[li-1]).indexOf(normTok(r.assyPN).replace(/^P/,''))!==-1;
+      if(toks.length && (hasPN || all.length===1)) r.rev = toks[toks.length-1];
+    }
+  }
+  if(r.rev) r.revHow = 'text';
   var sizes = []; var sre = /\b(\d{1,2})\s*-\s*(\d{1,2})\s*\/\s*(\d{1,2})\b/g;
   while((m = sre.exec(text))){ sizes.push(m[1]+'-'+m[2]+'/'+m[3]); }
   sizes = best(sizes.filter(function(s){ return SIZE_MAP[s]; }));
@@ -12739,14 +12944,153 @@ function getWorker(){
     .catch(function(err){ starting = null; throw err; });
   return starting;
 }
+var OUT_FMT = { text:true, blocks:true, tsv:true };
 function readText(canvas){
   return getWorker().then(function(w){
-    var out = [];
-    return w.setParameters({ tessedit_pageseg_mode:'6', preserve_interword_spaces:'1' })
-      .then(function(){ return w.recognize(canvas); })
-      .then(function(r){ out.push(r.data.text); return w.setParameters({ tessedit_pageseg_mode:'3' }); })
-      .then(function(){ return w.recognize(canvas); })
-      .then(function(r){ out.push(r.data.text); return out.join('\n'); });
+    var out = [], words = [];
+    return w.setParameters({ tessedit_pageseg_mode:'6', preserve_interword_spaces:'1', tessedit_char_whitelist:'' })
+      .then(function(){ return w.recognize(canvas, {}, OUT_FMT); })
+      .then(function(r){ out.push(r.data.text); words = words.concat(wordsOf(r.data)); return w.setParameters({ tessedit_pageseg_mode:'3' }); })
+      .then(function(){ return w.recognize(canvas, {}, OUT_FMT); })
+      .then(function(r){ out.push(r.data.text); words = words.concat(wordsOf(r.data)); return { text:out.join('\n'), words:words }; });
+  });
+}
+
+/* ── Rev letter on a worn plate ───────────────────────────────────────────
+   The Rev letter is often too faint for the full-page read. The assembly
+   number (and a "Rev" label, when read) is located on the photo; the strip
+   beside it is thresholded against its local background at nine settings,
+   character-sized marks are cut out and each is read as a single letter.
+   A letter is proposed only when several settings agree — and the inspector
+   checks it against the plate. */
+function normTok(x){ return String(x||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function wordsOf(data){
+  var out = [], add = function(tx, x0, y0, x1, y1, c){ x0=+x0; y0=+y0; x1=+x1; y1=+y1; if(x1>x0 && y1>y0) out.push({ t:String(tx||'').trim(), x0:x0, y0:y0, x1:x1, y1:y1, c:+c||0 }); };
+  if(!data) return out;
+  if(data.words && data.words.length){ data.words.forEach(function(w){ var b = w.bbox||{}; add(w.text, b.x0, b.y0, b.x1, b.y1, w.confidence); }); return out; }
+  if(data.tsv){
+    String(data.tsv).split('\n').forEach(function(l){ var f = l.split('\t'); if(f.length>=12 && f[0]==='5'){ add(f.slice(11).join(' '), f[6], f[7], +f[6] + +f[8], +f[7] + +f[9], f[10]); } });
+    if(out.length) return out;
+  }
+  (data.blocks||[]).forEach(function(b){ (b.paragraphs||[]).forEach(function(p){ (p.lines||[]).forEach(function(l){ (l.words||[]).forEach(function(w){ var bb = w.bbox||{}; add(w.text, bb.x0, bb.y0, bb.x1, bb.y1, w.confidence); }); }); }); });
+  return out;
+}
+function revBands(words, r, W, H){
+  var bands = [], pns = (r.pnList||[]).map(normTok).filter(function(x){ return x.length>=6; }), pw = null;
+  for(var i=0; i<words.length && !pw; i++){
+    var tk = normTok(fixDigits(words[i].t));
+    if(tk.length>=6 && pns.some(function(x){ return tk.indexOf(x)!==-1 || tk===x.replace(/^P/,''); })) pw = words[i];
+  }
+  if(pw){                                   /* the strip to the right of the assembly number, same line */
+    var len = Math.max(4, normTok(pw.t).length), ch = Math.min(pw.y1-pw.y0, 1.05*(pw.x1-pw.x0)/len), cy = (pw.y0+pw.y1)/2;
+    bands.push({ x0:pw.x1+ch, x1:W, y0:cy-ch, y1:cy+1.3*ch, ch:ch, ex:[] });
+  }
+  words.forEach(function(w){                /* around a "Rev" label: above it or to its right */
+    if(bands.length>=2 || !/^[Rr][Ee][Vv][.:]?$/.test(w.t)) return;
+    var ch = w.y1-w.y0;
+    bands.push({ x0:w.x0-1.2*ch, x1:w.x1+5*ch, y0:w.y0-2.4*ch, y1:w.y1+0.4*ch, ch:ch, ex:[w] });
+  });
+  return bands;
+}
+function revJobs(grey, W, H, b){
+  var bx0 = Math.max(0, Math.floor(b.x0)), bx1 = Math.min(W, Math.ceil(b.x1)), by0 = Math.max(0, Math.floor(b.y0)), by1 = Math.min(H, Math.ceil(b.y1));
+  var bw = bx1-bx0, bh = by1-by0, ch = b.ch, jobs = [], n = bw*bh, x, y, i;
+  if(ch < 8 || bw < 2*ch || bh < 1.5*ch) return jobs;
+  var g = new Float32Array(n), ii = new Float64Array((bw+1)*(bh+1)), mean = new Float32Array(n);
+  for(y=0;y<bh;y++){ var rs = 0; for(x=0;x<bw;x++){ var v = grey[(by0+y)*W + bx0 + x]; g[y*bw+x] = v; rs += v; ii[(y+1)*(bw+1)+x+1] = ii[y*(bw+1)+x+1] + rs; } }
+  var dark = new Uint8Array(n), lab = new Int32Array(n), stack = new Int32Array(n);
+  var excl = function(k){ return (b.ex||[]).some(function(w){ return k.x0+bx0 < w.x1 && k.x1+bx0 > w.x0 && k.y0+by0 < w.y1 && k.y1+by0 > w.y0; }); };
+  [0.4, 0.55, 0.75].forEach(function(rf){
+    var R = Math.max(4, Math.round(rf*ch));
+    for(y=0;y<bh;y++){ var ya = Math.max(0,y-R), yb = Math.min(bh,y+R+1);
+      for(x=0;x<bw;x++){ var xa = Math.max(0,x-R), xb = Math.min(bw,x+R+1);
+        mean[y*bw+x] = (ii[yb*(bw+1)+xb] - ii[ya*(bw+1)+xb] - ii[yb*(bw+1)+xa] + ii[ya*(bw+1)+xa]) / ((yb-ya)*(xb-xa)); } }
+    [8, 11, 14].forEach(function(C){
+      for(i=0;i<n;i++) dark[i] = g[i] < mean[i]-C ? 1 : 0;
+      lab.fill(0);
+      var comps = [], nl = 0;
+      for(var p0=0; p0<n; p0++){
+        if(!dark[p0] || lab[p0]) continue;
+        nl++; var sp = 0; stack[sp++] = p0; lab[p0] = nl;
+        var k = { x0:bw, y0:bh, x1:0, y1:0, area:0 };
+        while(sp){
+          var q = stack[--sp], qx = q % bw, qy = (q/bw)|0; k.area++;
+          if(qx<k.x0) k.x0=qx; if(qx+1>k.x1) k.x1=qx+1; if(qy<k.y0) k.y0=qy; if(qy+1>k.y1) k.y1=qy+1;
+          for(var dy=-1; dy<=1; dy++){ var ny = qy+dy; if(ny<0 || ny>=bh) continue;
+            for(var dx=-1; dx<=1; dx++){ var nx = qx+dx; if(nx<0 || nx>=bw) continue; var nq = ny*bw+nx; if(dark[nq] && !lab[nq]){ lab[nq] = nl; stack[sp++] = nq; } } }
+        }
+        var kh = k.y1-k.y0, kw = k.x1-k.x0, fill = k.area/(kh*kw);
+        if(k.x0===0 || k.y0===0 || k.x1===bw || k.y1===bh) continue;          /* cut by the strip edge: part of something else */
+        if(kh < 0.8*ch || kh > 1.4*ch || kw < 0.25*ch || kw > 1.6*ch || fill < 0.12 || fill > 0.85 || excl(k)) continue;
+        comps.push(k);
+      }
+      /* two marks side by side on one baseline: a two-letter rev (AA, AB…) */
+      comps.sort(function(a, c){ return a.x0-c.x0; });
+      var groups = [], used = {};
+      comps.forEach(function(a, ia){
+        if(used[ia]) return; var gp = [a];
+        var c = comps[ia+1];
+        if(c && !used[ia+1]){
+          var hA = a.y1-a.y0, hC = c.y1-c.y0, ov = Math.min(a.y1,c.y1)-Math.max(a.y0,c.y0), gap = c.x0-a.x1;
+          if(ov >= 0.6*Math.min(hA,hC) && gap >= 0 && gap <= 0.6*ch && Math.abs(hA-hC) <= 0.25*Math.max(hA,hC)){ gp.push(c); used[ia+1] = 1; }
+        }
+        groups.push(gp);
+      });
+      groups.sort(function(a, c){ var s = function(gq){ return gq.reduce(function(t2, k2){ return t2+k2.area; }, 0); }; return s(c)-s(a); });
+      groups.slice(0, 2).forEach(function(gp){
+        var gx0 = Math.min.apply(null, gp.map(function(k2){ return k2.x0; })), gx1 = Math.max.apply(null, gp.map(function(k2){ return k2.x1; }));
+        var gy0 = Math.min.apply(null, gp.map(function(k2){ return k2.y0; })), gy1 = Math.max.apply(null, gp.map(function(k2){ return k2.y1; }));
+        var pad = Math.round(0.35*ch), cw = gx1-gx0+2*pad, chh = gy1-gy0+2*pad, key = gp.length+':'+cw+'x'+chh+':', hsh = 5381;
+        var c1 = document.createElement('canvas'); c1.width = cw; c1.height = chh;
+        var x1c = c1.getContext('2d'), id = x1c.createImageData(cw, chh), d = id.data;
+        for(i=0;i<d.length;i++) d[i] = 255;
+        for(y=gy0; y<gy1; y++) for(x=gx0; x<gx1; x++){
+          var on = dark[y*bw+x]; hsh = ((hsh*33) ^ on) >>> 0;
+          if(on){ var o = ((y-gy0+pad)*cw + (x-gx0+pad))*4; d[o] = d[o+1] = d[o+2] = 0; }
+        }
+        x1c.putImageData(id, 0, 0);
+        var sc = 64/(gy1-gy0), c2 = document.createElement('canvas'); c2.width = Math.max(1, Math.round(cw*sc)); c2.height = Math.max(1, Math.round(chh*sc));
+        var x2 = c2.getContext('2d'); x2.fillStyle = '#fff'; x2.fillRect(0, 0, c2.width, c2.height); x2.imageSmoothingEnabled = true; x2.drawImage(c1, 0, 0, c2.width, c2.height);
+        jobs.push({ canvas:c2, n:gp.length, key:key+hsh });
+      });
+    });
+  });
+  return jobs;
+}
+function readLetters(data, n){
+  var t = '', c = -1;
+  wordsOf(data).forEach(function(w){ var s = normTok(w.t); if(s && w.c > c){ t = s; c = w.c; } });
+  if(!t){ t = normTok(data && data.text); c = +(data && data.confidence) || 0; }
+  t = t.replace(/[^A-Z]/g, '');
+  if(n===1 && t.length>1 && /^(.)\1+$/.test(t)) t = t.charAt(0);
+  return t.length===n && isRevTok(t) ? { t:t, c:c } : null;
+}
+function findRev(canvas, words, r){
+  var W = canvas.width, H = canvas.height, bands = revBands(words||[], r, W, H);
+  if(!bands.length) return Promise.resolve(null);
+  var px = canvas.getContext('2d').getImageData(0, 0, W, H).data, grey = new Uint8Array(W*H), i;
+  for(i=0;i<W*H;i++) grey[i] = px[i*4];                     /* the prepared photo is already grey */
+  var jobs = []; bands.forEach(function(b){ jobs = jobs.concat(revJobs(grey, W, H, b)); });
+  if(!jobs.length) return Promise.resolve(null);
+  return getWorker().then(function(w){
+    var votes = {}, seen = {}, mode = '';
+    var tally = function(v){ if(!v) return; var o = votes[v.t] || (votes[v.t] = { t:v.t, s:0, n:0 }); o.s += v.c >= 40 ? v.c : 10; o.n++; };
+    var step = function(k){
+      if(k >= jobs.length) return Promise.resolve();
+      var j = jobs[k];
+      if(seen.hasOwnProperty(j.key)){ tally(seen[j.key]); return step(k+1); }
+      var psm = j.n > 1 ? '8' : '10';
+      return (mode===psm ? Promise.resolve() : w.setParameters({ tessedit_pageseg_mode:psm, tessedit_char_whitelist:REV_WL }).then(function(){ mode = psm; }))
+        .then(function(){ return w.recognize(j.canvas, {}, OUT_FMT); })
+        .then(function(res){ var v = readLetters(res && res.data, j.n); seen[j.key] = v; tally(v); return step(k+1); });
+    };
+    var reset = function(){ return w.setParameters({ tessedit_char_whitelist:'', tessedit_pageseg_mode:'6' }).catch(function(){}); };
+    return step(0).then(function(){
+      var l = Object.keys(votes).map(function(k){ return votes[k]; }).sort(function(a, c){ return c.s-a.s; });
+      var win = l[0], second = l[1];
+      var ok = win && win.n >= 2 && win.s >= 80 && (!second || win.s >= 2*second.s);
+      return reset().then(function(){ return ok ? { rev:win.t, votes:l } : null; });
+    }, function(err){ return reset().then(function(){ throw err; }); });
   });
 }
 
@@ -12776,6 +13120,9 @@ var css = ''
  +'.gvo-msg.bad{border-color:rgba(220,38,38,.45);background:rgba(220,38,38,.07);color:#dc2626}'
  +'.gvo-alt{font-size:11px;color:var(--text3);margin-top:3px}'
  +'.gvo-alt button{font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:1px 6px;margin:2px 3px 0 0;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2)}'
+ +'.gvo-revs button{font-family:inherit;font-weight:700;min-width:28px;padding:3px 7px}'
+ +'.gvo-revs button.on{background:var(--brand);border-color:var(--brand);color:#fff}'
+ +'.gvo-revnote{display:block;margin-bottom:1px}'
  +'.gvo-raw{margin-top:10px;font-size:11px;color:var(--text3)}'
  +'.gvo-raw pre{white-space:pre-wrap;font-size:10.5px;max-height:160px;overflow:auto;background:var(--bg3);padding:8px;border-radius:8px;margin-top:6px}'
  +'.gvo-acts{display:flex;gap:8px;margin-top:14px}'
@@ -12834,18 +13181,31 @@ window.gveScanFile = function(input){
   open(head(title())+'<img class="gvo-img" src="'+preview+'" alt="Photo"/><div class="gvo-bar"><div></div></div><div class="gvo-st">Preparing the photo…</div>');
   var pass = 0, sess = S;
   onProgress = function(m){
-    if(S!==sess) return;
+    if(S!==sess || sess.phase==='rev') return;
     if(m.status==='recognizing text'){ if(m.progress===0) pass++; stepWork('Reading the text… pass '+Math.max(1,pass)+' of 2', (Math.max(0,pass-1)+m.progress)/2); }
     else stepWork(STATUS[m.status] || m.status, m.progress);
   };
   if(typeof compressImage==='function') compressImage(f, function(ev){ sess.photo = ev.target.result; });
+  var prepared = null;
   prepare(f).then(function(canvas){
+    prepared = canvas;
     stepWork(worker ? 'Reading the text…' : 'Loading the text reader (first scan on this device can take a minute)…', 0);
     return readText(canvas);
-  }).then(function(text){
+  }).then(function(o){
+    if(S!==sess) return null;
+    var res = parsePlate(o.text);
+    if(sess.kind!=='plate') return res;
+    applyMatch(res);
+    if(res.rev || !o.words.length) return res;
+    sess.phase = 'rev'; stepWork('Looking for the Rev letter…', 1);
+    return findRev(prepared, o.words, res).then(function(v){
+      if(v){ res.rev = v.rev; res.revHow = 'spot'; res.revVotes = v.votes; }
+      return res;
+    }, function(){ return res; });
+  }).then(function(res){
     URL.revokeObjectURL(preview);
-    if(S!==sess) return;
-    sess.res = parsePlate(text);
+    if(!res || S!==sess) return;
+    sess.res = res;
     stepReview();
   }).catch(function(err){
     URL.revokeObjectURL(preview);
@@ -12865,14 +13225,52 @@ function field(id, label, val, alts, full){
       return '<button onclick="document.getElementById(\'gvo-'+id+'\').value=\''+e(a)+'\'">'+e(a)+'</button>'; }).join('')+'</div>';
   return h+'</div>';
 }
+/* A worn or dirty plate often gives one wrong character (0 read as 6 or 8…). If no number read
+   is in the standards, the read value is compared with the valves' assembly numbers: when exactly
+   one differs by a single character (and its size agrees with the plate), that one is proposed. */
+function editDist1(a, b){
+  if(a===b) return 0; if(Math.abs(a.length-b.length)>1) return 2;
+  var i = 0; while(i<a.length && i<b.length && a[i]===b[i]) i++;
+  var j = 0; while(j<a.length-i && j<b.length-i && a[a.length-1-j]===b[b.length-1-j]) j++;
+  return Math.max(a.length, b.length) - i - j <= 1 ? 1 : 2;
+}
+function matchPN(r, std){
+  var known = []; G.keys(std).forEach(function(sk){ G.OS_KEYS.forEach(function(os){ var v = std.sizes[sk].variants[os]; (v && v.pns || []).forEach(function(p){ known.push({ pn:p, size:sk, os:os }); }); }); });
+  var norm = function(x){ return String(x||'').toUpperCase().replace(/[^A-Z0-9]/g,''); };
+  var list = (r.pnList||[]).slice(); if(r.assyPN && list.indexOf(r.assyPN)===-1) list.unshift(r.assyPN);
+  for(var i=0;i<list.length;i++) if(G.detect(list[i])) return { pn:list[i], how:'exact' };
+  var bl = r.pnBare||[];                                           /* the number without its "P" */
+  for(var b=0;b<bl.length;b++) if(G.detect('P'+bl[b])) return { pn:'P'+bl[b], how:'exact', read:bl[b] };
+  for(var k=0;k<list.length;k++){
+    var near = known.filter(function(x){ return editDist1(norm(x.pn), norm(list[k]))===1; });
+    var pns = near.map(function(x){ return x.pn; }).filter(function(p, ix, arr){ return arr.indexOf(p)===ix; });
+    if(pns.length!==1) continue;
+    var hit = near[0], nom = std.sizes[hit.size] && std.sizes[hit.size].nominal;
+    if(r.sizeText && nom && r.sizeText!==nom) continue;            /* the plate says another size */
+    return { pn:pns[0], how:'near', read:list[k] };
+  }
+  return null;
+}
+function applyMatch(r){
+  if(r._matched) return; r._matched = true;
+  var mp = matchPN(r, G.liveStd());
+  if(mp && mp.how!=='exact' || (mp && mp.pn!==r.assyPN)){
+    if(mp.how==='near'){ r.pnRead = mp.read; if(r.pnList.indexOf(mp.read)===-1) r.pnList.push(mp.read); }
+    r.assyPN = mp.pn; if(r.pnList.indexOf(mp.pn)===-1) r.pnList.unshift(mp.pn);
+  }
+}
 function stepReview(){
   var r = S.res, h = head(title());
+  if(S.kind==='plate') applyMatch(r);
   if(S.photo) h += '<img class="gvo-img" src="'+S.photo+'" alt="Photo"/>';
   var found = !!(r.serial || r.assyPN);
   if(S.kind==='plate'){
     var hit = r.assyPN ? G.detect(r.assyPN) : null, std = G.liveStd();
+    if(hit && !r.sizeKey) r.sizeKey = hit.size;            /* the valve follows from the assembly number */
     if(!r.sizeKey && r.sizeText){ var vk = G.valvesByNominal(std, r.sizeText, /ACTUAT|HYDRAUL/i.test(r.raw)); r.sizeKey = vk[0] || ''; r.sizeMany = vk.length>1; }
     var msg = !found ? '<div class="gvo-msg bad">No serial or assembly number could be read. Type them in, or retake the photo closer and without glare.</div>'
+      : hit && r.pnRead ? '<div class="gvo-msg warn">Read <b>'+e(r.pnRead)+'</b> — not in the standards. The closest assembly number is <b>'+e(r.assyPN)+'</b> ('
+          +e(std.sizes[hit.size].label)+' · '+e(G.OS_LABEL[hit.os])+'), one character different. <b>Check it against the plate</b> before applying.</div>'
       : hit ? '<div class="gvo-msg ok">Assembly number recognised: <b>'+e(std.sizes[hit.size].label)+' · '+e(G.OS_LABEL[hit.os])+'</b>.</div>'
       : r.assyPN ? '<div class="gvo-msg warn">Assembly number '+e(r.assyPN)+' is not in the Gate Valve standards.'
           +(r.sizeKey ? ' Size <b>'+e(r.sizeText)+'</b> from the plate: <b>'+e(std.sizes[r.sizeKey].label)+'</b> will be selected'+(r.sizeMany?' (more than one valve has this size — check it)':'')+' — choose the configuration on the form.' : ' Select the valve and configuration on the form.')
@@ -12881,12 +13279,12 @@ function stepReview(){
     h += msg+'<div class="gvo-grid">'
       + field('sn','Serial number', r.serial, r.snList)
       + field('pn','Assembly number', r.assyPN, r.pnList)
-      + field('rev','Rev', r.rev||'')
+      + revField(r)
       + '<div><label class="field-label">Valve</label><select class="field-input" id="gvo-size"><option value="">Not read</option>'
       + G.keys(std).map(function(k){ return '<option value="'+k+'"'+(r.sizeKey===k?' selected':'')+'>'+e(std.sizes[k].label)+'</option>'; }).join('')+'</select></div>'
       + '<div class="full"><label class="field-label">Equipment description</label><input class="field-input" id="gvo-desc" value="'+e(S.autoDesc = G.descFor(hit?hit.size:r.sizeKey, hit?hit.os:'', plateOf(r)))+'"/>'
       + '<div class="gvo-alt">'+(hit?'':'The configuration is added when it is selected on the form.')+'</div></div>'
-      + '<div class="full"><label class="field-label">Nameplate details (General note)</label><textarea class="field-input" id="gvo-note" rows="2">'+e(plateSummary(r))+'</textarea></div>'
+      + '<div class="full"><label class="field-label">Nameplate details (General note)</label><textarea class="field-input" id="gvo-note" rows="2">'+e(S.autoNote = plateSummary(r))+'</textarea></div>'
       + '</div>';
   } else {
     var c = G.COMPONENTS.filter(function(x){ return x.id===S.cid; })[0];
@@ -12898,6 +13296,22 @@ function stepReview(){
   h += '<div class="gvo-acts"><button class="gvo-cancel" onclick="gveScan(\''+S.kind+'\',\''+S.cid+'\')">Retake</button><button class="gvo-apply" onclick="gveScanApply()">Apply</button></div>';
   open(h);
 }
+function revField(r){
+  var v = r.rev||'', pn = r.assyPN||'';
+  var prev = !pn || typeof reports==='undefined' ? [] : uniq(reports.filter(function(x){ return x && (!current || x.id!==current.id) && String((x.header||{}).assyPN||'').trim().toUpperCase()===pn.toUpperCase(); })
+    .map(function(x){ return String(x.header.assyRev||'').trim().toUpperCase(); }).filter(Boolean));
+  var chip = function(l){ return '<button type="button" class="'+(l===v?'on':'')+'" onclick="gveRevPick(this,\''+e(l)+'\')">'+e(l)+'</button>'; };
+  var note = r.revHow==='spot' ? '<span class="gvo-revnote">Read from a faint mark beside the assembly number — <b>check it on the plate</b>.</span>'
+    : !v ? '<span class="gvo-revnote">Not read — tap the letter on the plate:</span>' : '';
+  return '<div><label class="field-label">Rev</label><input class="field-input" id="gvo-rev" value="'+e(v)+'" maxlength="3" autocapitalize="characters" style="text-transform:uppercase" oninput="gveRevPick(null,this.value)"/>'
+    + '<div class="gvo-alt gvo-revs">'+note+'<div>'+'ABCDEFGHJK'.split('').map(chip).join('')+'</div>'
+    + (prev.length ? '<div>Earlier reports with '+e(pn)+': '+prev.slice(0,4).map(chip).join('')+'</div>' : '')+'</div></div>';
+}
+window.gveRevPick = function(btn, l){
+  var inp = document.getElementById('gvo-rev'); if(!inp) return;
+  l = String(l||'').toUpperCase(); if(btn) inp.value = l;
+  document.querySelectorAll('.gvo-revs button').forEach(function(b){ b.classList.toggle('on', b.textContent===l); });
+};
 function plateOf(r){ return { sizeText:r.sizeText||'', pressure:r.pressure?Number(r.pressure):0, model:r.model||'', matClass:r.matClass||'' }; }
 function val(id){ var el = document.getElementById('gvo-'+id); return el ? String(el.value||'').trim() : ''; }
 
@@ -12905,7 +13319,10 @@ window.gveScanApply = function(){
   if(!S || !current || !current.gvEval) return;
   var s = current.gvEval, att = (document.getElementById('gvo-att')||{}).checked;
   if(S.kind==='plate'){
-    var sn = val('sn'), pn = val('pn'), rev = val('rev'), size = val('size'), note = val('note'), desc = val('desc');
+    var sn = val('sn'), pn = val('pn'), rev = val('rev').toUpperCase(), size = val('size'), note = val('note'), desc = val('desc');
+    if(note && note===S.autoNote && (pn!==(S.res.assyPN||'') || rev!==(S.res.rev||''))){     /* note not edited: follow the checked values */
+      var r2 = {}; for(var k2 in S.res) r2[k2] = S.res[k2]; r2.assyPN = pn; r2.rev = rev; note = plateSummary(r2);
+    }
     s.plate = plateOf(S.res);
     if(desc && desc!==S.autoDesc){ current.header.sizeDesc = desc; s.autoDesc = ''; }   /* typed by the inspector — keep as is */
     else if(desc && (!current.header.sizeDesc || current.header.sizeDesc===s.autoDesc)){ current.header.sizeDesc = desc; s.autoDesc = desc; }
@@ -12928,7 +13345,7 @@ window.gveScanApply = function(){
   toast('✓ Values applied — check them on the form');
 };
 
-G.parsePlate = parsePlate; G.plateSummary = plateSummary; G._ocrPrepare = prepare; G._ocrSource = function(){ return source; };
+G.parsePlate = parsePlate; G.plateSummary = plateSummary; G.matchPN = matchPN; G._ocrWords = wordsOf; G._revBands = revBands; G._ocrPrepare = prepare; G._ocrSource = function(){ return source; };
 })();
 
 </script>
