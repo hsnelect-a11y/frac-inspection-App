@@ -1082,7 +1082,7 @@ body.has-sp-banner{padding-top:44px}
    Same value as CACHE_VERSION in service-worker.js — bump both on every
    deploy. Shown at the bottom of the home page; a tap (and every start)
    compares it with the version GitHub is serving and offers an update. */
-var APP_VERSION = 'frac-2026-11-02a';
+var APP_VERSION = 'frac-2026-11-02b';
 function appVersionShow(extra){
   var el = document.getElementById('home-ver'); if(!el) return;
   el.innerHTML = 'App version <b>'+APP_VERSION.replace(/^frac-/,'')+'</b>'+(extra||'');
@@ -13697,8 +13697,8 @@ function stepReviewEq(){
   var pn = hit ? hit.pn : (r.assyPN || (r.pnBare||[])[0] || '');
   var found = !!(r.serial || pn);
   h += !found ? '<div class="gvo-msg bad">No serial or part number could be read. Type them in, or retake the photo closer and without glare.</div>'
-     : hit ? '<div class="gvo-msg ok">Part number recognised from the Equipment Standards: <b>'+e(hit.pn)+'</b> — '+e(hit.desc||'')+'</div>'
-     : '<div class="gvo-msg warn">Check each value against the plate. Engineering can add this part number in Settings → Equipment Standards so the description fills itself.</div>';
+     : hit ? '<div class="gvo-msg ok">Part number recognised from the Engineering Standards: <b>'+e(hit.pn)+'</b> — '+e(hit.desc||'')+'</div>'
+     : '<div class="gvo-msg warn">Check each value against the plate. Engineering can add this part number in Settings → Engineering Standards (equipment tab → Part numbers &amp; spares) so the description fills itself.</div>';
   var lines = eqDescLines(r.raw);
   S.autoDesc = eqDescFor(r, hit);
   h += '<div class="gvo-grid">'
