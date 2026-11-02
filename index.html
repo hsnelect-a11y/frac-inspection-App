@@ -6282,14 +6282,14 @@ function bfUpdateStepVisibility(){
 
 // Separate thickness result HTML generator (no side effects)
 function bfThicknessResult(d,t){
-  var c=eqRG(), remain=t-(d+c.allow);
+  var c=eqRG(), remain=t-(d+c.allow), band=eqBand(d,t);
   var calc='<span class="bf-calc">'+t.toFixed(3)+' &minus; ('+d.toFixed(3)+' + '+eqIn(c.allow)+') = '+remain.toFixed(3)+'&quot; ';
-  if(remain<=c.minThk){
-    return '<div class="bf-result bf-result-eng"><strong>&#9940; Path C1 &mdash; Insufficient Material: Send to Engineering</strong>'
-      +calc+'&le; '+eqIn(c.minThk)+'&quot;</span>'+esc(eqPathText('C1', d, t))+'</div>';
-  }
-  return '<div class="bf-result bf-result-warn"><strong>&#9888; Path C2 &mdash; Machine Ring Groove</strong>'
-    +calc+'&gt; '+eqIn(c.minThk)+'&quot; &#10003;</span>'+esc(eqPathText('C2', d, t))+'</div>';
+  if(band==='C2') return '<div class="bf-result bf-result-warn"><strong>&#9888; Path C2 &mdash; Skim Machine with Clean-up Pass</strong>'
+    +calc+'&gt; '+eqIn(c.minThk)+'&quot; clean-up min &#10003;</span>'+esc(eqPathText('C2', d, t))+'</div>';
+  if(band==='C1') return '<div class="bf-result bf-result-eng"><strong>&#9940; Path C1 &mdash; Hot-Weld Repair (HWR)</strong>'
+    +calc+'&le; '+eqIn(c.minThk)+'&quot; clean-up min'+(isFinite(c.hwrMin)?', &gt; '+eqIn(c.hwrMin)+'&quot; HWR min':'')+'</span>'+esc(eqPathText('C1', d, t))+'</div>';
+  return '<div class="bf-result bf-result-eng"><strong>&#9940; Path C3 &mdash; Recommend Replace</strong>'
+    +calc+'&le; '+eqIn(c.hwrMin)+'&quot; repair min</span>'+esc(eqPathText('C3', d, t))+'</div>';
 }
 function bfSetSD(id,k,val){ setBFSD(id,k,val); }
 
@@ -15539,8 +15539,12 @@ G.stdDoc = build;
        thickness after machining, hardness and NDE references, and the wording
        of the automatic engineering disposition for each path.
      · Frac head and actuator — the inspection checklist.
-     · Every type — known part numbers (the name plate scan uses them to fill
-       the description) and an Engineering note.
+     · Every type — part number configurations: part numbers, description,
+       size, thickness limits for that PN, an imported iBOM, and the
+       consumables and based-on-condition spare parts tables the inspector
+       selects from on the form. The name plate scan uses the part numbers.
+     · Ring groove thickness bands: skim machine with clean-up pass, hot-weld
+       repair (HWR), or recommend replace.
      · Gate valve redress levels — which critical areas are inspected at RD1,
        RD1.5, RD2 and RD3, and whether the soft kit is replaced.
    Saved to localStorage and, when connected, published to SharePoint
@@ -15568,6 +15572,7 @@ function merge(def, got){
   Object.keys(def).forEach(function(k){ out[k] = merge(def[k], got[k]); });
   return out;
 }
+function normPN(x){ return String(x||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
 function num(v, dflt){ var f = parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(f) ? dflt : f; }
 function e(x){ return (typeof esc==='function') ? esc(x) : String(x==null?'':x); }
 function label(t){ return (typeof EQUIP_LABELS!=='undefined' && EQUIP_LABELS[t]) || t; }
@@ -15576,11 +15581,13 @@ function label(t){ return (typeof EQUIP_LABELS!=='undefined' && EQUIP_LABELS[t])
 var TEXTS = {
   A:  'Polish ring groove with Scotch-Brite. Remove compression marks. No high points or sharp edges. Verify dimensions per {rgDwg}.',
   B:  'Skim machine ring groove to remove the defect. No high points or sharp edges. Verify dimensions per {rgDwg}.',
-  C1: 'Insufficient material ({remain}" ≤ {minThk}"). Welding SOW required. Send to Engineering — do not machine.',
-  C2: 'Machine to {machTo}" in {machStep}" steps (max {maxRemove}"). Re-machine ring groove per {rgDwg}. Hardness {hardnessRef} ({hardness}). NDE {ndeRef}.'
+  C2: 'Skim machine with clean-up pass to {machTo}" in {machStep}" steps (max {maxRemove}"). Restore ring groove dimensions per {rgDwg}. Hardness {hardnessRef} ({hardness}). NDE {ndeRef}.',
+  C1: 'Remaining thickness {remain}" is at or below the {minThk}" clean-up minimum — hot-weld repair (HWR) the ring groove per the HWR SOW and restore dimensions per {rgDwg}. Hardness {hardnessRef} ({hardness}). NDE {ndeRef}.',
+  C3: 'Remaining thickness {remain}" is at or below the {hwrMin}" minimum for repair — recommend replace with new.'
 };
+var BAND_LABEL = { C2:'Skim machine — clean-up pass', C1:'Hot-weld repair (HWR)', C3:'Recommend replace' };
 function defRG(type){
-  return { polishMax:'0.002', skimMax:'0.005', machAllow:'0.005', machStep:'0.010', minThk:'3.88', thkMax:'4.00',
+  return { polishMax:'0.002', skimMax:'0.005', machAllow:'0.005', machStep:'0.010', minThk:'3.88', hwrMin:'', thkMax:'4.00',
            hardness:'197–237 HBW', hardnessRef:'Q03009', ndeRef:'Q01114 / Q02007', visualRef:'Q02500',
            rgDwg:(type==='BLIND_FLANGE' ? 'DU100089093' : 'drawing'), texts:clone(TEXTS) };
 }
@@ -15605,10 +15612,25 @@ function defRedress(){
     RD3:  { all:true,  points:[],                     cons:true,  text:RD_TXT.RD3 }
   };
 }
+/* ── part number configurations ──────────────────────────────────────── */
+var COND_OPTS = function(pn){ return [
+  { label:'Fit for function', disp:'Accept — use as-is', replace:false },
+  { label:'Minor scoring / pitting / corrosion', disp:'Polish with Scotch-Brite. No high points / sharp edges after rework.', replace:false },
+  { label:'Damaged / not fit for function', disp:'Replace with new'+(pn?' '+pn:'')+' x QTY required', replace:true } ]; };
+function newVarId(){ return 'v'+Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
+function blankVariant(){ return { id:newVarId(), pns:[], desc:'', size:'', minThk:'', hwrMin:'', thkMax:'', ibom:null, consumables:[], condition:[] }; }
+function seedVariants(type){
+  var c = (typeof SPARE_PARTS_CATALOG!=='undefined') ? SPARE_PARTS_CATALOG[type] : null;
+  if(!c) return [];
+  var v = blankVariant(); v.id = 'v_builtin';
+  v.pns = clone(c.pns||[]); v.desc = String(c.label||'').replace(/\s+/g,' ').trim();
+  v.consumables = clone(c.consumables||[]); v.condition = clone(c.condition||[]);
+  return [v];
+}
 function defaults(){
   var t = {};
-  RG_TYPES.forEach(function(k){ t[k] = { rg:defRG(k), pns:[], note:'' }; });
-  LIST_TYPES.forEach(function(k){ t[k] = { checklist:defChecklist(k), pns:[], note:'' }; });
+  RG_TYPES.forEach(function(k){ t[k] = { rg:defRG(k), variants:seedVariants(k), note:'' }; });
+  LIST_TYPES.forEach(function(k){ t[k] = { checklist:defChecklist(k), variants:seedVariants(k), note:'' }; });
   return { rev:'1.0', approvedBy:'', updatedAt:'', types:t, redress:defRedress(), log:[] };
 }
 function normalise(o){
@@ -15617,7 +15639,21 @@ function normalise(o){
   TYPES.forEach(function(k){
     var got = (o && o.types && o.types[k]) || {};
     out.types[k] = merge(d.types[k], got);
-    if(!Array.isArray(out.types[k].pns)) out.types[k].pns = [];
+    var T = out.types[k];
+    if(Array.isArray(got.variants)) T.variants = got.variants;
+    /* the first release kept a flat part number list — each row becomes a configuration */
+    if(Array.isArray(got.pns) && got.pns.length){
+      got.pns.forEach(function(x){
+        if(!x || !String(x.pn||'').trim()) return;
+        if(T.variants.some(function(v){ return (v.pns||[]).some(function(p){ return normPN(p)===normPN(x.pn); }); })) return;
+        var v = blankVariant(); v.pns = [String(x.pn).trim()]; v.desc = x.desc||''; v.size = x.size||''; T.variants.push(v);
+      });
+    }
+    delete T.pns;
+    T.variants = (T.variants||[]).map(function(v){ var b = blankVariant(); var o = merge(b, v); o.id = v.id || b.id;
+      ['pns','consumables','condition'].forEach(function(k2){ if(!Array.isArray(o[k2])) o[k2] = []; });
+      o.condition.forEach(function(c){ if(!Array.isArray(c.options)) c.options = COND_OPTS(c.pn); });
+      return o; });
     if(LIST_TYPES.indexOf(k)!==-1 && !(Array.isArray(got.checklist) && got.checklist.length)) out.types[k].checklist = d.types[k].checklist;
   });
   RD_KEYS.forEach(function(k){ if(!Array.isArray(out.redress[k].points)) out.redress[k].points = []; });
@@ -15637,16 +15673,46 @@ function rgOf(r){
   var t = r && (r.equipType||r.formType);
   var src = (r && r.eqCrit) || defRG(t);
   var c = merge(defRG(t), src);
-  return { polish:num(c.polishMax,0.002), skim:num(c.skimMax,0.005), allow:num(c.machAllow,0.005), step:num(c.machStep,0.010),
-           minThk:num(c.minThk,3.88), thkMax:num(c.thkMax,NaN), hardness:c.hardness||'', hardnessRef:c.hardnessRef||'',
-           ndeRef:c.ndeRef||'', rgDwg:c.rgDwg||'drawing', texts:merge(TEXTS, c.texts||{}) };
+  var out = { polish:num(c.polishMax,0.002), skim:num(c.skimMax,0.005), allow:num(c.machAllow,0.005), step:num(c.machStep,0.010),
+           minThk:num(c.minThk,3.88), hwrMin:num(c.hwrMin,NaN), thkMax:num(c.thkMax,NaN), hardness:c.hardness||'', hardnessRef:c.hardnessRef||'',
+           ndeRef:c.ndeRef||'', rgDwg:c.rgDwg||'drawing', texts:merge(TEXTS, c.texts||{}), pnLimits:false };
+  /* thickness limits set for the report's part number: live while the report is open, frozen when saved */
+  var ov = (r && r.eqCrit && typeof current!=='undefined' && r===current) ? varCrit(r) : (r && r.eqVarCrit) || null;
+  if(ov){
+    if(isFinite(num(ov.minThk,NaN))){ out.minThk = num(ov.minThk); out.pnLimits = true; }
+    if(isFinite(num(ov.hwrMin,NaN))){ out.hwrMin = num(ov.hwrMin); out.pnLimits = true; }
+    if(isFinite(num(ov.thkMax,NaN))){ out.thkMax = num(ov.thkMax); out.pnLimits = true; }
+  }
+  return out;
+}
+function variantFor(r){
+  var t = r && (r.equipType||r.formType), T = t && live().types[t]; if(!T) return null;
+  var pn = normPN(r.header && r.header.partNo);
+  if(pn){
+    var hit = T.variants.filter(function(v){ return (v.pns||[]).some(function(p){ var q = normPN(p); return q===pn || q.replace(/^P/,'')===pn.replace(/^P/,''); }); })[0];
+    if(hit) return hit;
+  }
+  return T.variants.length===1 ? T.variants[0] : null;
+}
+function varCrit(r){
+  var v = variantFor(r); if(!v) return null;
+  var pn = normPN(r.header && r.header.partNo);
+  if(!pn || !(v.pns||[]).some(function(p){ return normPN(p).replace(/^P/,'')===pn.replace(/^P/,''); })) return null;   /* only for an entered, matching PN */
+  if(!String(v.minThk||'').trim() && !String(v.hwrMin||'').trim() && !String(v.thkMax||'').trim()) return null;
+  return { pn:r.header.partNo, minThk:v.minThk, hwrMin:v.hwrMin, thkMax:v.thkMax };
+}
+function bandOf(d, t, r){
+  var c = rgOf(r), remain = t-(d+c.allow);
+  if(remain > c.minThk) return 'C2';
+  if(isFinite(c.hwrMin) && remain <= c.hwrMin) return 'C3';
+  return 'C1';
 }
 function fmtIn(x){ var n = Number(x); if(!isFinite(n)) return ''; var s = n.toFixed(4).replace(/0+$/,'').replace(/\.$/,''); return s.indexOf('.')===-1 ? s : s; }
 function pathOf(d, r){ var c = rgOf(r); return d<=c.polish ? 'A' : d<=c.skim ? 'B' : 'C'; }
 function pathText(p, d, t, r){
   var c = rgOf(r), remain = (t!=null && isFinite(t)) ? t-(d+c.allow) : null;
   var v = { depth:d.toFixed(3), thk:(t!=null&&isFinite(t))?t.toFixed(3):'', remain:remain!=null?remain.toFixed(3):'',
-            minThk:fmtIn(c.minThk), machTo:(d+c.allow).toFixed(4), maxRemove:(d*2+c.step).toFixed(4), machStep:c.step.toFixed(3),
+            minThk:fmtIn(c.minThk), hwrMin:isFinite(c.hwrMin)?fmtIn(c.hwrMin):'', machTo:(d+c.allow).toFixed(4), maxRemove:(d*2+c.step).toFixed(4), machStep:c.step.toFixed(3),
             rgDwg:c.rgDwg, hardness:c.hardness, hardnessRef:c.hardnessRef, ndeRef:c.ndeRef };
   return String(c.texts[p]||'').replace(/\{(\w+)\}/g, function(m, k){ return v[k]!==undefined ? v[k] : m; });
 }
@@ -15654,11 +15720,14 @@ function engText(d, t, r){
   var p = pathOf(d, r), c = rgOf(r);
   if(p!=='C') return 'Depth '+d.toFixed(3)+'" — Path '+p+': '+pathText(p, d, null, r);
   if(t==null || !isFinite(t) || !t) return 'Depth '+d.toFixed(3)+'" — Path C: Measure total flange thickness to determine repair path.';
-  var p2 = (t-(d+c.allow))<=c.minThk ? 'C1' : 'C2';
-  return 'Depth '+d.toFixed(3)+'", T='+t.toFixed(3)+'" — Path '+p2+': '+pathText(p2, d, t, r);
+  var p2 = bandOf(d, t, r);
+  return 'Depth '+d.toFixed(3)+'", T='+t.toFixed(3)+'" — Path '+p2+' ('+BAND_LABEL[p2]+'): '+pathText(p2, d, t, r);
 }
-function rangeHint(r){ var c = rgOf(r); return isFinite(c.thkMax) ? '(acceptable: '+fmtIn(c.minThk)+'″ – '+fmtIn(c.thkMax)+'″)' : '(minimum after machining: '+fmtIn(c.minThk)+'″)'; }
-window.eqRG = rgOf; window.eqPath = pathOf; window.eqIn = fmtIn; window.eqRangeHint = rangeHint;
+function rangeHint(r){
+  var c = rgOf(r);
+  return '(clean-up min '+fmtIn(c.minThk)+'″'+(isFinite(c.thkMax)?' · max '+fmtIn(c.thkMax)+'″':'')+(isFinite(c.hwrMin)?' · replace at/below '+fmtIn(c.hwrMin)+'″':'')+(c.pnLimits?' · limits for this PN':'')+')';
+}
+window.eqRG = rgOf; window.eqPath = pathOf; window.eqBand = bandOf; window.eqBandLabel = function(b){ return BAND_LABEL[b]||b; }; window.eqIn = fmtIn; window.eqRangeHint = rangeHint;
 window.eqPathText = function(p, d, t, r){ return pathText(p, d, t, r); };
 window.eqEngText = function(d, t, r){ return engText(d, t, r); };
 
@@ -15687,22 +15756,75 @@ if(typeof _startFor==='function'){
 }
 
 /* ── name plate scan helpers for other equipment ──────────────────────── */
-function normPN(x){ return String(x||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
 function pnLookup(type, pn){
   var n = normPN(pn); if(!n) return null;
-  var list = (live().types[type]||{}).pns || [];
-  for(var i=0;i<list.length;i++) if(normPN(list[i].pn)===n || normPN(list[i].pn).replace(/^P/,'')===n.replace(/^P/,'')) return list[i];
+  var vs = (live().types[type]||{}).variants || [];
+  for(var i=0;i<vs.length;i++) for(var j=0;j<(vs[i].pns||[]).length;j++){
+    var q = normPN(vs[i].pns[j]);
+    if(q===n || q.replace(/^P/,'')===n.replace(/^P/,'')) return { pn:vs[i].pns[j], desc:vs[i].desc||'', size:vs[i].size||'', variant:vs[i] };
+  }
   return null;
 }
 function pnNear(type, cands){
-  var list = (live().types[type]||{}).pns || [];
   for(var i=0;i<(cands||[]).length;i++){ var hit = pnLookup(type, cands[i]); if(hit) return { row:hit, read:cands[i], how:'exact' }; }
   return null;
 }
 
+var _fse = window.findSpareEntry;
+if(typeof _fse==='function'){
+  window.findSpareEntry = function(r){
+    var t = r && (r.equipType||r.formType);
+    if(!r || t==='GATE_VALVE' || TYPES.indexOf(t)===-1) return _fse(r);
+    var v = variantFor(r);
+    if(!v || (!(v.consumables||[]).length && !(v.condition||[]).length)) return _fse(r);
+    var all = [];
+    live().types[t].variants.forEach(function(x){ (x.pns||[]).forEach(function(p){ if(all.indexOf(p)===-1) all.push(p); }); });
+    return { id:v.id, label:v.desc, pns:(v.pns||[]).length ? v.pns : all,
+             consumables:clone(v.consumables||[]),
+             condition:(v.condition||[]).map(function(c){ var o = clone(c); if(!Array.isArray(o.options) || !o.options.length) o.options = COND_OPTS(c.pn); return o; }) };
+  };
+}
+var _ens = window.ensureSpareLists;
+if(typeof _ens==='function'){
+  window.ensureSpareLists = function(){
+    var had = !!(current && current.spConsList && current.spCondList), L = _ens.apply(this, arguments);
+    if(L && !had && current && !current.gvEval){ var en = window.findSpareEntry(current); current.spVarId = en && en.id || ''; }
+    return L;
+  };
+}
+/* A part number typed (or scanned) after the spare parts lists were built: when the lists
+   are untouched, they follow the new part number's configuration. */
+function untouched(r){
+  var c = r.spConsList||[], d = r.spCondList||[];
+  return c.every(function(x){ return x.std && x.replace!==false; }) && d.every(function(x){ return x.std && !x.r; });
+}
+var _setHeader = window.setHeader;
+if(typeof _setHeader==='function'){
+  window.setHeader = function(key, val){
+    var out = _setHeader.apply(this, arguments);
+    if(key==='partNo' && current && !current.gvEval) followPN();
+    return out;
+  };
+}
+function followPN(){
+  var en = window.findSpareEntry(current), id = en && en.id || '';
+  if((current.spVarId||'')===id) return;
+  if(current.spConsList && !untouched(current)) return;
+  delete current.spConsList; delete current.spCondList; current.spVarId = '';
+  if(typeof refreshSparesCard==='function') refreshSparesCard();
+  if(en && en.id) toast('Spare parts list loaded for '+(en.label||'this part number'));
+}
+var _save = window.saveReport;
+if(typeof _save==='function'){
+  window.saveReport = function(){
+    if(typeof current!=='undefined' && current && !current.gvEval && current.eqCrit) current.eqVarCrit = varCrit(current);
+    return _save.apply(this, arguments);
+  };
+}
+
 window.EqStd = { live:live, load:load, write:write, defaults:defaults, normalise:normalise, rgOf:rgOf, rdScope:rdScope,
   rdText:function(k){ var R = live().redress[k]; return (R && R.text) || RD_TXT[k] || ''; },
-  pnLookup:pnLookup, pnNear:pnNear, RG_TYPES:RG_TYPES, LIST_TYPES:LIST_TYPES, TYPES:TYPES, RD_KEYS:RD_KEYS, RD_LABEL:RD_LABEL, SP_FILE:SP_FILE };
+  pnLookup:pnLookup, pnNear:pnNear, variantFor:variantFor, followPN:function(){ if(current && !current.gvEval) followPN(); }, RG_TYPES:RG_TYPES, LIST_TYPES:LIST_TYPES, TYPES:TYPES, RD_KEYS:RD_KEYS, RD_LABEL:RD_LABEL, SP_FILE:SP_FILE };
 
 /* ══ styles (redress level, pressure test, scan button, editor) ══════════ */
 var css = ''
@@ -15727,6 +15849,19 @@ var css = ''
  +'.eqs-rdt td.ck{text-align:center}.eqs-rdt td.ck input{width:18px;height:18px;accent-color:var(--brand)}'
  +'.eqs-rdt th.ck{text-align:center;width:52px;padding:7px 2px}'
  +'.gvs-tbl.eqs-rdt{min-width:0}.eqs-rdt td{font-size:12px}.eqs-rdt td.ck{padding:5px 2px}'
+ +'.eqs-var{border:1px solid var(--border);border-radius:11px;margin-bottom:10px;background:var(--bg3)}'
+ +'.eqs-var>summary{cursor:pointer;padding:10px 12px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;list-style:none}'
+ +'.eqs-var>summary::-webkit-details-marker{display:none}'
+ +'.eqs-var>summary .pn{font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:12.5px;color:var(--text)}'
+ +'.eqs-var>summary .ds{flex:1;min-width:140px;font-size:12px;color:var(--text2)}.eqs-var>summary .ct{font-size:10.5px;color:var(--text3);font-weight:700}'
+ +'.eqs-var-b{padding:0 12px 12px}'
+ +'.eqs-sub{margin:14px 0 6px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--brand)}.eqs-sub span{text-transform:none;letter-spacing:0;font-weight:600;color:var(--text3)}'
+ +'.gvs-tbl.eqs-sp{min-width:0}.eqs-sp .field-input{padding:6px 7px;font-size:12px}'
+ +'.eqs-opts td{background:var(--bg2);padding:6px 8px 10px}.eqs-opt-h{font-size:10.5px;font-weight:700;color:var(--text3);margin-bottom:4px}'
+ +'.eqs-opt{display:grid;grid-template-columns:1fr 1.4fr auto auto;gap:5px;align-items:center;margin-bottom:5px}.eqs-opt .field-input{margin:0;padding:6px 7px;font-size:11.5px}.eqs-opt .gvs-check{font-size:11px;padding:0}'
+ +'@media(max-width:520px){.eqs-opt{grid-template-columns:1fr auto auto}.eqs-opt .field-input:nth-child(2){grid-column:1/-1;grid-row:2}}'
+ +'.eqs-pk td{padding:5px 4px}.eqs-pk td input{width:18px;height:18px;accent-color:var(--brand)}'
+ +'.eqs-pick{margin:4px 0 8px}.eqs-pick>summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--brand)}'
  +'#gve-rdtop .gve-rd-row{display:grid;grid-template-columns:1.7fr repeat(4,1fr);gap:5px}#gve-rdtop .gve-rd-btn{min-width:0;padding:9px 4px;font-size:12.5px}';
 var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
@@ -15762,10 +15897,10 @@ placeCard();
 function fillInfo(){
   var el = document.getElementById('eqs-info'); if(!el) return;
   var s = live(), row = function(k, v){ return '<div class="info-row"><span class="info-key">'+e(k)+'</span><span class="info-val">'+v+'</span></div>'; };
-  var pn = 0; TYPES.forEach(function(t){ pn += (s.types[t].pns||[]).length; });
+  var pn = 0, nv = 0, ib = 0; TYPES.forEach(function(t){ (s.types[t].variants||[]).forEach(function(v){ nv++; pn += (v.pns||[]).length; if(v.ibom) ib++; }); });
   el.innerHTML = row('Revision', e(s.rev||'—')) + row('Approved by', e(s.approvedBy||'—'))
     + row('Last saved', s.updatedAt ? e(new Date(s.updatedAt).toLocaleString('en-GB')) : 'Built-in defaults — not yet saved')
-    + row('Equipment types', String(TYPES.length)) + row('Known part numbers', String(pn));
+    + row('Equipment types', String(TYPES.length)) + row('Part number configurations', nv+' ('+pn+' PNs, '+ib+' iBOMs)');
 }
 
 function setDirty(){ dirty = true; var d = document.getElementById('eqs-dirty'); if(d) d.style.display = 'inline-block'; }
@@ -15778,21 +15913,23 @@ function area(path, rows){ return '<textarea class="field-input" rows="'+(rows||
 function exampleHTML(t){
   var r = { equipType:t, eqCrit:D.types[t].rg }, c = rgOf(r);
   var dA = c.polish, dB = Math.min(c.skim, c.polish + (c.skim-c.polish)/2), dC = c.skim + 0.005;
-  var thkOk = (isFinite(c.thkMax) ? c.thkMax : c.minThk + 0.1), thkBad = c.minThk + c.allow;
+  var thkOk = (isFinite(c.thkMax) ? c.thkMax : c.minThk + 0.1), thkBad = c.minThk + c.allow + dC;
+  var hw = isFinite(c.hwrMin) ? c.hwrMin + c.allow + dC - 0.01 : null;
   return '<b>Preview of the automatic disposition</b><br>'
     + e(engText(dA, null, r))+'<br>'+e(engText(dB, null, r))+'<br>'+e(engText(dC, null, r))+'<br>'
-    + e(engText(dC, thkOk, r))+'<br>'+e(engText(dC, thkBad, r));
+    + e(engText(dC, thkOk, r))+'<br>'+e(engText(dC, thkBad, r))+(hw!==null?'<br>'+e(engText(dC, hw, r)):'');
 }
 function tabRG(t){
   var p = 'types|'+t+'|rg|', h = '';
   h += '<div class="card"><div class="section-title">Ring groove depth criteria — '+e(label(t))+'</div>'
-    +'<div class="gvs-tip">Defect depth decides the path: Path A (polish) up to the polish limit, Path B (skim machine) up to the skim limit, Path C above it — measure the flange thickness. Path C2 (machine) when thickness − (depth + machining allowance) is above the minimum, otherwise Path C1 (send to Engineering).</div>'
+    +'<div class="gvs-tip">Defect depth decides the path: Path A (polish) up to the polish limit, Path B (skim machine) up to the skim limit, Path C above it — measure the flange thickness. For Path C the remaining thickness = flange thickness − (depth + machining allowance): <b>above the clean-up minimum</b> → skim machine with clean-up pass (C2); <b>at or below it</b> → hot-weld repair, HWR (C1); <b>at or below the HWR minimum</b> → recommend replace (C3). Leave the HWR minimum blank to never recommend replace. Part number configurations can set their own thickness limits.</div>'
     +'<div class="eqs-crit">'
     +'<div><label class="field-label">Path A — polish up to (in)</label>'+inp(p+'polishMax','0.002')+'</div>'
     +'<div><label class="field-label">Path B — skim up to (in)</label>'+inp(p+'skimMax','0.005')+'</div>'
     +'<div><label class="field-label">Machining allowance (in)</label>'+inp(p+'machAllow','0.005')+'</div>'
     +'<div><label class="field-label">Machining step (in)</label>'+inp(p+'machStep','0.010')+'</div>'
-    +'<div><label class="field-label">Min. flange thickness after machining (in)</label>'+inp(p+'minThk','3.88')+'</div>'
+    +'<div><label class="field-label">Clean-up minimum — skim machining above (in)</label>'+inp(p+'minThk','3.88')+'</div>'
+    +'<div><label class="field-label">HWR minimum — replace at or below (in)</label>'+inp(p+'hwrMin','blank = never')+'</div>'
     +'<div><label class="field-label">Max. flange thickness (in)</label>'+inp(p+'thkMax','4.00')+'</div>'
     +'<div><label class="field-label">Hardness range</label>'+inp(p+'hardness','197–237 HBW')+'</div>'
     +'<div><label class="field-label">Hardness procedure</label>'+inp(p+'hardnessRef','Q03009')+'</div>'
@@ -15801,8 +15938,8 @@ function tabRG(t){
     +'<div><label class="field-label">Visual inspection ref</label>'+inp(p+'visualRef','Q02500')+'</div>'
     +'</div></div>';
   h += '<div class="card"><div class="section-title">Automatic disposition wording</div>'
-    +'<div class="gvs-tip">Placeholders: {depth} {thk} {remain} {minThk} {machTo} {maxRemove} {machStep} {rgDwg} {hardness} {hardnessRef} {ndeRef}. The line starts with the depth and path automatically. Inspectors can still edit the text on each report.</div>'
-    +[['A','Path A — polish'],['B','Path B — skim machine'],['C1','Path C1 — insufficient material'],['C2','Path C2 — machine ring groove']].map(function(x){
+    +'<div class="gvs-tip">Keep the words <b>skim</b>, <b>HWR</b> and <b>replace</b> in paths C2, C1 and C3 — the SharePoint register and Teams routing classify the work from them. Placeholders: {depth} {thk} {remain} {minThk} {hwrMin} {machTo} {maxRemove} {machStep} {rgDwg} {hardness} {hardnessRef} {ndeRef}. The line starts with the depth and path automatically. Inspectors can still edit the text on each report.</div>'
+    +[['A','Path A — polish'],['B','Path B — skim machine'],['C2','Path C2 — skim machine with clean-up pass'],['C1','Path C1 — hot-weld repair (HWR)'],['C3','Path C3 — recommend replace']].map(function(x){
         return '<label class="field-label" style="margin-top:8px">'+e(x[1])+'</label>'+area(p+'texts|'+x[0], 2); }).join('')
     +'<div class="eqs-ex" id="eqs-ex">'+exampleHTML(t)+'</div></div>';
   return h;
@@ -15821,18 +15958,110 @@ function tabList(t){
   return h;
 }
 function tabPNs(t){
-  var L = D.types[t].pns, h = '<div class="card"><div class="section-title">Known part numbers — '+e(label(t))+'</div>'
-    +'<div class="gvs-tip">When the name plate scan reads one of these part numbers, the description is filled from this list.</div>'
-    +'<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:150px">Part no.</th><th>Description</th><th style="width:120px">Size / rating</th><th style="width:40px"></th></tr></thead><tbody>';
-  if(!L.length) h += '<tr><td colspan="4" style="color:var(--text3);font-size:12px">No part numbers yet.</td></tr>';
-  L.forEach(function(x, i){
-    h += '<tr><td>'+inp('types|'+t+'|pns|'+i+'|pn','P123456')+'</td><td>'+inp('types|'+t+'|pns|'+i+'|desc','Description')+'</td><td>'+inp('types|'+t+'|pns|'+i+'|size','3-1/16" 15K')+'</td>'
-      +'<td><button class="gvs-del" onclick="eqsDelPN(\''+t+'\','+i+')">&#x2715;</button></td></tr>';
-  });
-  h += '</tbody></table></div><button class="gvs-add" onclick="eqsAddPN(\''+t+'\')">+ Add part number</button>'
-    +'<label class="field-label" style="margin-top:12px">Engineering note for '+e(label(t))+' (shown on the form)</label>'+area('types|'+t+'|note', 2)+'</div>';
+  var V = D.types[t].variants, rg = RG_TYPES.indexOf(t)!==-1;
+  var h = '<div class="card"><div class="section-title">Part numbers &amp; spares — '+e(label(t))+'</div>'
+    +'<div class="gvs-tip">One entry per configuration. The form loads the spare parts tables of the entry whose part number matches the report (with a single entry it is used for every report). The name plate scan fills the description from here.'+(rg?' Thickness limits set here replace the '+e(label(t))+' defaults for that part number.':'')+'</div>'
+    +'<div class="gvs-btns" style="margin-bottom:10px"><button class="gvs-addbtn" onclick="eqsAddVar(\''+t+'\')">+ Add configuration</button>'
+    +'<label class="settings-btn-save" style="cursor:pointer;margin:0">Import iBOM (.xls / .xlsx)<input type="file" accept=".xls,.xlsx,.htm,.html" style="display:none" onchange="eqsIbom(\''+t+'\',-1,this)"/></label></div>';
+  if(!V.length) h += '<div class="gvs-tip">No configurations yet — add one, or import an iBOM.</div>';
+  V.forEach(function(v, i){ h += varHTML(t, v, i, rg); });
+  h += '<label class="field-label" style="margin-top:12px">Engineering note for '+e(label(t))+' (shown on the form)</label>'+area('types|'+t+'|note', 2)+'</div>';
   return h;
 }
+function varHTML(t, v, i, rg){
+  var p = 'types|'+t+'|variants|'+i+'|', open = OPEN[t+'|'+v.id];
+  var h = '<details class="eqs-var"'+(open?' open':'')+' ontoggle="eqsOpenVar(\''+t+'\',\''+v.id+'\',this.open)"><summary><span class="pn">'+e((v.pns||[]).join(' / ')||'No part number')+'</span>'
+    +'<span class="ds">'+e(v.desc||'')+'</span><span class="ct">'+(v.consumables||[]).length+' cons · '+(v.condition||[]).length+' BOC'+(v.ibom?' · iBOM':'')+'</span></summary><div class="eqs-var-b">';
+  h += '<div class="gvs-grid"><div class="full"><label class="field-label">Part numbers (comma separated)</label><input class="field-input" value="'+e((v.pns||[]).join(', '))+'" placeholder="P123456, P123457" oninput="eqsVarPNs(\''+t+'\','+i+',this.value)"/></div>'
+    +'<div class="full"><label class="field-label">Description</label>'+inp(p+'desc','e.g. Blind flange 3-1/16" 15K 6BX')+'</div>'
+    +'<div><label class="field-label">Size / rating</label>'+inp(p+'size','3-1/16" 15K')+'</div>'
+    +(rg?'<div><label class="field-label">Clean-up min. (in)</label>'+inp(p+'minThk','type default')+'</div>'
+      +'<div><label class="field-label">HWR min. — replace (in)</label>'+inp(p+'hwrMin','type default')+'</div>'
+      +'<div><label class="field-label">Max. thickness (in)</label>'+inp(p+'thkMax','type default')+'</div>':'')
+    +'</div>';
+  /* iBOM */
+  h += '<div class="eqs-sub">iBOM</div>';
+  if(v.ibom){
+    h += '<div class="gvs-ibom"><b>'+e(v.ibom.pn)+'</b> rev '+e(v.ibom.rev||'—')+' — '+e(v.ibom.desc||'')+'<br>'+(v.ibom.rows||[]).length+' rows · '+e(v.ibom.file||'')+(v.ibom.importedAt?' · '+e(new Date(v.ibom.importedAt).toLocaleDateString('en-GB')):'')+'</div>'
+      +'<div class="gvs-btns" style="margin:6px 0"><label class="settings-btn-save" style="cursor:pointer;margin:0">Replace iBOM<input type="file" accept=".xls,.xlsx,.htm,.html" style="display:none" onchange="eqsIbom(\''+t+'\','+i+',this)"/></label>'
+      +'<button class="settings-btn-disconnect" onclick="eqsIbomDel(\''+t+'\','+i+')">Remove iBOM</button></div>';
+    h += ibomPick(t, v, i);
+  } else h += '<label class="settings-btn-save" style="cursor:pointer;display:inline-block;margin:0 0 6px">Upload iBOM<input type="file" accept=".xls,.xlsx,.htm,.html" style="display:none" onchange="eqsIbom(\''+t+'\','+i+',this)"/></label>';
+  /* consumables */
+  h += '<div class="eqs-sub">Consumables <span>— replaced at every service; the inspector can skip a row</span></div>'
+    +'<div class="gvs-scroll"><table class="gvs-tbl eqs-sp"><thead><tr><th style="width:30%">Part no.</th><th>Description</th><th style="width:44px">Qty</th><th style="width:34px"></th></tr></thead><tbody>'
+    +((v.consumables||[]).length ? '' : '<tr><td colspan="4" style="color:var(--text3)">None</td></tr>')
+    +(v.consumables||[]).map(function(c, k){ var q = p+'consumables|'+k+'|';
+      return '<tr><td>'+inp(q+'pn','PN')+'</td><td>'+inp(q+'description','Description')+'</td><td>'+inp(q+'qty','1')+'</td><td><button class="gvs-del" onclick="eqsDelRow(\''+t+'\','+i+',\'consumables\','+k+')">&#x2715;</button></td></tr>'; }).join('')
+    +'</tbody></table></div><button class="gvs-add" onclick="eqsAddRow(\''+t+'\','+i+',\'consumables\')">+ Add consumable</button>';
+  /* based on condition */
+  h += '<div class="eqs-sub">Based-on-condition <span>— the inspector marks Pass / Fail and picks the finding</span></div>'
+    +'<div class="gvs-scroll"><table class="gvs-tbl eqs-sp"><thead><tr><th style="width:30%">Part no.</th><th>Description</th><th style="width:44px">Qty</th><th style="width:34px"></th></tr></thead><tbody>'
+    +((v.condition||[]).length ? '' : '<tr><td colspan="4" style="color:var(--text3)">None</td></tr>')
+    +(v.condition||[]).map(function(c, k){ var q = p+'condition|'+k+'|';
+      return '<tr><td>'+inp(q+'pn','PN')+'</td><td>'+inp(q+'description','Description')+'</td><td>'+inp(q+'qty','1')+'</td><td><button class="gvs-del" onclick="eqsDelRow(\''+t+'\','+i+',\'condition\','+k+')">&#x2715;</button></td></tr>'
+        +'<tr class="eqs-opts"><td colspan="4"><div class="eqs-opt-h">Findings the inspector can pick on Fail</div>'
+        +(c.options||[]).map(function(o, m){ var w = q+'options|'+m+'|';
+          return '<div class="eqs-opt"><input class="field-input" value="'+e(o.label||'')+'" placeholder="Finding" oninput="eqsSet(\''+w+'label\',this.value)"/>'
+            +'<input class="field-input" value="'+e(o.disp||'')+'" placeholder="Disposition" oninput="eqsSet(\''+w+'disp\',this.value)"/>'
+            +'<label class="gvs-check"><input type="checkbox"'+(o.replace?' checked':'')+' onchange="eqsSetB(\''+w+'replace\',this.checked)"/> Replace</label>'
+            +'<button class="gvs-mini del" onclick="eqsDelOpt(\''+t+'\','+i+','+k+','+m+')">&#x2715;</button></div>'; }).join('')
+        +'<button class="gvs-link" onclick="eqsAddOpt(\''+t+'\','+i+','+k+')">+ Add finding</button></td></tr>'; }).join('')
+    +'</tbody></table></div><button class="gvs-add" onclick="eqsAddRow(\''+t+'\','+i+',\'condition\')">+ Add based-on-condition part</button>';
+  h += '<div style="margin-top:12px;text-align:right"><button class="settings-btn-disconnect" onclick="eqsDelVar(\''+t+'\','+i+')">Delete this configuration</button></div>';
+  return h+'</div></details>';
+}
+var SEAL_RE = /SEAL|O-?RING|GASKET|PACKING|BACK-?UP|U-?CUP|WIPER|NON-?METALLIC/i;
+function ibomPick(t, v, i){
+  var rows = (v.ibom.rows||[]).filter(function(r){ return r.lvl>1; });
+  var inList = function(k, pn){ return (v[k]||[]).some(function(x){ return normPN(x.pn)===normPN(pn); }); };
+  var h = '<details class="eqs-pick"'+(OPEN['pick|'+t+'|'+v.id]?' open':'')+' ontoggle="eqsOpenVar(\'pick|'+t+'\',\''+v.id+'\',this.open)"><summary>Pick spare parts from the iBOM ('+rows.length+' rows)</summary><div class="gvs-scroll" style="max-height:420px;overflow-y:auto"><table class="gvs-tbl eqs-sp eqs-pk"><thead><tr><th>Part no.</th><th>Description</th><th style="width:34px">Qty</th><th class="ck" style="width:44px;text-align:center;padding:7px 2px">Cons.</th><th class="ck" style="width:44px;text-align:center;padding:7px 2px">BOC</th></tr></thead><tbody>';
+  rows.forEach(function(r, n){
+    var idx = (v.ibom.rows||[]).indexOf(r);
+    h += '<tr'+(r.alt?' style="opacity:.6"':'')+'><td style="white-space:nowrap;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;padding-left:'+(6+Math.max(0,r.lvl-2)*10)+'px">'+e(r.pn)+(r.rev?' <span style="color:var(--text3)">'+e(r.rev)+'</span>':'')+'</td>'
+      +'<td style="font-size:11.5px">'+e(r.desc)+(SEAL_RE.test(r.desc)?' <span class="gvs-tag comp">SEAL</span>':'')+(r.alt?' <span class="gvs-tag alt">ALT</span>':'')+'</td><td>'+e(r.qty)+'</td>'
+      +'<td style="text-align:center"><input type="checkbox"'+(inList('consumables', r.pn)?' checked':'')+' onchange="eqsIbPick(\''+t+'\','+i+','+idx+',\'consumables\',this.checked)"/></td>'
+      +'<td style="text-align:center"><input type="checkbox"'+(inList('condition', r.pn)?' checked':'')+' onchange="eqsIbPick(\''+t+'\','+i+','+idx+',\'condition\',this.checked)"/></td></tr>';
+  });
+  return h+'</tbody></table></div></details>';
+}
+var OPEN = {};
+window.eqsOpenVar = function(t, id, on){ OPEN[t+'|'+id] = on; };
+window.eqsSetB = function(path, v){ var w = walk(path); w.o[w.k] = !!v; setDirty(); };
+window.eqsVarPNs = function(t, i, val){ D.types[t].variants[i].pns = String(val||'').split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean); setDirty(); };
+window.eqsAddVar = function(t){ var v = blankVariant(); D.types[t].variants.push(v); OPEN[t+'|'+v.id] = true; setDirty(); render(); };
+window.eqsDelVar = function(t, i){ var v = D.types[t].variants[i]; if(!confirm('Delete the configuration '+((v.pns||[]).join(' / ')||v.desc||'')+'? Saved reports keep their spare parts lists.')) return; D.types[t].variants.splice(i,1); setDirty(); render(); };
+window.eqsAddRow = function(t, i, k){ var v = D.types[t].variants[i]; OPEN[t+'|'+v.id] = true; var row = { pn:'', description:'', qty:'1' }; if(k==='condition') row.options = COND_OPTS(''); v[k].push(row); setDirty(); render(); };
+window.eqsDelRow = function(t, i, k, n){ D.types[t].variants[i][k].splice(n,1); setDirty(); render(); };
+window.eqsAddOpt = function(t, i, k){ D.types[t].variants[i].condition[k].options.push({ label:'', disp:'', replace:false }); setDirty(); render(); };
+window.eqsDelOpt = function(t, i, k, m){ D.types[t].variants[i].condition[k].options.splice(m,1); setDirty(); render(); };
+window.eqsIbPick = function(t, i, idx, k, on){
+  var v = D.types[t].variants[i], r = v.ibom.rows[idx]; if(!r) return;
+  var at = -1; v[k].forEach(function(x, n){ if(normPN(x.pn)===normPN(r.pn)) at = n; });
+  if(on && at===-1){ var row = { pn:r.pn, description:r.desc, qty:String(parseFloat(r.qty)||1) }; if(k==='condition') row.options = COND_OPTS(r.pn); v[k].push(row); }
+  if(!on && at!==-1) v[k].splice(at,1);
+  OPEN[t+'|'+v.id] = true; setDirty();
+  var y = window.scrollY; render(); window.scrollTo(0, y);
+};
+window.eqsIbomDel = function(t, i){ if(!confirm('Remove the iBOM? The spare parts tables stay as they are.')) return; D.types[t].variants[i].ibom = null; setDirty(); render(); };
+window.eqsIbom = function(t, i, input){
+  var f = input.files && input.files[0]; input.value = ''; if(!f) return;
+  if(!(window.GVEval && GVEval.ibom)){ toast('⚠ The iBOM reader is not available'); return; }
+  GVEval.ibom.readTable(f).then(function(rows){
+    var ib = GVEval.ibom.parse(rows), V = D.types[t].variants, v = i>=0 ? V[i] : null;
+    if(!v) v = V.filter(function(x){ return (x.pns||[]).some(function(p){ return normPN(p)===normPN(ib.pn); }); })[0] || null;
+    var made = false;
+    if(!v){ v = blankVariant(); V.push(v); made = true; }
+    if(ib.pn && !(v.pns||[]).some(function(p){ return normPN(p)===normPN(ib.pn); })) v.pns.push(ib.pn);
+    if(!v.desc) v.desc = ib.desc || '';
+    if(!v.size){ var nom = GVEval.ibom.sizeFromDesc(ib.desc), k = String(ib.desc||'').match(/\b(\d{1,2})K\b/i); if(nom) v.size = nom+'"'+(k?' '+k[1]+'K':''); }
+    v.ibom = { pn:ib.pn, rev:ib.rev, desc:ib.desc, file:f.name, importedAt:new Date().toISOString(),
+               rows:ib.rows.map(function(r){ return { lvl:r.lvl, pn:r.pn, rev:r.rev, desc:r.desc, qty:r.qty, alt:!!r.alt }; }) };
+    OPEN[t+'|'+v.id] = true; setDirty(); render();
+    toast('✓ iBOM '+ib.pn+' rev '+(ib.rev||'—')+' — '+ib.rows.length+' rows'+(made?' · new configuration added':'')+'. Tick the spare parts, then Save.', 5000);
+  }).catch(function(x){ toast('⚠ iBOM import: '+(x && x.message || x), 5000); });
+};
+
 function tabRedress(){
   var comps = (window.GVEval && GVEval.COMPONENTS) || [], h = '<div class="card"><div class="section-title">Gate valve redress levels</div>'
     +'<div class="gvs-tip">Tick the critical areas inspected at each level. The inspector picks the level at the top of the gate valve form; with no level selected every area shows. The pressure test (body and seat) is required at every level. A report keeps the scope in force when its level was set.</div>'
@@ -15918,6 +16147,24 @@ function validate(o){
     if(o.types[t].checklist.some(function(x){ return !String(x.label||'').trim(); })) errs.push(label(t)+': a checklist item has no text');
   });
   RD_KEYS.forEach(function(k){ var R = o.redress[k]; if(!R.all && !(R.points||[]).length) errs.push(RD_LABEL[k]+': tick at least one critical area'); });
+  RG_TYPES.forEach(function(t){
+    var c = o.types[t].rg, m = num(c.minThk, NaN), hw = num(c.hwrMin, NaN);
+    if(String(c.hwrMin||'').trim() && !(hw>0)) errs.push(label(t)+': HWR minimum must be a number (or blank)');
+    if(hw>0 && m>0 && !(hw<m)) errs.push(label(t)+': HWR minimum must be below the clean-up minimum');
+  });
+  TYPES.forEach(function(t){
+    var seen = {};
+    o.types[t].variants.forEach(function(v, n){
+      var nm = label(t)+' configuration '+(n+1);
+      if(!(v.pns||[]).length) errs.push(nm+': enter at least one part number');
+      (v.pns||[]).forEach(function(p){ var q = normPN(p); if(seen[q]) errs.push(label(t)+': part number '+p+' is in two configurations'); seen[q] = 1; });
+      ['minThk','hwrMin','thkMax'].forEach(function(k){ if(String(v[k]||'').trim() && !(num(v[k],NaN)>0)) errs.push(nm+': '+k+' must be a number'); });
+      var effMin = num(v.minThk, num(o.types[t].rg ? o.types[t].rg.minThk : NaN, NaN)), effMax = num(v.thkMax, num(o.types[t].rg ? o.types[t].rg.thkMax : NaN, NaN));
+      if(effMin>0 && effMax>0 && !(effMax>effMin)) errs.push(nm+': max. thickness ('+effMax+') must be above the clean-up minimum ('+effMin+') — set the max. thickness for this part number');
+      if(num(v.hwrMin,NaN)>0 && num(v.minThk, num(o.types[t].rg ? o.types[t].rg.minThk : NaN, NaN))<=num(v.hwrMin,NaN)) errs.push(nm+': HWR minimum must be below the clean-up minimum');
+      (v.consumables||[]).concat(v.condition||[]).forEach(function(r){ if(!String(r.description||'').trim() && !String(r.pn||'').trim()) errs.push(nm+': a spare part row is empty'); });
+    });
+  });
   return errs;
 }
 window.eqsSave = function(){
