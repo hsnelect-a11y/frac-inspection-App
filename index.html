@@ -7499,7 +7499,7 @@ function buildPrintHTML(r){
     +idRow('EQUIPMENT DESCRIPTION', H.sizeDesc)
     +(H.nameplate||((r.photos||{}).eq_nameplate||[]).length?'<tr><td style="'+LB+'">NAME PLATE</td><td style="'+B+'white-space:pre-wrap" colspan="3">'+esc(H.nameplate||'')
       +((r.photos||{}).eq_nameplate||[]).map(function(p){ return '<img src="'+p.src+'" style="height:70px;margin:4px 4px 0 0;border:1px solid #d1d5db"/>'; }).join('')+'</td></tr>':'')
-    +(r.eqStdRev?idRow('EQUIPMENT STANDARDS REV', r.eqStdRev):'')
+    +(r.eqStdRev?idRow('ENGINEERING STANDARDS REV', r.eqStdRev):'')
     +'</table>';
   var sp=(typeof spareSummaryText==='function')?spareSummaryText(r):'';
   h+='<div style="border:1px solid '+d.color+';border-left:5px solid '+d.color+';padding:8px 10px;margin-bottom:10px">'
@@ -10761,7 +10761,7 @@ function defaultStd(){
   return {
     rev:'1.0', approvedBy:'', updatedAt:'',
     draft:false,                        /* true until the revision is issued — saving keeps the revision number */
-    docTitle:'Frac Gate Valve Inspection and Disposition Standard', docNo:'', preparedBy:'',
+    docTitle:'Frac Equipment Inspection and Disposition Standard', docNo:'', preparedBy:'',
     sizes: sizes,
     valveOrder: DEFAULT_KEYS.slice(),   /* display order of the valves */
     removed: [],                        /* standard valves Engineering deleted */
@@ -10847,6 +10847,8 @@ var STD = null;
 /* Older saved standards had fixed body/seat test pressures. */
 var OLD_TEST_NOTE = 'Default values follow the API 6A 15K rating. Engineering to confirm against TST10065665.';
 function migrate(got){
+  /* Nov 2026: one standard for every equipment type — the gate-valve-only default title follows */
+  if(got && got.docTitle==='Frac Gate Valve Inspection and Disposition Standard') got.docTitle = 'Frac Equipment Inspection and Disposition Standard';
   if(got && Array.isArray(got.flanges)) got.flanges.forEach(function(f){   /* nominal/min → min/max tolerance */
     if(f && f.max===undefined){ f.max = f.nominal!==undefined ? f.nominal : ''; }
     if(f) delete f.nominal;
@@ -13872,6 +13874,7 @@ var css = ''
  +'.gvs-arrow{color:var(--text3);font-weight:800}'
  +'.gvs-warn{margin-top:10px;padding:9px 11px;border-radius:9px;border:1px solid rgba(220,38,38,.4);background:rgba(220,38,38,.06);color:#dc2626;font-size:12px;font-weight:600;line-height:1.5}'
  +'.gvs-ok{color:#16a34a;font-weight:700}'
+ +'.gvs-tabgrp{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:10px 2px 5px}'
  +'.gvs-tip{font-size:11px;color:var(--text3);line-height:1.5;margin:-4px 0 10px}'
  +'.gvs-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}'
  +'.gvs-grid .full{grid-column:1/-1}'
@@ -13961,7 +13964,7 @@ function topbarLogo(){
 var view = document.createElement('div');
 view.id = 'view-gvstd'; view.className = 'hidden';
 view.innerHTML = '<div class="topbar"><button class="topbar-back" onclick="gvsBack()">&larr; Settings</button>'+topbarLogo()
-  +'<div class="topbar-title">Gate Valve Standards</div>'
+  +'<div class="topbar-title">Engineering Standards</div>'
   +'<button class="theme-btn" onclick="toggleTheme()" title="Toggle theme">&#127769;</button>'
   +'<button class="topbar-action btn-save" onclick="gvsSave()">Save</button></div>'
   +'<div class="settings-body gvs-body" id="gvs-body"></div>';
@@ -13972,8 +13975,8 @@ var card = document.createElement('div');
 card.className = 'settings-card'; card.id = 'gvs-card';
 card.innerHTML = '<div class="settings-card-header">'
   +'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M9 8V4h6v4M12 4V2"/></svg>'
-  +' Gate Valve Engineering Standards</div>'
-  +'<div class="settings-card-sub">Depth criteria, part numbers, spares and consumables, testing requirements and advisories used for the automatic gate valve disposition. Engineering only.</div>'
+  +' Engineering Standards</div>'
+  +'<div class="settings-card-sub">One standard for every equipment type. Gate valves: depth criteria, part numbers, iBOMs, spares, SOWs, testing, advisories and redress levels. Blind flanges, WECO flanges, crosses, adapters, frac heads and actuators: ring groove criteria and thickness bands, checklists, part number configurations, iBOMs and spares. One revision, draft and revision history, one SharePoint file and one printable document. Engineering only.</div>'
   +'<div class="info-grid" id="gvs-info"></div>'
   +'<div class="settings-actions"><button class="settings-btn-connect" onclick="gvsOpen()">Open standards editor</button>'
   +'<button class="settings-btn-save" onclick="gvdOpen(\'settings\')">Standards document (PDF)</button></div>';
@@ -13997,7 +14000,8 @@ function infoRows(){
     + row('Valves', String(keys.length))
     + row('Valve part numbers', frac(vp, keys.length*3))
     + row('Component part numbers', frac(pnSet, pnAll))
-    + row('Dimensional limits', frac(dimSet, dimAll));
+    + row('Dimensional limits', frac(dimSet, dimAll))
+    + (window.EqStd ? row('Other equipment', e(EqStd.summary(s))) : '');
 }
 function fillInfo(){ var el = document.getElementById('gvs-info'); if(el) el.innerHTML = infoRows(); }
 
@@ -14614,7 +14618,7 @@ function render(){
   var body = document.getElementById('gvs-body'); if(!body) return;
   var live = G.liveStd(), h = '';
   h += '<div class="card"><div class="section-title">Revision <span class="gvs-dirty" id="gvs-dirty" style="display:'+(dirty?'inline-block':'none')+'">UNSAVED CHANGES</span></div>'
-    +'<div class="gvs-grid"><div class="full"><label class="field-label">Document title</label>'+inp('docTitle','Frac Gate Valve Inspection and Disposition Standard')+'</div>'
+    +'<div class="gvs-grid"><div class="full"><label class="field-label">Document title</label>'+inp('docTitle','Frac Equipment Inspection and Disposition Standard')+'</div>'
     +'<div><label class="field-label">Document no.</label>'+inp('docNo','Document number')+'</div>'
     +'<div><label class="field-label">Revision</label>'+inp('rev','1.0')+'</div>'
     +'<div><label class="field-label">Prepared by</label>'+inp('preparedBy','Name')+'</div>'
@@ -14626,9 +14630,13 @@ function render(){
     +'. Saved reports keep the revision they were dispositioned under.</div>'
     +'<div class="gvs-btns" style="margin-top:10px"><button class="settings-btn-save" onclick="gvdOpen(\'editor\')">Preview standards document</button>'
     +'<button class="settings-btn-disconnect" onclick="gvsRevReset()">Reset revision history…</button></div></div>';
-  var tabs = [['valves','Valves & PNs'],['route','Seat pocket route'],['flange','Flange ring grooves'],['sow','SOW files'],['spares','Spares'],['criteria','Defect criteria'],['testing','Testing'],['advisory','Advisories'],['backup','Backup & sync']];
-  h += '<div class="gvs-tabs">'+tabs.map(function(t){ return '<button class="gvs-tab'+(tab===t[0]?' on':'')+'" onclick="gvsTab(\''+t[0]+'\')">'+e(t[1])+'</button>'; }).join('')+'</div>';
-  h += tab==='valves' ? tabValves() : tab==='route' ? tabRoute() : tab==='flange' ? tabFlange() : tab==='sow' ? tabSow() : tab==='spares' ? tabSpares() : tab==='criteria' ? tabCriteria()
+  var tabs = [['valves','Valves & PNs'],['route','Seat pocket route'],['flange','Flange ring grooves'],['sow','SOW files'],['spares','Spares'],['criteria','Defect criteria'],['testing','Testing'],['advisory','Advisories']];
+  var eqTabs = window.EqStd ? EqStd.tabs() : [];
+  var tbtn = function(t){ return '<button class="gvs-tab'+(tab===t[0]?' on':'')+'" onclick="gvsTab(\''+t[0]+'\')">'+e(t[1])+'</button>'; };
+  h += '<div class="gvs-tabgrp">Gate valve</div><div class="gvs-tabs">'+tabs.map(tbtn).join('')+'</div>'
+    + (eqTabs.length ? '<div class="gvs-tabgrp">Other equipment</div><div class="gvs-tabs">'+eqTabs.map(tbtn).join('')+'</div>' : '')
+    + '<div class="gvs-tabs">'+tbtn(['backup','Backup & sync'])+'</div>';
+  h += (tab.indexOf('eq:')===0 && window.EqStd) ? EqStd.tabHTML(tab.slice(3)) : tab==='valves' ? tabValves() : tab==='route' ? tabRoute() : tab==='flange' ? tabFlange() : tab==='sow' ? tabSow() : tab==='spares' ? tabSpares() : tab==='criteria' ? tabCriteria()
      : tab==='testing' ? tabTesting() : tab==='advisory' ? tabAdvisory() : tabBackup();
   h += '<button class="save-full-btn" onclick="gvsSave()">Save standards</button>';
   body.innerHTML = h;
@@ -14767,6 +14775,10 @@ function bumpRev(r){
 window.gvsSave = function(opts){
   if(!D) return;
   var reset = (opts && opts.reset) || pendingReset;
+  if(window.EqStd){
+    var eqErr = EqStd.validate(EqStd.eqOf(D));
+    if(eqErr.length){ tab = eqErr[0].tab; render(); window.scrollTo(0,0); toast('⚠ '+eqErr[0].msg+(eqErr.length>1?' (and '+(eqErr.length-1)+' more)':''), 5000); return; }
+  }
   var dup = duplicates(D), bp = bandProblems(D);
   if(dup.length){ toast('⚠ Duplicate valve part numbers — see Valves & PNs', 4000); tab = 'valves'; render(); return; }
   if(bp.length){ toast('⚠ '+bp[0], 4000); tab = 'criteria'; render(); return; }
@@ -15153,7 +15165,7 @@ window.loadSettingsPage = function(){ var r = _loadSettings.apply(this, argument
 var _sync = window.msSyncFromSharePoint;
 window.msSyncFromSharePoint = function(){ var r = _sync.apply(this, arguments); try{ gvsPull(false); }catch(x){} return r; };
 
-G.settingsRender = render; G.settingsDirty = function(){ return dirty; }; G.settingsInfo = fillInfo; G.SP_FILE = SP_FILE;
+G.settingsRender = render; G.settingsDirty = function(){ return dirty; }; G.settingsMark = mark; G.settingsInfo = fillInfo; G.SP_FILE = SP_FILE;
 G._draft = function(){ return D; };
 fillInfo();
 })();
@@ -15190,13 +15202,13 @@ function date(iso){ return iso ? new Date(iso).toLocaleDateString('en-GB', { day
 function build(std, opts){
   opts = opts || {};
   var keys = G.keys(std), secs = [], n = 0;
-  var title = std.docTitle || 'Frac Gate Valve Inspection and Disposition Standard';
+  var title = (!std.docTitle || std.docTitle==='Frac Gate Valve Inspection and Disposition Standard') ? 'Frac Equipment Inspection and Disposition Standard' : std.docTitle;
   var docNo = std.docNo || '';
   var sec = function(t, body, brk){ n++; secs.push({ n:n, t:t, body:body, brk:brk }); return n; };
 
   /* 1 purpose and scope */
   sec('Purpose and scope',
-    '<p>This standard defines how frac gate valves returned for redress are inspected and dispositioned with the FRAC Equipment Inspection App. '
+    '<p>This standard defines how frac equipment returned for redress — gate valves, and blind flanges, WECO flanges, crosses, adapters, frac heads and actuators — is inspected and dispositioned with the FRAC Equipment Inspection App. The gate valve sections come first, followed by the gate valve redress levels and the other equipment. '
     +'The inspector records the condition of each critical area of the FRAC Evaluation Report (good or damaged, defect type and approximate depth, and the measurements asked for). '
     +'The disposition, parts, scope of work, name plate change and test requirements are then set automatically from the criteria in this document.</p>'
     +'<p>It applies to the valves listed in section 4. Pressure testing records and NORM screening are outside the evaluation flow and follow their own procedures.</p>'
@@ -15405,6 +15417,9 @@ function build(std, opts){
     if(ap) sec('Appendix — IBOMs', ap, true);
   }
 
+  /* other equipment and gate valve redress levels */
+  if(window.EqStd && EqStd.docSections) EqStd.docSections(std, opts).forEach(function(x){ sec(x.t, x.body, x.brk); });
+
   /* 15 revision history */
   sec('Revision history', tbl(['Rev','Date','By','Change'], (std.log||[]).slice().reverse().map(function(l){ return [e(l.rev), e(date(l.at)), e(l.by||''), e(l.note||'')]; })));
 
@@ -15412,7 +15427,7 @@ function build(std, opts){
   var logoEl = document.querySelector('#view-home img'), logo = logoEl ? logoEl.src : '';
   var foot = (docNo ? docNo+' · ' : '')+'Rev '+(std.rev||'')+' · '+(opts.draft ? 'DRAFT — not saved' : std.draft ? 'DRAFT — not yet issued' : 'Uncontrolled when printed');
   var css = '@page{size:A4;margin:16mm 14mm 18mm;@bottom-left{content:"'+foot.replace(/"/g,'')+'";font:8pt Arial;color:#6b7280}@bottom-right{content:"Page " counter(page) " of " counter(pages);font:8pt Arial;color:#6b7280}}'
-    +'*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#111827;margin:0;padding:18px;line-height:1.4;background:#fff}'
+    +'*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#111827;margin:0;padding:18px;line-height:1.4;background:#fff}'
     +'.doc{max-width:190mm;margin:0 auto}'
     +'.hd{display:flex;align-items:center;gap:14px;border-bottom:3px solid #252963;padding-bottom:10px}.hd img{height:34px}.hd .t{flex:1}'
     +'.hd h1{font-size:17pt;color:#252963;margin:0}.hd .s{font-size:9pt;color:#6b7280;margin-top:3px}'
@@ -15466,13 +15481,14 @@ var anchor = document.getElementById('view-form');
 if(anchor && anchor.parentNode) anchor.parentNode.insertBefore(view, anchor); else document.body.appendChild(view);
 
 var CUR = { std:null, draft:false, back:'settings', spares:true, ibom:false };
-function doc(autoPrint){ return build(CUR.std, { draft:CUR.draft, spares:CUR.spares, ibom:CUR.ibom, autoPrint:autoPrint }); }
+function doc(autoPrint){ return build(CUR.std, { draft:CUR.draft, spares:CUR.spares, ibom:CUR.ibom, eq:CUR.eq!==false, autoPrint:autoPrint }); }
 function renderView(){
   var b = document.getElementById('gvd-body'); if(!b) return;
   var sp = typeof tokenValid==='function' && tokenValid() && typeof spConfig!=='undefined';
   b.innerHTML = '<div class="gvd-bar">'
     +'<label class="gvs-check"><input type="checkbox"'+(CUR.spares?' checked':'')+' onchange="gvdOpt(\'spares\',this.checked)"/> Spares and consumables</label>'
     +'<label class="gvs-check"><input type="checkbox"'+(CUR.ibom?' checked':'')+' onchange="gvdOpt(\'ibom\',this.checked)"/> IBOM appendix</label>'
+    +'<label class="gvs-check"><input type="checkbox"'+(CUR.eq!==false?' checked':'')+' onchange="gvdOpt(\'eq\',this.checked)"/> Other equipment</label>'
     +'<span style="flex:1"></span>'
     +(sp ? '<button class="settings-btn-save" onclick="gvdSave()" title="Saves to '+e(G.spFolders().std)+'">Save to SharePoint</button>' : '')
     +'<button class="settings-btn-connect" onclick="gvdPrint()">Print / save as PDF</button></div>'
@@ -15504,7 +15520,7 @@ window.gvdPrint = function(){
 };
 window.gvdSave = function(){
   if(!(typeof tokenValid==='function' && tokenValid())){ toast('⚠ Not connected to SharePoint'); return; }
-  var html = doc(true), dir = G.spFolders().std, fname = 'GV_Engineering_Standard_rev'+String(CUR.std.rev||'').replace(/[^\w.-]/g,'_')+(CUR.draft||CUR.std.draft?'_DRAFT':'')+'.html';
+  var html = doc(true), dir = G.spFolders().std, fname = 'Engineering_Standard_rev'+String(CUR.std.rev||'').replace(/[^\w.-]/g,'_')+(CUR.draft||CUR.std.draft?'_DRAFT':'')+'.html';
   var rd = new FileReader();
   rd.onload = function(ev){
     var buf = ev.target.result, go = function(){ msUploadPrintFile(dir, fname, buf, function(ok){ toast(ok ? '✅ '+fname+' saved to '+dir : '⚠ Saving to SharePoint failed', 4000); }); };
@@ -15547,9 +15563,10 @@ G.stdDoc = build;
        repair (HWR), or recommend replace.
      · Gate valve redress levels — which critical areas are inspected at RD1,
        RD1.5, RD2 and RD3, and whether the soft kit is replaced.
-   Saved to localStorage and, when connected, published to SharePoint
-   (Engineering Standards folder / Equipment_Standards.json) so every device
-   uses the same revision. Each new report keeps a copy of the criteria in force
+   Part of the one Engineering Standards: stored in the gate valve standards
+   object (key "equipment"), so it shares its revision, draft, revision history,
+   SharePoint file (GV_Standards.json), backup and the printable standards
+   document. Edited in the same editor (Settings → Engineering Standards). Each new report keeps a copy of the criteria in force
    when it was started, so a later revision never changes a saved report.
    Reports made before this module use the built-in values (the values the app
    used before). Reached from Settings, behind the admin password.
@@ -15659,13 +15676,37 @@ function normalise(o){
   RD_KEYS.forEach(function(k){ if(!Array.isArray(out.redress[k].points)) out.redress[k].points = []; });
   return out;
 }
-var STD = null;
-function load(){
-  var got = null; try{ var s = localStorage.getItem(KEY); if(s) got = JSON.parse(s); }catch(x){}
-  STD = normalise(got); return STD;
+function legacyLocal(){ try{ var s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; }catch(x){ return null; } }
+function strip(o){ delete o.rev; delete o.approvedBy; delete o.updatedAt; delete o.log; delete o.draft; return o; }
+function gvLive(){ return (window.GVEval && GVEval.liveStd) ? GVEval.liveStd() : null; }
+/* the equipment block of a standards object, normalised once; a standards object saved before
+   the merge takes the copy saved by the separate editor on this device, else the built-in values */
+function eqOf(std){
+  if(!std) return normalise(null);
+  if(!std.equipment || !std.equipment.__norm){
+    var seed = std.equipment || legacyLocal();
+    var n = strip(normalise(seed));
+    Object.defineProperty(n, '__norm', { value:true, enumerable:false });
+    std.equipment = n;
+  }
+  return std.equipment;
 }
-function live(){ return STD || load(); }
-function write(o){ STD = normalise(o); try{ localStorage.setItem(KEY, JSON.stringify(STD)); }catch(x){ toast('⚠ Could not save on this device: '+x.message); } return STD; }
+var VIEW = null, VIEW_SRC = null;
+function live(){
+  var g = gvLive(); if(!g) return normalise(null);
+  if(VIEW && VIEW_SRC===g) return VIEW;
+  var eq = eqOf(g);
+  VIEW = eq; VIEW_SRC = g;
+  return VIEW;
+}
+function revLabel(){ var g = gvLive(); return g ? String(g.rev||'')+(g.draft?' (draft)':'') : ''; }
+/* used by tests and tools: replace the equipment block of the saved standards */
+function write(o){
+  var g = clone(gvLive()); g.equipment = strip(clone(o));
+  if(o && o.rev) g.rev = o.rev; if(o && o.updatedAt) g.updatedAt = o.updatedAt;
+  GVEval.writeStd(g); VIEW = null; return live();
+}
+function load(){ VIEW = null; return live(); }
 
 /* ── criteria lookup used by the inspection flows ─────────────────────── */
 function rgOf(r){
@@ -15735,7 +15776,7 @@ window.eqEngText = function(d, t, r){ return engText(d, t, r); };
 function rdScope(level){
   var R = live().redress[level]; if(!R) return { level:level, all:true, points:{}, cons:true };
   var pts = {}; (R.points||[]).forEach(function(id){ pts[id] = 1; });
-  return { level:level, all:!!R.all, points:pts, cons:R.cons!==false, rev:live().rev };
+  return { level:level, all:!!R.all, points:pts, cons:R.cons!==false, rev:revLabel() };
 }
 
 /* ── checklist and criteria copied onto each new report ───────────────── */
@@ -15748,7 +15789,7 @@ if(typeof _startFor==='function'){
       if(T && T.rg) current.eqCrit = clone(T.rg);
       if(T && T.checklist) current.checklist = clone(T.checklist);
       else if(LIST_TYPES.indexOf(type)===-1 && RG_TYPES.indexOf(type)===-1 && type!=='GATE_VALVE') current.checklist = clone(S.types.FRAC_HEAD.checklist);
-      if(T || current.checklist) current.eqStdRev = S.rev;
+      if(T || current.checklist) current.eqStdRev = revLabel();
       if(typeof renderForm==='function') renderForm();
     }
     return out;
@@ -15822,7 +15863,15 @@ if(typeof _save==='function'){
   };
 }
 
-window.EqStd = { live:live, load:load, write:write, defaults:defaults, normalise:normalise, rgOf:rgOf, rdScope:rdScope,
+function validateTabs(o){
+  o = o && o.__norm ? o : eqOf({ equipment:o });
+  return validate(o).map(function(msg){
+    var tab = 'eq:REDRESS';
+    TYPES.forEach(function(t){ if(msg.indexOf(label(t))===0) tab = 'eq:'+t; });
+    return { tab:tab, msg:msg };
+  });
+}
+window.EqStd = { docSections:function(a,b){ return docSections(a,b); }, live:live, load:load, write:write, revLabel:revLabel, eqOf:eqOf, tabs:tabs, tabHTML:tabHTML, validate:validateTabs, summary:summary, defaults:defaults, normalise:normalise, rgOf:rgOf, rdScope:rdScope,
   rdText:function(k){ var R = live().redress[k]; return (R && R.text) || RD_TXT[k] || ''; },
   pnLookup:pnLookup, pnNear:pnNear, variantFor:variantFor, followPN:function(){ if(current && !current.gvEval) followPN(); }, RG_TYPES:RG_TYPES, LIST_TYPES:LIST_TYPES, TYPES:TYPES, RD_KEYS:RD_KEYS, RD_LABEL:RD_LABEL, SP_FILE:SP_FILE };
 
@@ -15865,53 +15914,25 @@ var css = ''
  +'#gve-rdtop .gve-rd-row{display:grid;grid-template-columns:1.7fr repeat(4,1fr);gap:5px}#gve-rdtop .gve-rd-btn{min-width:0;padding:9px 4px;font-size:12.5px}';
 var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
-/* ══ Settings editor ═════════════════════════════════════════════════════ */
-var D = null, dirty = false, tab = 'BLIND_FLANGE';
+/* ══ Editor tabs — shown inside Settings → Engineering Standards ═════════ */
 function unlocked(){ return typeof adminUnlocked!=='undefined' && adminUnlocked; }
-
-var view = document.createElement('div');
-view.id = 'view-eqstd'; view.className = 'hidden';
-view.innerHTML = '<div class="topbar"><button class="topbar-back" onclick="eqsBack()">&larr; Settings</button>'+(typeof topbarLogo==='function'?topbarLogo():'')
-  +'<div class="topbar-title">Equipment Standards</div>'
-  +'<button class="theme-btn" onclick="toggleTheme()" title="Toggle theme">&#127769;</button>'
-  +'<button class="topbar-action btn-save" onclick="eqsSave()">Save</button></div>'
-  +'<div class="settings-body gvs-body" id="eqs-body"></div>';
-var anchor = document.getElementById('view-form');
-if(anchor && anchor.parentNode) anchor.parentNode.insertBefore(view, anchor); else document.body.appendChild(view);
-
-var card = document.createElement('div');
-card.className = 'settings-card'; card.id = 'eqs-card';
-card.innerHTML = '<div class="settings-card-header">'
-  +'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg>'
-  +' Equipment Engineering Standards</div>'
-  +'<div class="settings-card-sub">Inspection and disposition criteria for blind flanges, WECO flanges, crosses, adapters, frac heads and actuators — depth paths, machining and thickness limits, references, disposition wording, checklists and part numbers — and the gate valve redress level scopes (RD1 – RD3). Engineering only.</div>'
-  +'<div class="info-grid" id="eqs-info"></div>'
-  +'<div class="settings-actions"><button class="settings-btn-connect" onclick="eqsOpen()">Open standards editor</button></div>';
-function placeCard(){
-  var sb = document.querySelector('#view-settings .settings-body'); if(!sb) return;
-  var gv = document.getElementById('gvs-card');
-  if(gv && gv.parentNode===sb){ if(gv.nextSibling) sb.insertBefore(card, gv.nextSibling); else sb.appendChild(card); }
-  else sb.appendChild(card);
+var DSRC = null;
+function ED(){                                   /* the equipment block of the standards being edited */
+  var d = window.GVEval && GVEval._draft ? GVEval._draft() : null;
+  if(!d) return eqOf(null);
+  if(DSRC!==d || !d.equipment || !d.equipment.__norm){ eqOf(d); DSRC = d; }
+  return d.equipment;
 }
-placeCard();
-function fillInfo(){
-  var el = document.getElementById('eqs-info'); if(!el) return;
-  var s = live(), row = function(k, v){ return '<div class="info-row"><span class="info-key">'+e(k)+'</span><span class="info-val">'+v+'</span></div>'; };
-  var pn = 0, nv = 0, ib = 0; TYPES.forEach(function(t){ (s.types[t].variants||[]).forEach(function(v){ nv++; pn += (v.pns||[]).length; if(v.ibom) ib++; }); });
-  el.innerHTML = row('Revision', e(s.rev||'—')) + row('Approved by', e(s.approvedBy||'—'))
-    + row('Last saved', s.updatedAt ? e(new Date(s.updatedAt).toLocaleString('en-GB')) : 'Built-in defaults — not yet saved')
-    + row('Equipment types', String(TYPES.length)) + row('Part number configurations', nv+' ('+pn+' PNs, '+ib+' iBOMs)');
-}
-
-function setDirty(){ dirty = true; var d = document.getElementById('eqs-dirty'); if(d) d.style.display = 'inline-block'; }
-function walk(path){ var p = path.split('|'), o = D; for(var i=0;i<p.length-1;i++){ if(o[p[i]]===undefined) o[p[i]] = {}; o = o[p[i]]; } return { o:o, k:p[p.length-1] }; }
+function setDirty(){ if(GVEval.settingsMark) GVEval.settingsMark(); }
+function render(){ var y = window.scrollY; if(GVEval.settingsRender) GVEval.settingsRender(); window.scrollTo(0, y); }
+function walk(path){ var p = path.split('|'), o = ED(); for(var i=0;i<p.length-1;i++){ if(o[p[i]]===undefined) o[p[i]] = {}; o = o[p[i]]; } return { o:o, k:p[p.length-1] }; }
 function get(path){ var w = walk(path); return w.o[w.k]; }
-window.eqsSet = function(path, v){ var w = walk(path); w.o[w.k] = v; setDirty(); var ex = document.getElementById('eqs-ex'); if(ex && /\|rg\|/.test(path)) ex.innerHTML = exampleHTML(tab); };
+window.eqsSet = function(path, v){ var w = walk(path); w.o[w.k] = v; setDirty(); var ex = document.getElementById('eqs-ex'); if(ex && /\|rg\|/.test(path)) ex.innerHTML = exampleHTML(path.split('|')[1]); };
 function inp(path, ph, w){ return '<input class="field-input"'+(w?' style="width:'+w+'"':'')+' value="'+e(get(path)==null?'':get(path))+'" placeholder="'+e(ph||'')+'" oninput="eqsSet(\''+path+'\',this.value)"/>'; }
 function area(path, rows){ return '<textarea class="field-input" rows="'+(rows||2)+'" oninput="eqsSet(\''+path+'\',this.value)">'+e(get(path)||'')+'</textarea>'; }
 
 function exampleHTML(t){
-  var r = { equipType:t, eqCrit:D.types[t].rg }, c = rgOf(r);
+  var r = { equipType:t, eqCrit:ED().types[t].rg }, c = rgOf(r);
   var dA = c.polish, dB = Math.min(c.skim, c.polish + (c.skim-c.polish)/2), dC = c.skim + 0.005;
   var thkOk = (isFinite(c.thkMax) ? c.thkMax : c.minThk + 0.1), thkBad = c.minThk + c.allow + dC;
   var hw = isFinite(c.hwrMin) ? c.hwrMin + c.allow + dC - 0.01 : null;
@@ -15945,7 +15966,7 @@ function tabRG(t){
   return h;
 }
 function tabList(t){
-  var L = D.types[t].checklist, h = '<div class="card"><div class="section-title">Inspection checklist — '+e(label(t))+'</div>'
+  var L = ED().types[t].checklist, h = '<div class="card"><div class="section-title">Inspection checklist — '+e(label(t))+'</div>'
     +'<div class="gvs-tip">Each new report takes a copy of this list. Saved reports keep the list they were made with.</div>'
     +'<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:34px">#</th><th>Inspection item</th><th style="width:130px">Zone</th><th style="width:100px"></th></tr></thead><tbody>';
   L.forEach(function(it, i){
@@ -15958,7 +15979,7 @@ function tabList(t){
   return h;
 }
 function tabPNs(t){
-  var V = D.types[t].variants, rg = RG_TYPES.indexOf(t)!==-1;
+  var V = ED().types[t].variants, rg = RG_TYPES.indexOf(t)!==-1;
   var h = '<div class="card"><div class="section-title">Part numbers &amp; spares — '+e(label(t))+'</div>'
     +'<div class="gvs-tip">One entry per configuration. The form loads the spare parts tables of the entry whose part number matches the report (with a single entry it is used for every report). The name plate scan fills the description from here.'+(rg?' Thickness limits set here replace the '+e(label(t))+' defaults for that part number.':'')+'</div>'
     +'<div class="gvs-btns" style="margin-bottom:10px"><button class="gvs-addbtn" onclick="eqsAddVar(\''+t+'\')">+ Add configuration</button>'
@@ -16028,27 +16049,27 @@ function ibomPick(t, v, i){
 var OPEN = {};
 window.eqsOpenVar = function(t, id, on){ OPEN[t+'|'+id] = on; };
 window.eqsSetB = function(path, v){ var w = walk(path); w.o[w.k] = !!v; setDirty(); };
-window.eqsVarPNs = function(t, i, val){ D.types[t].variants[i].pns = String(val||'').split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean); setDirty(); };
-window.eqsAddVar = function(t){ var v = blankVariant(); D.types[t].variants.push(v); OPEN[t+'|'+v.id] = true; setDirty(); render(); };
-window.eqsDelVar = function(t, i){ var v = D.types[t].variants[i]; if(!confirm('Delete the configuration '+((v.pns||[]).join(' / ')||v.desc||'')+'? Saved reports keep their spare parts lists.')) return; D.types[t].variants.splice(i,1); setDirty(); render(); };
-window.eqsAddRow = function(t, i, k){ var v = D.types[t].variants[i]; OPEN[t+'|'+v.id] = true; var row = { pn:'', description:'', qty:'1' }; if(k==='condition') row.options = COND_OPTS(''); v[k].push(row); setDirty(); render(); };
-window.eqsDelRow = function(t, i, k, n){ D.types[t].variants[i][k].splice(n,1); setDirty(); render(); };
-window.eqsAddOpt = function(t, i, k){ D.types[t].variants[i].condition[k].options.push({ label:'', disp:'', replace:false }); setDirty(); render(); };
-window.eqsDelOpt = function(t, i, k, m){ D.types[t].variants[i].condition[k].options.splice(m,1); setDirty(); render(); };
+window.eqsVarPNs = function(t, i, val){ ED().types[t].variants[i].pns = String(val||'').split(/[,;\s]+/).map(function(x){ return x.trim(); }).filter(Boolean); setDirty(); };
+window.eqsAddVar = function(t){ var v = blankVariant(); ED().types[t].variants.push(v); OPEN[t+'|'+v.id] = true; setDirty(); render(); };
+window.eqsDelVar = function(t, i){ var v = ED().types[t].variants[i]; if(!confirm('Delete the configuration '+((v.pns||[]).join(' / ')||v.desc||'')+'? Saved reports keep their spare parts lists.')) return; ED().types[t].variants.splice(i,1); setDirty(); render(); };
+window.eqsAddRow = function(t, i, k){ var v = ED().types[t].variants[i]; OPEN[t+'|'+v.id] = true; var row = { pn:'', description:'', qty:'1' }; if(k==='condition') row.options = COND_OPTS(''); v[k].push(row); setDirty(); render(); };
+window.eqsDelRow = function(t, i, k, n){ ED().types[t].variants[i][k].splice(n,1); setDirty(); render(); };
+window.eqsAddOpt = function(t, i, k){ ED().types[t].variants[i].condition[k].options.push({ label:'', disp:'', replace:false }); setDirty(); render(); };
+window.eqsDelOpt = function(t, i, k, m){ ED().types[t].variants[i].condition[k].options.splice(m,1); setDirty(); render(); };
 window.eqsIbPick = function(t, i, idx, k, on){
-  var v = D.types[t].variants[i], r = v.ibom.rows[idx]; if(!r) return;
+  var v = ED().types[t].variants[i], r = v.ibom.rows[idx]; if(!r) return;
   var at = -1; v[k].forEach(function(x, n){ if(normPN(x.pn)===normPN(r.pn)) at = n; });
   if(on && at===-1){ var row = { pn:r.pn, description:r.desc, qty:String(parseFloat(r.qty)||1) }; if(k==='condition') row.options = COND_OPTS(r.pn); v[k].push(row); }
   if(!on && at!==-1) v[k].splice(at,1);
   OPEN[t+'|'+v.id] = true; setDirty();
   var y = window.scrollY; render(); window.scrollTo(0, y);
 };
-window.eqsIbomDel = function(t, i){ if(!confirm('Remove the iBOM? The spare parts tables stay as they are.')) return; D.types[t].variants[i].ibom = null; setDirty(); render(); };
+window.eqsIbomDel = function(t, i){ if(!confirm('Remove the iBOM? The spare parts tables stay as they are.')) return; ED().types[t].variants[i].ibom = null; setDirty(); render(); };
 window.eqsIbom = function(t, i, input){
   var f = input.files && input.files[0]; input.value = ''; if(!f) return;
   if(!(window.GVEval && GVEval.ibom)){ toast('⚠ The iBOM reader is not available'); return; }
   GVEval.ibom.readTable(f).then(function(rows){
-    var ib = GVEval.ibom.parse(rows), V = D.types[t].variants, v = i>=0 ? V[i] : null;
+    var ib = GVEval.ibom.parse(rows), V = ED().types[t].variants, v = i>=0 ? V[i] : null;
     if(!v) v = V.filter(function(x){ return (x.pns||[]).some(function(p){ return normPN(p)===normPN(ib.pn); }); })[0] || null;
     var made = false;
     if(!v){ v = blankVariant(); V.push(v); made = true; }
@@ -16070,65 +16091,32 @@ function tabRedress(){
     h += '<tr class="sec"><td colspan="'+(RD_KEYS.length+1)+'">'+e(c.n+'. '+c.title)+'</td></tr>';
     c.points.forEach(function(p){
       h += '<tr><td>'+e(p.label)+'</td>'+RD_KEYS.map(function(k){
-        var R = D.redress[k], on = R.all || (R.points||[]).indexOf(p.id)!==-1;
+        var R = ED().redress[k], on = R.all || (R.points||[]).indexOf(p.id)!==-1;
         return '<td class="ck"><input type="checkbox"'+(on?' checked':'')+' onchange="eqsRdPt(\''+k+'\',\''+p.id+'\',this.checked)"/></td>'; }).join('')+'</tr>';
     });
   });
   h += '<tr class="sec"><td colspan="'+(RD_KEYS.length+1)+'">Soft kit</td></tr><tr><td>Consumables replaced (soft kit)</td>'
-    + RD_KEYS.map(function(k){ return '<td class="ck"><input type="checkbox"'+(D.redress[k].cons!==false?' checked':'')+' onchange="eqsRdCons(\''+k+'\',this.checked)"/></td>'; }).join('')+'</tr>';
+    + RD_KEYS.map(function(k){ return '<td class="ck"><input type="checkbox"'+(ED().redress[k].cons!==false?' checked':'')+' onchange="eqsRdCons(\''+k+'\',this.checked)"/></td>'; }).join('')+'</tr>';
   h += '</tbody></table></div>';
   h += RD_KEYS.map(function(k){ return '<label class="field-label" style="margin-top:10px">'+RD_LABEL[k]+' — scope description shown to the inspector</label>'+area('redress|'+k+'|text', 2); }).join('');
   return h+'</div>';
 }
-function tabSync(){
-  var s = live(), ok = typeof tokenValid==='function' && tokenValid();
-  return '<div class="card"><div class="section-title">SharePoint and backup</div>'
-    +'<div class="gvs-tip">Saving publishes to <b>'+e(stdDir())+'/'+SP_FILE+'</b> when connected. Other devices load it on sync. Saved rev '+e(s.rev)+(s.updatedAt?' · '+e(new Date(s.updatedAt).toLocaleString('en-GB')):' · built-in defaults')+'.</div>'
-    +'<div class="gvs-btns"><button class="settings-btn-connect" '+(ok?'':'disabled ')+'onclick="eqsPush(true)">Publish to SharePoint</button>'
-    +'<button class="settings-btn-save" '+(ok?'':'disabled ')+'onclick="eqsPull(true)">Load from SharePoint</button>'
-    +'<button class="settings-btn-save" onclick="eqsExport()">Download backup (.json)</button>'
-    +'<label class="settings-btn-save" style="cursor:pointer">Restore backup<input type="file" accept=".json,application/json" style="display:none" onchange="eqsImport(this)"/></label>'
-    +'<button class="settings-btn-disconnect" onclick="eqsReset()">Reset to built-in values…</button></div>'
-    +(ok?'':'<div class="gvs-tip" style="margin-top:8px">Not connected to SharePoint — saved on this device only.</div>')
-    +((s.log||[]).length?'<div style="margin-top:12px">'+s.log.slice(-8).reverse().map(function(x){ return '<div class="gvs-log"><b>Rev '+e(x.rev)+'</b> · '+e(new Date(x.at).toLocaleString('en-GB'))+(x.by?' · '+e(x.by):'')+(x.note?'<div>'+e(x.note)+'</div>':'')+'</div>'; }).join('')+'</div>':'')
-    +'</div>';
-}
-var NOTE = '';
-function render(){
-  var body = document.getElementById('eqs-body'); if(!body) return;
-  var h = '<div class="card"><div class="section-title">Revision <span class="gvs-dirty" id="eqs-dirty" style="display:'+(dirty?'inline-block':'none')+'">UNSAVED CHANGES</span></div>'
-    +'<div class="gvs-grid"><div><label class="field-label">Revision</label>'+inp('rev','1.0')+'</div>'
-    +'<div><label class="field-label">Approved by (Engineering)</label>'+inp('approvedBy','Name')+'</div>'
-    +'<div class="full"><label class="field-label">Change note</label><input class="field-input" placeholder="What changed in this revision" value="'+e(NOTE)+'" oninput="NOTE_EQS(this.value)"/></div></div>'
-    +'<div class="gvs-tip" style="margin:8px 0 0">New reports take a copy of these criteria when they are started. Saved reports keep theirs.</div></div>';
-  var tabs = TYPES.map(function(t){ return [t, label(t).replace(/^GV Actuator.*/,'Actuator')]; }).concat([['REDRESS','GV redress levels'],['SYNC','Backup & sync']]);
-  h += '<div class="gvs-tabs">'+tabs.map(function(x){ return '<button class="gvs-tab'+(tab===x[0]?' on':'')+'" onclick="eqsTab(\''+x[0]+'\')">'+e(x[1])+'</button>'; }).join('')+'</div>';
-  if(tab==='REDRESS') h += tabRedress();
-  else if(tab==='SYNC') h += tabSync();
-  else { h += (RG_TYPES.indexOf(tab)!==-1 ? tabRG(tab) : tabList(tab)) + tabPNs(tab); }
-  h += '<button class="save-full-btn" onclick="eqsSave()">Save standards</button>';
-  body.innerHTML = h;
-}
-window.NOTE_EQS = function(v){ NOTE = v; setDirty(); };
-window.eqsTab = function(t){ tab = t; render(); window.scrollTo(0,0); };
-window.eqsMove = function(t, i, d){ var L = D.types[t].checklist, j = i+d; if(j<0||j>=L.length) return; var x = L[i]; L[i] = L[j]; L[j] = x; setDirty(); render(); };
-window.eqsDelItem = function(t, i){ var L = D.types[t].checklist; if(!confirm('Remove "'+(L[i].label||'item')+'" from the '+label(t)+' checklist? Saved reports keep it.')) return; L.splice(i,1); setDirty(); render(); };
+window.eqsMove = function(t, i, d){ var L = ED().types[t].checklist, j = i+d; if(j<0||j>=L.length) return; var x = L[i]; L[i] = L[j]; L[j] = x; setDirty(); render(); };
+window.eqsDelItem = function(t, i){ var L = ED().types[t].checklist; if(!confirm('Remove "'+(L[i].label||'item')+'" from the '+label(t)+' checklist? Saved reports keep it.')) return; L.splice(i,1); setDirty(); render(); };
 window.eqsAddItem = function(t){
-  var L = D.types[t].checklist, used = {}; L.forEach(function(x){ used[x.id] = 1; });
+  var L = ED().types[t].checklist, used = {}; L.forEach(function(x){ used[x.id] = 1; });
   var id, n = L.length+1; do { id = (t==='ACTUATOR'?'ax':'gx')+n++; } while(used[id]);
   L.push({ id:id, label:'', zone:(L.length?L[L.length-1].zone:'General') }); setDirty(); render();
 };
-window.eqsAddPN = function(t){ D.types[t].pns.push({ pn:'', desc:'', size:'' }); setDirty(); render(); };
-window.eqsDelPN = function(t, i){ D.types[t].pns.splice(i,1); setDirty(); render(); };
 window.eqsRdPt = function(k, id, on){
-  var R = D.redress[k];
+  var R = ED().redress[k];
   if(R.all){ R.all = false; R.points = GVEval.allPointIds(); }
   var i = R.points.indexOf(id);
   if(on && i===-1) R.points.push(id); if(!on && i!==-1) R.points.splice(i,1);
   if(GVEval.allPointIds().every(function(p){ return R.points.indexOf(p)!==-1; })){ R.all = true; R.points = []; }
   setDirty();
 };
-window.eqsRdCons = function(k, on){ D.redress[k].cons = !!on; setDirty(); };
+window.eqsRdCons = function(k, on){ ED().redress[k].cons = !!on; setDirty(); };
 
 function validate(o){
   var errs = [];
@@ -16167,95 +16155,121 @@ function validate(o){
   });
   return errs;
 }
-window.eqsSave = function(){
-  if(!D) return;
-  var errs = validate(D);
-  if(errs.length){ alert('Not saved:\n\n• '+errs.join('\n• ')); return; }
-  var prev = live();
-  if(prev.updatedAt && String(D.rev)===String(prev.rev) && !confirm('Save without changing the revision ('+D.rev+')?')) return;
-  D.updatedAt = new Date().toISOString();
-  D.log = (D.log||[]).concat([{ rev:D.rev, at:D.updatedAt, by:(typeof spConfig!=='undefined'&&spConfig.userName)||'', note:NOTE }]).slice(-40);
-  write(D); D = clone(live()); dirty = false; NOTE = '';
-  render(); fillInfo();
-  toast('✅ Equipment standards rev '+D.rev+' saved');
-  eqsPush(false);
-};
-window.eqsBack = function(){ if(dirty && !confirm('Leave without saving the changes?')) return; dirty = false; D = null; showView('settings'); };
-window.eqsOpen = function(){
-  if(!unlocked()){ if(typeof showSettings==='function') showSettings(); return; }
-  D = clone(live()); dirty = false; NOTE = ''; tab = 'BLIND_FLANGE';
-  showView('eqstd');
-};
-window.eqsReset = function(){
-  if(!confirm('Replace every value in the editor with the built-in values? Nothing is saved until you press Save.')) return;
-  var keep = { rev:D.rev, approvedBy:D.approvedBy, log:D.log }; D = defaults(); D.rev = keep.rev; D.approvedBy = keep.approvedBy; D.log = keep.log;
-  setDirty(); render();
-};
-window.eqsExport = function(){
-  var blob = new Blob([JSON.stringify(live(), null, 2)], { type:'application/json' }), a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'Equipment_Standards_rev'+String(live().rev).replace(/[^\w.-]/g,'_')+'.json';
-  document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-};
-window.eqsImport = function(input){
-  var f = input.files && input.files[0]; input.value = ''; if(!f) return;
-  var rd = new FileReader();
-  rd.onload = function(){
-    try{ var o = JSON.parse(rd.result); if(!o || !o.types) throw new Error('not an equipment standards file');
-      D = normalise(o); setDirty(); render(); toast('Backup loaded into the editor — press Save to use it');
-    }catch(x){ toast('⚠ '+x.message); }
-  };
-  rd.readAsText(f);
-};
+/* ── sections of the printable standards document ─────────────────────── */
+function dv(x){ var t = String(x==null?'':x).trim(); return t ? e(t) : '<span class="nil">—</span>'; }
+function dtbl(head, rows, cls){
+  return '<table class="'+(cls||'')+'"><thead><tr>'+head.map(function(h){ return '<th>'+h+'</th>'; }).join('')+'</tr></thead><tbody>'
+    +(rows.length ? rows.map(function(r){ return '<tr>'+r.map(function(c){ return '<td>'+c+'</td>'; }).join('')+'</tr>'; }).join('') : '<tr><td colspan="'+head.length+'" class="nil">None</td></tr>')
+    +'</tbody></table>';
+}
+function dkv(rows){ return '<table class="kv"><tbody>'+rows.map(function(r){ return '<tr><th>'+r[0]+'</th><td>'+r[1]+'</td></tr>'; }).join('')+'</tbody></table>'; }
+function inch(v){ var n = num(v, NaN); return isFinite(n) ? fmtIn(n)+'"' : '<span class="nil">—</span>'; }
+function tplDoc(txt, c){
+  var known = { rgDwg:c.rgDwg, hardness:c.hardness, hardnessRef:c.hardnessRef, ndeRef:c.ndeRef, minThk:fmtIn(num(c.minThk,NaN)),
+                hwrMin:String(c.hwrMin||'').trim() ? fmtIn(num(c.hwrMin,NaN)) : '[HWR min]', machStep:fmtIn(num(c.machStep,NaN)),
+                depth:'[depth]', thk:'[thickness]', remain:'[remaining]', machTo:'[depth + allowance]', maxRemove:'[2 × depth + step]' };
+  return e(String(txt||'').replace(/\{(\w+)\}/g, function(m, k){ return known[k]!==undefined ? known[k] : m; }));
+}
+function docSections(std, opts){
+  opts = opts || {};
+  if(opts.eq===false) return [];
+  var q = eqOf(std), out = [];
+  var sec = function(t, body, brk){ out.push({ t:t, body:body, brk:!!brk }); };
 
-/* ── SharePoint ───────────────────────────────────────────────────────── */
-function stdDir(){ return (window.GVEval && GVEval.spFolders) ? GVEval.spFolders().std : 'Inspection App/Engineering Standards'; }
-function spReady(){ return typeof tokenValid==='function' && tokenValid() && typeof spConfig!=='undefined'; }
-window.eqsPush = function(loud){
-  if(!spReady()){ if(loud) toast('⚠ Not connected to SharePoint'); return; }
-  var s = live(); if(!s.updatedAt){ if(loud) toast('Save the standards first'); return; }
-  var go = function(){ msUploadFile(stdDir(), SP_FILE, JSON.stringify(s, null, 2), true, function(ok){
-    toast(ok ? '✅ Equipment standards rev '+s.rev+' published to '+stdDir() : '⚠ Publishing the equipment standards failed'); }); };
-  (window.GVEval && GVEval.files && GVEval.files.ensurePath ? GVEval.files.ensurePath(stdDir()) : Promise.resolve()).then(go, go);
-};
-window.eqsPull = function(loud){
-  if(!spReady() || typeof msResolveSite!=='function'){ if(loud) toast('⚠ Not connected to SharePoint'); return; }
-  msResolveSite(function(ok){
-    if(!ok) return;
-    var path = (stdDir()+'/'+SP_FILE).split('/').map(encodeURIComponent).join('/');
-    fetch('https://graph.microsoft.com/v1.0/drives/'+spDriveId+'/root:/'+path+':/content', { headers:{ 'Authorization':'Bearer '+msAccessToken } })
-      .then(function(r){ return r.ok ? r.json() : null; })
-      .then(function(o){
-        if(!o || !o.types || !o.updatedAt){ if(loud) toast('No equipment standards published on SharePoint yet'); return; }
-        var l = live();
-        if(!loud && l.updatedAt && String(o.updatedAt) <= String(l.updatedAt)) return;
-        if(loud && l.updatedAt && String(o.updatedAt) < String(l.updatedAt) && !confirm('SharePoint has rev '+o.rev+', older than this device\'s rev '+l.rev+'. Load it anyway?')) return;
-        write(o); fillInfo();
-        if(D && !dirty){ D = clone(live()); render(); }
-        toast('✅ Equipment standards rev '+o.rev+' loaded from SharePoint');
-      }).catch(function(){ if(loud) toast('⚠ Could not load the equipment standards from SharePoint'); });
+  /* gate valve redress levels */
+  var comps = (window.GVEval && GVEval.COMPONENTS) || [], rows = [];
+  comps.forEach(function(c){
+    rows.push(['<b>'+e(c.n+'. '+c.title)+'</b>'].concat(RD_KEYS.map(function(){ return ''; })));
+    c.points.forEach(function(p){
+      rows.push(['&nbsp;&nbsp;'+e(p.label)].concat(RD_KEYS.map(function(k){ var R = q.redress[k]; return (R.all || (R.points||[]).indexOf(p.id)!==-1) ? '&#10003;' : '<span class="nil">—</span>'; })));
+    });
   });
-};
+  rows.push(['<b>Soft kit (consumables) replaced</b>'].concat(RD_KEYS.map(function(k){ return q.redress[k].cons!==false ? '&#10003;' : '<span class="nil">—</span>'; })));
+  sec('Gate valve redress levels',
+    '<p>The inspector selects the redress level at the top of the gate valve evaluation. With no level selected every critical area is evaluated. At a selected level only the areas ticked below are evaluated, and the pressure test (body and seat) is required. '
+    +'If the pressure test fails, or a finding needs the valve opened further, the report is escalated to a higher level with a reason; the escalation and the test before it are recorded on the report. A report keeps the scope in force when its level was set.</p>'
+    +dkv(RD_KEYS.map(function(k){ return [RD_LABEL[k], dv(q.redress[k].text)]; }))
+    +dtbl(['Critical area'].concat(RD_KEYS.map(function(k){ return RD_LABEL[k]; })), rows, 'crit'), true);
 
-/* ── wiring ───────────────────────────────────────────────────────────── */
-var _showView = window.showView;
-window.showView = function(name){
-  var v = document.getElementById('view-eqstd');
-  if(name==='eqstd'){
-    if(!unlocked()){ if(v) v.classList.add('hidden'); return _showView.call(this, 'home'); }
-    ['home','form','history','preview','settings','dashboard','gvstd','gvdoc'].forEach(function(n){ var el = document.getElementById('view-'+n); if(el) el.classList.add('hidden'); });
-    if(v) v.classList.remove('hidden');
-    if(!D) D = clone(live());
-    render(); window.scrollTo(0,0);
-    return;
+  /* other equipment — process */
+  sec('Other equipment — evaluation process',
+    '<ol><li><b>Identify the equipment.</b> Scan the name plate or enter the part number, rev and serial number. The part number selects the configuration below, which sets the spare parts tables and any thickness limits for that part number.</li>'
+    +'<li><b>Blind flange, WECO flange, cross, adapter.</b> Full visual inspection, then each ring groove: damage yes / no, and for damage the maximum defect depth. The depth sets the path (A polish, B skim machine, C measure the flange thickness); for path C the remaining thickness sets the band — skim machine with clean-up pass, hot-weld repair (HWR) or recommend replace. Threads, gauges, unions and paint follow the form.</li>'
+    +'<li><b>Frac head and actuator.</b> Each checklist item is passed or failed; failures need an Engineering disposition.</li>'
+    +'<li><b>Spare parts.</b> Consumables are replaced unless the inspector marks one skipped; based-on-condition parts are passed or failed, and on fail the inspector picks the finding, which sets the disposition.</li>'
+    +'<li><b>Rework and QC.</b> Each finding with an action needs QC after rework (pass) before the report is complete.</li></ol>'
+    +'<p class="note">Each report keeps a copy of the criteria and checklist in force when it was started.</p>', true);
+
+  /* ring groove criteria */
+  var rg = '';
+  RG_TYPES.forEach(function(t){
+    var c = q.types[t].rg, tx = merge(TEXTS, c.texts||{}), hw = String(c.hwrMin||'').trim();
+    rg += '<h3>'+e(label(t))+'</h3>'
+      + dtbl(['Path','When','Disposition'], [
+          ['A — polish', 'Depth &le; '+inch(c.polishMax), tplDoc(tx.A, c)],
+          ['B — skim machine', inch(c.polishMax)+' &lt; depth &le; '+inch(c.skimMax), tplDoc(tx.B, c)],
+          ['C2 — skim machine, clean-up pass', 'Depth &gt; '+inch(c.skimMax)+' and remaining &gt; '+inch(c.minThk), tplDoc(tx.C2, c)],
+          ['C1 — hot-weld repair (HWR)', 'Remaining &le; '+inch(c.minThk)+(hw ? ' and &gt; '+inch(c.hwrMin) : ''), tplDoc(tx.C1, c)],
+          ['C3 — recommend replace', hw ? 'Remaining &le; '+inch(c.hwrMin) : '<span class="nil">Not used — no HWR minimum set</span>', hw ? tplDoc(tx.C3, c) : '<span class="nil">—</span>']
+        ], 'crit')
+      + dkv([['Remaining thickness', 'Measured flange thickness − (defect depth + machining allowance '+inch(c.machAllow)+')'],
+             ['Machining step', inch(c.machStep)], ['Max. flange thickness', inch(c.thkMax)], ['Hardness', dv(c.hardness)+(c.hardnessRef?' — '+e(c.hardnessRef):'')],
+             ['NDE', dv(c.ndeRef)], ['Ring groove dimensions', dv(c.rgDwg)], ['Visual inspection', dv(c.visualRef)]]);
+    var ov = (q.types[t].variants||[]).filter(function(v){ return String(v.minThk||'').trim() || String(v.hwrMin||'').trim() || String(v.thkMax||'').trim(); });
+    if(ov.length) rg += '<div class="cap">Thickness limits set for part numbers</div>'
+      + dtbl(['Part no.','Description','Clean-up min.','HWR min.','Max.'], ov.map(function(v){ return [e((v.pns||[]).join(', ')), dv(v.desc), inch(v.minThk), inch(v.hwrMin), inch(v.thkMax)]; }), 'sp');
+  });
+  sec('Other equipment — ring groove criteria and thickness bands', rg, true);
+
+  /* checklists */
+  var cl = '';
+  LIST_TYPES.forEach(function(t){ cl += '<h3>'+e(label(t))+'</h3>'+dtbl(['#','Inspection item','Zone'], (q.types[t].checklist||[]).map(function(x, i){ return [String(i+1), e(x.label), e(x.zone||'')]; })); });
+  sec('Frac head and actuator checklists', cl);
+
+  /* part numbers and spares */
+  var reg = [];
+  TYPES.forEach(function(t){ (q.types[t].variants||[]).forEach(function(v){ reg.push(['<b>'+e(label(t))+'</b>', e((v.pns||[]).join(', ')), dv(v.desc), dv(v.size), v.ibom ? e(v.ibom.pn)+' rev '+e(v.ibom.rev||'—') : '<span class="nil">—</span>']); }); });
+  var sp = '<p>The form loads the configuration whose part number matches the report (a type with one configuration uses it for every report).</p>'
+    + dtbl(['Equipment','Part numbers','Description','Size / rating','iBOM'], reg, 'reg');
+  if(opts.spares!==false){
+    TYPES.forEach(function(t){ (q.types[t].variants||[]).forEach(function(v){
+      if(!(v.consumables||[]).length && !(v.condition||[]).length) return;
+      sp += '<h3>'+e(label(t))+' — '+e((v.pns||[]).join(', ')||'—')+(v.desc?' · '+e(v.desc):'')+'</h3>'
+        + '<div class="two"><div><div class="cap">Consumables — replaced at every service</div>'+dtbl(['Part no.','Description','Qty'], (v.consumables||[]).map(function(c){ return [e(c.pn), e(c.description), e(c.qty)]; }), 'sp')+'</div>'
+        + '<div><div class="cap">Based on condition — findings and disposition</div>'+dtbl(['Part no.','Description','Qty','Findings'], (v.condition||[]).map(function(c){
+            return [e(c.pn), e(c.description), e(c.qty), (c.options||[]).map(function(o){ return '<b>'+e(o.label)+'</b> → '+e(o.disp)+(o.replace?' <span class="sm">(replace)</span>':''); }).join('<br>')]; }), 'sp')+'</div></div>';
+    }); });
   }
-  if(v) v.classList.add('hidden');
-  return _showView.apply(this, arguments);
-};
-var _loadSettings = window.loadSettingsPage;
-if(typeof _loadSettings==='function') window.loadSettingsPage = function(){ var r = _loadSettings.apply(this, arguments); placeCard(); fillInfo(); return r; };
-var _sync = window.msSyncFromSharePoint;
-if(typeof _sync==='function') window.msSyncFromSharePoint = function(){ var r = _sync.apply(this, arguments); try{ eqsPull(false); }catch(x){} return r; };
-load(); fillInfo();
+  sec('Other equipment — part numbers and spares', sp, true);
+
+  /* iBOM appendix */
+  if(opts.ibom){
+    var ap = '';
+    TYPES.forEach(function(t){ (q.types[t].variants||[]).forEach(function(v){
+      var ib = v.ibom; if(!ib || !(ib.rows||[]).length) return;
+      ap += '<h3>'+e(label(t))+': '+e(ib.pn)+' rev '+e(ib.rev||'—')+'</h3>'
+        + dtbl(['Lvl','Part','Rev','Qty','Description'], ib.rows.map(function(r){ return [r.lvl+(r.alt?'A':''), e(r.pn), e(r.rev), e(r.qty), e(r.desc)]; }), 'ib');
+    }); });
+    if(ap) sec('Appendix — other equipment iBOMs', ap, true);
+  }
+  return out;
+}
+window.eqsOpen = function(){ if(window.gvsOpen){ gvsOpen(); if(window.gvsTab) gvsTab('eq:BLIND_FLANGE'); } };
+
+/* ── tabs for the editor, validation, summary and the standards document ── */
+var TAB_LABEL = { BLIND_FLANGE:'Blind flange', WECO_FLANGE:'WECO flange', CROSS:'Cross', ADAPTER:'Adapter', FRAC_HEAD:'Frac head', ACTUATOR:'Actuator', REDRESS:'GV redress levels' };
+function tabs(){ return ['REDRESS'].concat(TYPES).map(function(k){ return ['eq:'+k, TAB_LABEL[k]]; }); }
+function tabHTML(k){
+  ED();
+  if(k==='REDRESS') return tabRedress();
+  if(TYPES.indexOf(k)===-1) return '';
+  return (RG_TYPES.indexOf(k)!==-1 ? tabRG(k) : tabList(k)) + tabPNs(k);
+}
+function summary(std){
+  var q = eqOf(std || gvLive()), nv = 0, pn = 0, ib = 0;
+  TYPES.forEach(function(t){ (q.types[t].variants||[]).forEach(function(v){ nv++; pn += (v.pns||[]).length; if(v.ibom) ib++; }); });
+  return TYPES.length+' types · '+nv+' PN configurations ('+pn+' PNs, '+ib+' iBOMs)';
+}
 })();
 </script>
 
