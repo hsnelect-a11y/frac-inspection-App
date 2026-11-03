@@ -1082,7 +1082,7 @@ body.has-sp-banner{padding-top:44px}
    Same value as CACHE_VERSION in service-worker.js — bump both on every
    deploy. Shown at the bottom of the home page; a tap (and every start)
    compares it with the version GitHub is serving and offers an update. */
-var APP_VERSION = 'frac-2026-11-03a';
+var APP_VERSION = 'frac-2026-11-03b';
 function appVersionShow(extra){
   var el = document.getElementById('home-ver'); if(!el) return;
   el.innerHTML = 'App version <b>'+APP_VERSION.replace(/^frac-/,'')+'</b>'+(extra||'');
@@ -10638,7 +10638,7 @@ var COMPONENTS = [
     { id:'body_rg_rhs', label:'RH Ring Groove',    group:'ringGroove', flange:true, hint:'End flange — measure the flange thickness when damaged',
       meas:[ {k:'flangeThkR', l:'RH flange thickness (in)', flange:true} ] },
     { id:'body_rg_btm', label:'Bottom Ring Groove', group:'ringGroove' },
-    { id:'body_backseat', label:'Back Seat Angle',  group:'backSeat' },
+    { id:'body_backseat', label:'Back Seat Angle',  group:'backSeat', balance:true },   /* balanced-stem valves only */
     { id:'body_nc', label:'Non-sealing and non-critical areas', hint:'Gate slot, ID, main bore, bottom face', mode:'nc' }
   ]},
   { id:'bonnet', n:'2', title:'Main Bonnet', snpn:true, replaceKey:'bonnetPN', points:[
@@ -10994,6 +10994,13 @@ function deriveBalanced(z){
 function isBalanced(std){ return !(std && std.size && std.size.balanced===false); }
 /* the components evaluated on this valve */
 function componentsFor(std){ var b = isBalanced(std); return COMPONENTS.filter(function(c){ return b || !c.balance; }); }
+/* the areas of one component evaluated on this valve: on a non-balanced valve the balanced-stem-only
+   areas (GV body back seat angle) are left out — unless a saved report already recorded them */
+function pointsFor(c, std, r){
+  if(isBalanced(std)) return c.points;
+  var pts = (r && r.gvEval && r.gvEval.pts) || {};
+  return c.points.filter(function(p){ return !p.balance || !!(pts[p.id] && pts[p.id].st); });
+}
 function valveKeys(std){ std = std || liveStd(); return (std.valveOrder||[]).filter(function(k){ return std.sizes[k]; }); }
 function newValveId(std){ var id; do { id = 'gv'+Date.now().toString(36)+Math.random().toString(36).slice(2,5); } while(std && std.sizes[id]); return id; }
 /* the valves whose nominal size matches, e.g. "3-1/16" */
@@ -11300,7 +11307,7 @@ function analyse(r){
   var sc = rdScopeOf(r);
   a.rd = sc ? { level:g.rdLevel, label:RD_LBL[g.rdLevel]||g.rdLevel, assigned:g.rdAssigned||g.rdLevel, scope:sc, history:g.rdHistory||[] } : null;
   a.outScope = [];
-  componentsFor(std).forEach(function(c){ c.points.forEach(function(pt){
+  componentsFor(std).forEach(function(c){ pointsFor(c, std, r).forEach(function(pt){
     if(!rdInScope(sc, pt.id)){ a.outScope.push({ comp:c, pt:pt }); return; }
     var ev = evalPoint(r, pt, std); ev.pt = pt; ev.comp = c;
     var ch = (g.compHWR||{})[c.id], ph = (g.ptHWR||{})[pt.id];
@@ -11624,7 +11631,7 @@ window.GVEval = {
   valveHistory:valveHistory, hwrEvidence:hwrEvidence, bareSN:bareSN, compHistory:compHistory, ptHistory:ptHistory,
   isStudPart:isStudPart, shortDesc:shortDesc, syncSpareDesc:syncSpareDesc, ibomDescMap:ibomDescMap,
   flangeFor:flangeFor, defaultFlanges:defaultFlanges, flangeCheck:flangeCheck, FLANGE_BY_NOMINAL:FLANGE_BY_NOMINAL,
-  componentsFor:componentsFor, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
+  componentsFor:componentsFor, pointsFor:pointsFor, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
   keys:valveKeys, newValveId:newValveId, blankValve:blankValve, defaultTesting:defaultTesting, valvesByNominal:valvesByNominal,
   NOMINALS:['1-13/16','2-1/16','2-9/16','3-1/16','4-1/16','5-1/8','7-1/16'], IMAGES:IMAGES,
   imageKey:function(r){ var st = stdOf(r); return st && st.size && st.size.image!==undefined ? st.size.image : r.gvSize; },
@@ -12292,7 +12299,7 @@ function rdScopeNoteHTML(a){
   var whole=[], part=[];
   G.componentsFor(a.std).forEach(function(c){
     var out=byComp[c.title]; if(!out) return;
-    if(out.length===c.points.length) whole.push(c.title); else part.push(c.title+' ('+out.join(', ')+')');
+    if(out.length===G.pointsFor(c, a.std, current).length) whole.push(c.title); else part.push(c.title+' ('+out.join(', ')+')');
   });
   return '<div class="gve-rd-scope"><b>'+e(a.rd.label)+' scope.</b> Not inspected at this level: '+e(whole.concat(part).join(' · '))
     +'. Escalate at the end of the report to open these areas.</div>';
@@ -14080,7 +14087,7 @@ function tabValves(){
   h += '<div class="gvs-grid" style="margin-bottom:12px"><div><label class="field-label">Valve name</label>'+inp('sizes|'+size+'|label', 'e.g. 3-1/16" – 15K Actuated')+'</div>'
     +'<div class="gvs-grid" style="gap:8px"><div><label class="field-label">Nominal size</label>'+nominalSel()+'</div>'
     +'<div><label class="field-label">Photo</label>'+imageSel()+'</div></div>'
-    +'<label class="gvs-check full"><input type="checkbox"'+(D.sizes[size].balanced!==false?' checked':'')+' onchange="gvsSet(\'sizes|'+size+'|balanced\',this.checked,\'bool\')"/> Balanced stem valve — inspect Balance Stem Bonnet (3) and Balance Stem (7). Untick for non-balanced valves; set automatically by IBOM import.</label></div>';
+    +'<label class="gvs-check full"><input type="checkbox"'+(D.sizes[size].balanced!==false?' checked':'')+' onchange="gvsSet(\'sizes|'+size+'|balanced\',this.checked,\'bool\')"/> Balanced stem valve — inspect Balance Stem Bonnet (3), Balance Stem (7) and the GV body Back Seat Angle. Untick for non-balanced valves; set automatically by IBOM import.</label></div>';
   h += '<div class="gvs-scroll"><table class="gvs-tbl"><thead><tr><th style="width:24%"></th>'
     + G.OS_KEYS.map(function(os){ return '<th>'+e(OS_LABEL[os])+'</th>'; }).join('')+'</tr></thead><tbody>';
   var row = function(lbl, key, kind, ph){
@@ -15249,7 +15256,7 @@ function build(std, opts){
     var z = std.sizes[k], fl = (std.flanges||[]).filter(function(f){ return f.id===z.flange; })[0];
     reg += '<h3>'+e(z.label||k)+'</h3>'
       + kv([['Nominal size', v_(z.nominal ? z.nominal+'"' : '')], ['End flange', v_(fl ? fl.label : '')],
-            ['Balanced stem', z.balanced===false ? 'No — Balance Stem Bonnet (3) and Balance Stem (7) not evaluated' : 'Yes']]);
+            ['Balanced stem', z.balanced===false ? 'No — Balance Stem Bonnet (3), Balance Stem (7) and GV body Back Seat Angle not evaluated' : 'Yes']]);
     var rows = [
       ['Valve part numbers'].concat(G.OS_KEYS.map(function(os){ return v_((z.variants[os].pns||[]).join(', ')); })),
       ['IBOM'].concat(G.OS_KEYS.map(function(os){ var ib = z.variants[os].ibom; return ib ? e(ib.pn)+' rev '+e(ib.rev||'—')+'<div class="sm">'+e(date(ib.importedAt))+'</div>' : '<span class="nil">—</span>'; }))
@@ -15271,7 +15278,7 @@ function build(std, opts){
       var crit = p.mode==='nc' ? 'Selection: good / buffing / severe' : p.mode==='studs' ? 'Selection: good / gentle polish / damaged'
         : p.flange ? 'End flange ring groove (section 8)' : p.group==='seatPocket' ? 'Seat pocket route (section 7)' : e(G.GROUP_LABELS[p.group]||p.group);
       var meas = (p.meas||[]).map(function(m){ return e(m.l); }).join(', ');
-      ca.push([i===0 ? '<b>'+e(c.n+'. '+c.title)+'</b>'+(c.balance?'<div class="sm">balanced-stem valves only</div>':'') : '', e(p.label)+(p.hint?'<div class="sm">'+e(p.hint)+'</div>':''), crit, meas || '<span class="nil">—</span>']);
+      ca.push([i===0 ? '<b>'+e(c.n+'. '+c.title)+'</b>'+(c.balance?'<div class="sm">balanced-stem valves only</div>':'') : '', e(p.label)+(p.hint?'<div class="sm">'+e(p.hint)+'</div>':'')+(p.balance&&!c.balance?'<div class="sm">balanced-stem valves only</div>':''), crit, meas || '<span class="nil">—</span>']);
     });
   });
   sec('Critical areas evaluated', '<p>As on the FRAC Evaluation Report. Serial and part numbers are recorded for each component (scan available).</p>'
