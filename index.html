@@ -1082,7 +1082,7 @@ body.has-sp-banner{padding-top:44px}
    Same value as CACHE_VERSION in service-worker.js — bump both on every
    deploy. Shown at the bottom of the home page; a tap (and every start)
    compares it with the version GitHub is serving and offers an update. */
-var APP_VERSION = 'frac-2026-11-02c';
+var APP_VERSION = 'frac-2026-11-03a';
 function appVersionShow(extra){
   var el = document.getElementById('home-ver'); if(!el) return;
   el.innerHTML = 'App version <b>'+APP_VERSION.replace(/^frac-/,'')+'</b>'+(extra||'');
@@ -7095,8 +7095,9 @@ function stageInfo(r){
     return { stage: major ? 'Repair' : 'Polish', detail:cut(workTxt) };
   }
   if(d==='has_fails') return { stage:'Engineering', detail:'Engineering review' };   /* failed, but nothing readable: safe side */
-  if(uai.length) return { stage:'Complete', detail:cut('Use as is (Engineering): '+list(uai)) };
-  return { stage:'Complete', detail: hadRework || d==='rework_complete' ? 'All pass after rework' : 'All pass' };
+  var ptp = (typeof ptestPending==='function' && ptestPending(r)) ? ' — pressure test pending' : '';
+  if(uai.length) return { stage:'Complete', detail:cut('Use as is (Engineering): '+list(uai)+ptp) };
+  return { stage:'Complete', detail:(hadRework || d==='rework_complete' ? 'All pass after rework' : 'All pass')+ptp };
 }
 function reportStage(r){ return stageInfo(r).stage; }
 
@@ -7739,7 +7740,13 @@ function isReportComplete(r){
   if(!r) return false;
   return r.disposition==='all_pass' || r.disposition==='rework_complete';
 }
-function isReportLocked(r){ return isReportComplete(r) && !r._unlocked; }
+/* A gate valve report with a redress level and no pressure test recorded yet stays open,
+   so the test can be added later without the admin password. */
+function ptestPending(r){
+  var g = r && r.gvEval; if(!g || !g.rdLevel) return false;
+  var P = g.ptest || {}; return !(P.body && P.seat);
+}
+function isReportLocked(r){ return isReportComplete(r) && !r._unlocked && !ptestPending(r); }
 /* Unlocking a signed-off report is an admin action — it always asks for the
    password, even if Settings is already unlocked this session, because the
    whole point is to stop an accidental edit or delete of completed work. */
@@ -11387,12 +11394,11 @@ function analyse(r){
   a.globalEng = !!g.engRequest && !String(g.engRemarks||'').trim();
   a.engInvolved = !!g.engRequest || a.actionPts.some(function(ev){ return ev.res.action==='ENGINEERING'; });
   var PT = g.ptest || {};
-  a.ptest = { body:PT.body||'', seat:PT.seat||'', required:!!sc,
+  /* The pressure test is optional at submission: it is usually done later, so it never holds
+     the report as incomplete. A failed test still sets the disposition; with a redress level set,
+     the report stays open for editing until both results are recorded (ptestPending). */
+  a.ptest = { body:PT.body||'', seat:PT.seat||'', required:false, pending:!!sc && !(PT.body && PT.seat),
               fail: PT.body==='fail' || PT.seat==='fail', done: !!(PT.body && PT.seat) };
-  if(a.ptest.required){
-    a.total += 2; a.answered += (PT.body?1:0) + (PT.seat?1:0);
-    if(!a.ptest.done) a.incomplete = true;
-  }
   if(a.ptest.fail) a.disp = 'has_fails';
   else if(a.incomplete) a.disp = 'incomplete';
   else if(a.engOpen.length || a.globalEng) a.disp = 'has_fails';
@@ -11594,11 +11600,7 @@ function outcome(a, r){
   }
   o.lines = [];
   if(a.rd) o.lines.push('Redress level '+a.rd.label+(a.rd.assigned && a.rd.assigned!==a.rd.level ? ' (escalated from '+(RD_LBL[a.rd.assigned]||a.rd.assigned)+')' : ''));
-  if(a.ptest && a.ptest.required && !a.ptest.done) o.lines.push('Pressure test (body and seat) not yet recorded');
-  if(a.incomplete && a.ptest && a.ptest.required){
-    var leftAreas = (a.total-a.answered) - (2 - ((a.ptest.body?1:0)+(a.ptest.seat?1:0)));
-    if(leftAreas>0) o.lines.push(leftAreas+' of '+(a.total-2)+' critical areas still to evaluate');
-  } else
+  if(a.ptest && a.ptest.pending) o.lines.push('Pressure test not yet recorded — optional now; record it when the test is done (the report stays open for it)');
   if(a.incomplete) o.lines.push((a.total-a.answered)+' of '+a.total+' critical areas still to evaluate');
   if(a.engOpen.length) o.lines.push(a.engOpen.length+' finding(s) waiting for Engineering disposition');
   if(a.globalEng) o.lines.push('Engineering review requested for this valve — remarks outstanding');
@@ -12304,7 +12306,7 @@ function ptestHTML(a){
       +'<button class="gve-btn'+(v==='fail'?' on-bad':'')+'" onclick="gvePT(\''+k+'\',\'fail\')">Fail</button></div>'; };
   var tx=function(k,lbl,ph,type){ return '<div><label class="field-label">'+e(lbl)+'</label><input class="field-input"'+(type?' type="'+type+'"':'')+' placeholder="'+e(ph||'')+'" value="'+e(P[k]||'')+'" oninput="gvePTv(\''+k+'\',this.value)"/></div>'; };
   return '<div class="card'+(P.body==='fail'||P.seat==='fail'?' gve-pt-failcard':'')+'"><div class="section-title">Pressure Test'
-    +(req?' <span class="sub-hint" style="text-transform:none;font-weight:600;letter-spacing:0">— required at '+e(a.rd.label)+'</span>':'')+'</div>'
+    +' <span class="sub-hint" style="text-transform:none;font-weight:600;letter-spacing:0">— optional at submission; record when the test is done</span></div>'
     +pf('body','Body / shell test')+pf('seat','Seat test (both directions)')
     +'<div class="header-grid" style="margin-top:10px">'+tx('psi','Test pressure (psi)',wp)+tx('hold','Hold time (min)','')
     +tx('chart','Chart / recorder no.','')+tx('date','Test date','', 'date')+'</div>'
