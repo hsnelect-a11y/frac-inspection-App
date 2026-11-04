@@ -1082,7 +1082,7 @@ body.has-sp-banner{padding-top:44px}
    Same value as CACHE_VERSION in service-worker.js — bump both on every
    deploy. Shown at the bottom of the home page; a tap (and every start)
    compares it with the version GitHub is serving and offers an update. */
-var APP_VERSION = 'frac-2026-11-03b';
+var APP_VERSION = 'frac-2026-11-04a';
 function appVersionShow(extra){
   var el = document.getElementById('home-ver'); if(!el) return;
   el.innerHTML = 'App version <b>'+APP_VERSION.replace(/^frac-/,'')+'</b>'+(extra||'');
@@ -11524,25 +11524,46 @@ function nameplateDisp(r, a, std){
 /* bonnet studs and their nuts (not packing nuts, lift nuts or other nuts) */
 function isStudPart(d){ return /\bSTUDS?\b|\bHEX NUT|\bHEAVY HEX\b/i.test(String(d||'')); }
 /* Parts to replace for the valve configuration that leaves the shop. */
+/* Does this finding end in replacing the component? The automatic action (Replace), or an
+   Engineering instruction that says replace: the disposition of a finding referred to Engineering,
+   or the new instruction after a failed rework (saved as reEng; failEng until the report is saved).
+   The latest instruction wins; "use as is" and "do not replace" do not count. */
+var REPLACE_RE = /\breplac(e|ed|es|ing|ement)\b/i;
+var NOT_REPLACE_RE = /\b(no|not|don'?t|without|instead\s+of)\s+(need\s+(to\s+)?|to\s+)?replac/i;
+var ASIS_RE = /\buse[\s-]*as[\s-]*is\b|\baccept(ed)?[\s-]*as[\s-]*is\b/i;
+function saysReplace(t){ t = String(t||''); return REPLACE_RE.test(t) && !NOT_REPLACE_RE.test(t) && !ASIS_RE.test(t); }
+function replaceReason(ev){
+  if(!ev || !ev.res || ev.covered) return '';
+  var s = ev.s || {};
+  if(s.useAsIs) return '';
+  var later = String(s.reEng||'').trim() || (s.qc==='fail' ? String(s.failEng||'').trim() : '');
+  if(later) return saysReplace(later) ? 'Replace — Engineering instruction after failed rework' : '';
+  if(ev.res.action==='REPLACE') return 'Replace per evaluation';
+  if(ev.res.action==='ENGINEERING' && saysReplace(s.eng)) return 'Replace — Engineering disposition';
+  return '';
+}
 function partsList(r, a){
   var g = r.gvEval, to = a.toVar || {}, rows = [], osChange = a.route.type!=='none';
   function add(pn, desc, qty, why, kind){ rows.push({ pn:pn||'', desc:desc||'', qty:String(qty==null?'':qty), why:why, kind:kind }); }
   if(a.nameplate && a.nameplate.change && a.nameplate.blank)
     add(a.nameplate.blank, 'Name plate (blank)', 1, 'Re-identify the valve to '+(a.nameplate.toPN||OS_LABEL[a.toOS]), 'component');
-  var seatRep = a.points.filter(function(ev){ return ev.comp.replaceKey==='seatPN' && ev.res && ev.res.action==='REPLACE'; }).length;
+  var seatEvs = a.points.filter(function(ev){ return ev.comp.replaceKey==='seatPN' && replaceReason(ev); }), seatRep = seatEvs.length;
+  var seatEng = seatEvs.some(function(ev){ return replaceReason(ev)!=='Replace per evaluation'; });
   if(osChange){
     add(to.seatPN, 'Seat — '+OS_LABEL[a.route.target], 2,
         (a.route.type==='hotweld' ? 'Seat pockets restored to Normal' : 'Seat pockets machined to '+OS_LABEL[a.route.target])+' — replaced regardless of seat condition', 'component');
   } else if(seatRep){
     var q = a.std.seatsAsPair ? 2 : seatRep;
-    add(to.seatPN, 'Seat — '+OS_LABEL[a.toOS], q, seatRep===1 && a.std.seatsAsPair ? 'Seat damaged — seats replaced as a pair' : 'Seat damaged', 'component');
+    var sw = seatEng ? replaceReason(seatEvs.filter(function(ev){ return replaceReason(ev)!=='Replace per evaluation'; })[0]) : 'Seat damaged';
+    add(to.seatPN, 'Seat — '+OS_LABEL[a.toOS], q, seatRep===1 && a.std.seatsAsPair ? sw+' — seats replaced as a pair' : sw, 'component');
   }
   COMPONENTS.forEach(function(c){
-    if(!c.replaceKey || c.replaceKey==='seatPN') return;
-    var hit = a.points.some(function(ev){ return ev.comp===c && ev.res && ev.res.action==='REPLACE'; });
-    if(hit) add(to[c.replaceKey], c.title, 1, 'Replace per evaluation', 'component');
+    var key = c.replaceKey || c.pnKey;
+    if(!key || key==='seatPN') return;
+    var why = ''; a.points.forEach(function(ev){ if(ev.comp===c && !why) why = replaceReason(ev); });
+    if(why) add(to[key] || (a.fromVar||{})[key], c.title, 1, why, 'component');
   });
-  var studsRep = a.points.some(function(ev){ return ev.comp.id==='studs' && ev.res && ev.res.action==='REPLACE'; });
+  var studsRep = a.points.some(function(ev){ return ev.comp.id==='studs' && replaceReason(ev); });
   (to.condition||[]).forEach(function(cp){
     var key = cp.pn || cp.description;
     var auto = studsRep && isStudPart(cp.description);
@@ -11559,7 +11580,7 @@ function partsList(r, a){
 
 function outcome(a, r){
   if(!a.known) return { tone:'idle', title:'IDENTIFY THE VALVE', text:'Enter the top level or assembly part number to load the standards for this valve.' };
-  var sevMax = a.actionPts.reduce(function(m,ev){ return Math.max(m, ACTIONS[ev.res.action].sev); }, 0);
+  var sevMax = a.actionPts.reduce(function(m,ev){ return Math.max(m, ACTIONS[ev.res.action].sev, replaceReason(ev) ? ACTIONS.REPLACE.sev : 0); }, 0);
   var o;
   if(a.route.type==='hotweld')
     o = { tone:'major', title:'REPAIR — HOT-WELD SEAT POCKETS TO NORMAL', text:a.route.text };
@@ -11631,7 +11652,7 @@ window.GVEval = {
   valveHistory:valveHistory, hwrEvidence:hwrEvidence, bareSN:bareSN, compHistory:compHistory, ptHistory:ptHistory,
   isStudPart:isStudPart, shortDesc:shortDesc, syncSpareDesc:syncSpareDesc, ibomDescMap:ibomDescMap,
   flangeFor:flangeFor, defaultFlanges:defaultFlanges, flangeCheck:flangeCheck, FLANGE_BY_NOMINAL:FLANGE_BY_NOMINAL,
-  componentsFor:componentsFor, pointsFor:pointsFor, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
+  componentsFor:componentsFor, pointsFor:pointsFor, replaceReason:replaceReason, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
   keys:valveKeys, newValveId:newValveId, blankValve:blankValve, defaultTesting:defaultTesting, valvesByNominal:valvesByNominal,
   NOMINALS:['1-13/16','2-1/16','2-9/16','3-1/16','4-1/16','5-1/8','7-1/16'], IMAGES:IMAGES,
   imageKey:function(r){ var st = stdOf(r); return st && st.size && st.size.image!==undefined ? st.size.image : r.gvSize; },
@@ -12425,7 +12446,7 @@ function summaryHTML(a){
   h+=partsTable(a.parts);
   var cond=to.condition||[];
   if(cond.length){
-    var studsRep=a.points.some(function(ev){ return ev.comp.id==='studs' && ev.res && ev.res.action==='REPLACE'; });
+    var studsRep=a.points.some(function(ev){ return ev.comp.id==='studs' && G.replaceReason(ev); });
     h+='<div class="spare-sub-h" style="margin-top:14px">Based-on-condition parts <span class="sub-hint">— mark any found damaged</span></div>';
     cond.forEach(function(cp){
       var key=cp.pn||cp.description, on=(s.small||{})[key]==='replace', auto=studsRep&&G.isStudPart(cp.description);
@@ -12717,7 +12738,7 @@ window.gveType  = function(id, v){ ptState(id).type=v; ptState(id).qc=''; refres
 window.gveDepth = function(id, v){ ptState(id).depth=v; refreshPoint(id); };
 window.gveNote  = function(id, v){ ptState(id).note=v; };
 window.gveAbn   = function(id, on){ ptState(id).abnormal=!!on; refreshPoint(id); };
-window.gveFailEng = function(id, v){ var s=ptState(id); if(window.engTouched) engTouched('gvfail:'+id, s.failEng, v); s.failEng=v; };
+window.gveFailEng = function(id, v){ var s=ptState(id); if(window.engTouched) engTouched('gvfail:'+id, s.failEng, v); s.failEng=v; status(); };
 window.gveReEng   = function(id, v){ var s=ptState(id); if(window.engTouched) engTouched('gvre:'+id, s.reEng, v); s.reEng=v; status(); };
 window.gveEng   = function(id, v){ if(window.engTouched) engTouched('gv:'+id, ptState(id).eng, v); ptState(id).eng=v; var a=G.analyse(current); set('gve-chip-'+id, chipHTML(evFor(a,id))); status(a); };
 window.gveMeas  = function(k, id, v){ g().meas[k]=v; refreshPoint(id); };
