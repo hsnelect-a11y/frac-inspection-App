@@ -1082,7 +1082,7 @@ body.has-sp-banner{padding-top:44px}
    Same value as CACHE_VERSION in service-worker.js — bump both on every
    deploy. Shown at the bottom of the home page; a tap (and every start)
    compares it with the version GitHub is serving and offers an update. */
-var APP_VERSION = 'frac-2026-11-04a';
+var APP_VERSION = 'frac-2026-11-04b';
 function appVersionShow(extra){
   var el = document.getElementById('home-ver'); if(!el) return;
   el.innerHTML = 'App version <b>'+APP_VERSION.replace(/^frac-/,'')+'</b>'+(extra||'');
@@ -7096,6 +7096,7 @@ function stageInfo(r){
   }
   if(d==='has_fails') return { stage:'Engineering', detail:'Engineering review' };   /* failed, but nothing readable: safe side */
   var ptp = (typeof ptestPending==='function' && ptestPending(r)) ? ' — pressure test pending' : '';
+  try{ if(r.gvEval && window.GVEval){ var an = GVEval.analyse(r); if(an.known && an.nameplate && an.nameplate.change && an.nameplate.mismatch && an.route.type==='none') ptp = ' — name plate correction to '+(an.nameplate.toPN||'the correct PN')+ptp; } }catch(x){}
   if(uai.length) return { stage:'Complete', detail:cut('Use as is (Engineering): '+list(uai)+ptp) };
   return { stage:'Complete', detail:(hadRework || d==='rework_complete' ? 'All pass after rework' : 'All pass')+ptp };
 }
@@ -11507,18 +11508,39 @@ function ptHistory(r, pid, list){
 function hwrEvidence(hist){ return (hist||[]).filter(function(h){ return h.hwr || h.prevHWR; }); }
 
 /* Name plate: change to the modified part number given in the SOW. */
+/* The part number recorded from the name plate (top level or assembly), and the valve and
+   configuration it belongs to in the standards. */
+var NP_BLANK_DEFAULT = '90-019-979';
+function recordedPN(r){
+  var h = r.header || {}, ls = null; try{ ls = liveStd(); }catch(x){}
+  var a = h.partNo ? detect(h.partNo, ls) : null, b = !a && h.assyPN ? detect(h.assyPN, ls) : null;
+  return { pn: a ? String(h.partNo).trim() : b ? String(h.assyPN).trim() : String(h.partNo||h.assyPN||'').trim(), hit: a || b, std: ls };
+}
+function cfgLabel(ls, size, os){ var z = ls && ls.sizes && ls.sizes[size]; return (z ? z.label+' · ' : '')+(OS_LABEL[os]||os||''); }
 function nameplateDisp(r, a, std){
-  var g = r.gvEval, fromPN = g.detectedPN || (a.fromVar.pns||[])[0] || r.header.partNo || r.header.assyPN || '';
-  if(a.route.type==='none') return { change:false, fromPN:fromPN, text:'No change to the name plate'+(fromPN?' — part number '+fromPN+' retained':'')+'.' };
+  var g = r.gvEval, rec = recordedPN(r);
+  /* the valve was identified (or corrected) by the inspector, and the recorded PN belongs to another configuration */
+  var mism = !!rec.hit && g.variantSrc!=='pn' && (rec.hit.size!==r.gvSize || rec.hit.os!==r.gvScenario);
+  var fromPN = mism ? rec.pn : (g.detectedPN || (a.fromVar.pns||[])[0] || r.header.partNo || r.header.assyPN || '');
+  var blank = a.toVar.plateBlankPN || a.fromVar.plateBlankPN || NP_BLANK_DEFAULT;
+  var recCfg = mism ? cfgLabel(rec.std, rec.hit.size, rec.hit.os) : '', actCfg = cfgLabel(rec.std || { sizes:{} }, r.gvSize, r.gvScenario) || OS_LABEL[r.gvScenario];
+  if(a.route.type==='none'){
+    if(!mism) return { change:false, fromPN:fromPN, text:'No change to the name plate'+(fromPN?' — part number '+fromPN+' retained':'')+'.' };
+    var corr = (a.fromVar.pns||[])[0] || '';
+    return { change:true, mismatch:true, fromPN:fromPN, toPN:corr, recCfg:recCfg, actCfg:actCfg, blank:blank,
+             text:'Recorded part number '+fromPN+' ('+recCfg+') does not match the actual configuration of the valve ('+actCfg+'). '
+               +'Change the name plate part number '+fromPN+' → '+(corr||'PN not set')+'. Replace the name plate with a new blank ('+blank+'), stamp it with the correct part number and serial number, and correct the records before release.' };
+  }
   var last = a.sows.length ? a.sows[a.sows.length-1] : null, ovr = '';
   if(last) ovr = last.slot==='CWR' ? std.size.cwrNewPN : (std.size.variants[last.slot]||{}).sowNewPN;
   var toPN = String(ovr||'').trim() || (a.toVar.pns||[])[0] || '';
   var fb = a.fromVar.bodyPN||'', tb = a.toVar.bodyPN||'';
   var sowName = last && last.meta ? last.meta.name : '';
-  var text = 'Change the name plate part number '+(fromPN||'—')+' → '+(toPN||'PN not set')+' ('+OS_LABEL[a.toOS]+')'
+  var text = (mism ? 'Recorded part number '+fromPN+' ('+recCfg+') did not match the received configuration ('+actCfg+'). ' : '')
+    +'Change the name plate part number '+(fromPN||'—')+' → '+(toPN||'PN not set')+' ('+OS_LABEL[a.toOS]+')'
     +(fb && tb && fb!==tb ? '; GV body '+fb+' → '+tb : '')
     +(sowName ? ', as given in '+sowName : '')+'. Re-stamp or replace the name plate before release.';
-  return { change:true, fromPN:fromPN, toPN:toPN, fromBody:fb, toBody:tb, sow:sowName, text:text, blank:a.toVar.plateBlankPN || a.fromVar.plateBlankPN || '' };
+  return { change:true, mismatch:mism, fromPN:fromPN, toPN:toPN, fromBody:fb, toBody:tb, sow:sowName, text:text, blank:blank };
 }
 
 /* bonnet studs and their nuts (not packing nuts, lift nuts or other nuts) */
@@ -11545,8 +11567,12 @@ function replaceReason(ev){
 function partsList(r, a){
   var g = r.gvEval, to = a.toVar || {}, rows = [], osChange = a.route.type!=='none';
   function add(pn, desc, qty, why, kind){ rows.push({ pn:pn||'', desc:desc||'', qty:String(qty==null?'':qty), why:why, kind:kind }); }
-  if(a.nameplate && a.nameplate.change && a.nameplate.blank)
-    add(a.nameplate.blank, 'Name plate (blank)', 1, 'Re-identify the valve to '+(a.nameplate.toPN||OS_LABEL[a.toOS]), 'component');
+  if(a.nameplate && a.nameplate.change && a.nameplate.blank){
+    add(a.nameplate.blank, 'Name plate (blank)', 1, a.nameplate.mismatch && a.route.type==='none'
+        ? 'Name plate correction — recorded PN '+a.nameplate.fromPN+' does not match the actual configuration; stamp '+(a.nameplate.toPN||'the correct PN')
+        : 'Re-identify the valve to '+(a.nameplate.toPN||OS_LABEL[a.toOS]), 'component');
+    rows[rows.length-1].mark = 'NAME PLATE';
+  }
   var seatEvs = a.points.filter(function(ev){ return ev.comp.replaceKey==='seatPN' && replaceReason(ev); }), seatRep = seatEvs.length;
   var seatEng = seatEvs.some(function(ev){ return replaceReason(ev)!=='Replace per evaluation'; });
   if(osChange){
@@ -11652,7 +11678,7 @@ window.GVEval = {
   valveHistory:valveHistory, hwrEvidence:hwrEvidence, bareSN:bareSN, compHistory:compHistory, ptHistory:ptHistory,
   isStudPart:isStudPart, shortDesc:shortDesc, syncSpareDesc:syncSpareDesc, ibomDescMap:ibomDescMap,
   flangeFor:flangeFor, defaultFlanges:defaultFlanges, flangeCheck:flangeCheck, FLANGE_BY_NOMINAL:FLANGE_BY_NOMINAL,
-  componentsFor:componentsFor, pointsFor:pointsFor, replaceReason:replaceReason, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
+  componentsFor:componentsFor, pointsFor:pointsFor, replaceReason:replaceReason, recordedPN:recordedPN, NP_BLANK_DEFAULT:NP_BLANK_DEFAULT, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
   keys:valveKeys, newValveId:newValveId, blankValve:blankValve, defaultTesting:defaultTesting, valvesByNominal:valvesByNominal,
   NOMINALS:['1-13/16','2-1/16','2-9/16','3-1/16','4-1/16','5-1/8','7-1/16'], IMAGES:IMAGES,
   imageKey:function(r){ var st = stdOf(r); return st && st.size && st.size.image!==undefined ? st.size.image : r.gvSize; },
@@ -12123,6 +12149,7 @@ var css = ''
  +'.gve-hist-r .d{font-family:ui-monospace,Menlo,monospace;color:var(--text3)}.gve-hist-r .i{font-weight:700;color:var(--text)}.gve-hist-r .t{flex:1;min-width:180px}'
  +'.gve-hist-r.w{background:rgba(175,97,255,.08)}.gve-hist-r.w .t{color:var(--text);font-weight:600}'
  +'.gve-np{margin-top:8px;font-size:12px;color:var(--text);line-height:1.45}'
+ +'.gve-tbl tr.gve-mark td{background:rgba(253,230,138,.35)}.gve-mark-tag{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.04em;padding:1px 6px;border-radius:4px;background:#fde68a;color:#78350f;margin-right:4px}'
  +'.gve-note{font-size:11px;color:var(--text3);margin-top:6px;line-height:1.45}'
  +'@media(max-width:479px){.gve-detail,.gve-meas,.gve-snpn,.gve-manual{grid-template-columns:1fr}.gve-kv{grid-template-columns:1fr}}';
 var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
@@ -12158,7 +12185,7 @@ function detectHTML(){
     if(s.variantSrc==='manual' && typed){
       var hit=G.detect(r.header.partNo)||G.detect(r.header.assyPN);
       if(!hit){ cls='warn'; h+='<br><span class="gve-missing">Entered part number is not in the Gate Valve standards.</span>'; }
-      else if(hit.size!==r.gvSize || hit.os!==r.gvScenario){ cls='warn'; h+='<br><span class="gve-missing">Entered part number belongs to '+e(std.sizes[hit.size].label)+' · '+e(OS_LABEL[hit.os])+'.</span>'; }
+      else if(hit.size!==r.gvSize || hit.os!==r.gvScenario){ cls='warn'; h+='<br><span class="gve-missing">Entered part number belongs to '+e(std.sizes[hit.size].label)+' · '+e(OS_LABEL[hit.os])+'.</span> The report recommends correcting the name plate to the part number of the selected configuration, with a new name plate blank.'; }
     }
   } else if(typed){
     cls='warn';
@@ -12397,6 +12424,13 @@ window.gvePT = function(k, v){
 window.gvePTv = function(k, v){ var s=g(); if(!s.ptest) s.ptest={}; s.ptest[k]=v; };
 document.addEventListener('input', function(ev){ if(ev.target && ev.target.id==='gve-rd-reason') RD_REASON=ev.target.value; });
 
+/* name plate disposition shown under the name plate details */
+function npDispHTML(a){
+  if(!a || !a.known || !a.nameplate || !a.nameplate.change) return '';
+  return '<div class="gve-np" style="margin-top:8px"><b>Name plate — '+(a.nameplate.mismatch && a.route.type==='none' ? 'correct the part number' : 'change the part number')+':</b> '+e(a.nameplate.text)
+    +(a.nameplate.blank?'<div style="margin-top:4px">Name plate blank <b>'+e(a.nameplate.blank)+'</b> is added to Parts to Replace.</div>':'')+'</div>';
+}
+
 /* ── outcome, parts, testing ──────────────────────────────────────────── */
 function outcomeHTML(a){
   var o=G.outcome(a,current);
@@ -12432,7 +12466,7 @@ function partsTable(rows, editable){
     var list=rows.filter(function(x){ return x.kind===gr[0]; }); if(!list.length) return; any=true;
     h+='<tr class="grp"><td colspan="4">'+e(gr[1])+'</td></tr>';
     list.forEach(function(x){
-      h+='<tr><td class="pn">'+(x.pn?e(x.pn):'<span class="gve-missing">PN not set</span>')+'</td><td>'+e(x.desc)+'</td><td>'+e(x.qty)+'</td><td class="why">'+e(x.why)+'</td></tr>';
+      h+='<tr'+(x.mark?' class="gve-mark"':'')+'><td class="pn">'+(x.pn?e(x.pn):'<span class="gve-missing">PN not set</span>')+'</td><td>'+(x.mark?'<span class="gve-mark-tag">'+e(x.mark)+'</span> ':'')+e(x.desc)+'</td><td>'+e(x.qty)+'</td><td class="why">'+e(x.why)+'</td></tr>';
     });
   });
   if(!any) h+='<tr><td colspan="4" class="why">No parts listed yet.</td></tr>';
@@ -12503,6 +12537,7 @@ function renderForm(){
   h+='<div id="gve-detect">'+detectHTML()+'</div>';
   h+='<div id="gve-hist">'+historyHTML()+'</div>';
   h+='<div style="margin-top:10px"><label class="field-label">General note — current nameplate details</label><textarea class="field-input" rows="2" oninput="gveG(\'nameplate\',this.value)">'+e(s.nameplate||'')+'</textarea>'+(typeof bfPhotoBtns==='function'?bfPhotoBtns('gve_nameplate'):'')+'</div>';
+  h+='<div id="gve-npdisp">'+npDispHTML(a)+'</div>';
   h+='</div>';
   h+='<div class="disp-banner" id="disp-banner" style="background:'+d0.bg+';border-color:'+d0.border+';border-left-color:'+d0.color+'"><div class="disp-label" style="color:'+d0.color+'">'+d0.label+'</div><div class="disp-desc" style="color:'+d0.color+'">'+d0.desc+'</div></div>';
   h+='<div id="gve-outcome">'+outcomeHTML(a)+'</div>';
@@ -12628,6 +12663,7 @@ function status(a){
   updateProgress(); updateDispositionBanner();
   set('gve-outcome', outcomeHTML(a));
   set('gve-summary', summaryHTML(a));
+  set('gve-npdisp', npDispHTML(a));
   set('gve-rdesc-slot', rdEscHTML(a));
   return a;
 }
@@ -12935,7 +12971,7 @@ function printDoc(r){
     });
   }
   var pl=function(kind){ var ks=[].concat(kind), l=a.parts.filter(function(x){ return ks.indexOf(x.kind)!==-1; });
-    return l.length ? l.map(function(x){ return (x.pn?'<b>'+e(x.pn)+'</b>':'<span style="color:#b91c1c">PN not set</span>')+' — '+e(x.desc)+' &times;'+e(x.qty)+' <span class="tag">'+e(x.why)+'</span>'; }).join('<br>') : '—'; };
+    return l.length ? l.map(function(x){ return (x.mark?'<span style="background:#fde68a;color:#78350f;font-weight:800;font-size:9px;padding:1px 5px;border-radius:3px;margin-right:4px">'+e(x.mark)+'</span>':'')+(x.pn?'<b>'+e(x.pn)+'</b>':'<span style="color:#b91c1c">PN not set</span>')+' — '+e(x.desc)+' &times;'+e(x.qty)+' <span class="tag">'+e(x.why)+'</span>'; }).join('<br>') : '—'; };
   h+='<tr><td style="'+B+'font-weight:700" colspan="2">Based on condition and damaged parts (not consumables)</td><td style="'+B+'" colspan="3">'+pl(['component','condition','manual'])+'</td></tr>';
   h+='<tr><td style="'+B+'font-weight:700" colspan="2">Consumables'+(a.known?' <span class="tag">('+e(OS_LABEL[a.toOS])+')</span>':'')+'</td><td style="'+B+'" colspan="3">'+pl('consumable')+'</td></tr>';
   h+='<tr><td style="'+B+'font-weight:700" colspan="2">Unusual findings and inspector notes</td><td style="'+B+'white-space:pre-wrap" colspan="3">'+e(s.notes||'')+'</td></tr>';
@@ -12974,7 +13010,7 @@ function printDoc(r){
   return h;
 }
 function print(r){
-  var html=printDoc(r);
+  var html=printDoc(r); if(window.pnLinkHTML) html=pnLinkHTML(html);
   if(typeof tokenValid==='function' && tokenValid() && spConfig.pdfFolder){
     try{
       var fname=r.id+'_'+String(r.savedAt||r.createdAt||'').slice(0,10)+'_v'+Date.now()+'.html';
@@ -15512,7 +15548,7 @@ var anchor = document.getElementById('view-form');
 if(anchor && anchor.parentNode) anchor.parentNode.insertBefore(view, anchor); else document.body.appendChild(view);
 
 var CUR = { std:null, draft:false, back:'settings', spares:true, ibom:false };
-function doc(autoPrint){ return build(CUR.std, { draft:CUR.draft, spares:CUR.spares, ibom:CUR.ibom, eq:CUR.eq!==false, autoPrint:autoPrint }); }
+function doc(autoPrint){ var h = build(CUR.std, { draft:CUR.draft, spares:CUR.spares, ibom:CUR.ibom, eq:CUR.eq!==false, autoPrint:autoPrint }); return window.pnLinkHTML ? pnLinkHTML(h) : h; }
 function renderView(){
   var b = document.getElementById('gvd-body'); if(!b) return;
   var sp = typeof tokenValid==='function' && tokenValid() && typeof spConfig!=='undefined';
@@ -16341,6 +16377,106 @@ if(typeof _rd==='function'){
   };
 }
 window.PBI_URL = PBI_URL;
+})();
+</script>
+
+<!-- ══ PART NUMBER LINKS ══ -->
+<script>
+/* Every TechnipFMC part number shown in the app (forms, previews, printed reports, the
+   standards document, Settings) links to the part search and opens in a new window.
+   Typed part number fields get a small link under them. Part numbers are recognised as
+   P + 5–12 digits (optionally -nnnn or -M) and nn-nnn-nnn. */
+(function(){
+'use strict';
+var PN_URL = 'http://hou1web.net.fmcti.com/cgi-bin/search/part-url.cgi?part=';
+var PN_RE = /(^|[^A-Za-z0-9-])(P\d{5,12}(?:-\d{3,4}|-[A-Z](?![A-Za-z0-9]))?|\d{2}-\d{3}-\d{3})(?![A-Za-z0-9]|-\d)/g;
+var SKIP = 'a,input,textarea,select,option,button,script,style,svg,code,.no-pn-link,[contenteditable="true"]';
+function url(pn){ return PN_URL + encodeURIComponent(String(pn||'').trim()); }
+
+function linkText(node, doc){
+  var t = node.nodeValue; if(!t || t.length<7) return;
+  PN_RE.lastIndex = 0; if(!PN_RE.test(t)) return;
+  PN_RE.lastIndex = 0;
+  var frag = doc.createDocumentFragment(), last = 0, m;
+  while((m = PN_RE.exec(t))){
+    var start = m.index + m[1].length, pn = m[2];
+    if(start > last) frag.appendChild(doc.createTextNode(t.slice(last, start)));
+    var a = doc.createElement('a');
+    a.className = 'pn-link'; a.href = url(pn); a.target = '_blank'; a.rel = 'noopener'; a.title = 'Open '+pn+' in part search';
+    a.textContent = pn; frag.appendChild(a);
+    last = start + pn.length;
+  }
+  if(last < t.length) frag.appendChild(doc.createTextNode(t.slice(last)));
+  node.parentNode.replaceChild(frag, node);
+}
+function walk(root, doc){
+  doc = doc || document;
+  if(!root) return;
+  if(root.nodeType===3){ var pe = root.parentElement; if(pe && !pe.closest(SKIP)) linkText(root, doc); return; }
+  if(root.nodeType!==1 || root.closest && root.closest(SKIP)) return;
+  var tw = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode:function(n){
+    var pe = n.parentElement; return (!pe || pe.closest(SKIP)) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; } });
+  var list = []; while(tw.nextNode()) list.push(tw.currentNode);
+  list.forEach(function(n){ linkText(n, doc); });
+}
+/* printed report / standards document HTML strings */
+window.pnLinkHTML = function(html){
+  try{
+    var d = new DOMParser().parseFromString(html, 'text/html');
+    walk(d.body, d);
+    var st = d.createElement('style'); st.textContent = 'a.pn-link{color:inherit;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}';
+    d.head.appendChild(st);
+    return '<!DOCTYPE html>\n' + d.documentElement.outerHTML;
+  }catch(e){ return html; }
+};
+window.pnUrl = url;
+/* a part number inside a clickable row opens the part search only */
+document.addEventListener('click', function(ev){ var a = ev.target && ev.target.closest && ev.target.closest('a.pn-link,a.pn-go'); if(a) ev.stopPropagation(); }, true);
+
+/* typed part number fields: a link under the field */
+var INPUT_SEL = 'input[oninput*="\'partNo\'"],input[oninput*="\'assyPN\'"],input[oninput*="\'pn\'"]';
+function goFor(inp){
+  var n = inp.nextElementSibling;
+  if(!(n && n.classList.contains('pn-go'))){
+    n = document.createElement('a'); n.className = 'pn-go'; n.target = '_blank'; n.rel = 'noopener';
+    inp.parentNode.insertBefore(n, inp.nextSibling);
+  }
+  var v = String(inp.value||'').trim().split(/[\s,;]+/)[0] || '';
+  n.style.display = v ? '' : 'none';
+  if(v){ n.href = url(v); n.textContent = '↗ '+v; n.title = 'Open '+v+' in part search (new window)'; }
+}
+function inputs(root){
+  if(!root || root.nodeType!==1) return;
+  var list = root.matches && root.matches(INPUT_SEL) ? [root] : [];
+  if(root.querySelectorAll) list = list.concat([].slice.call(root.querySelectorAll(INPUT_SEL)));
+  list.forEach(function(inp){ if(inp.closest('#view-form')) goFor(inp); });
+}
+document.addEventListener('input', function(ev){ var t = ev.target; if(t && t.matches && t.matches(INPUT_SEL) && t.closest('#view-form')) goFor(t); }, true);
+
+var css = 'a.pn-link{color:inherit;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;cursor:pointer}'
+  +'a.pn-link:hover{color:var(--brand);text-decoration-style:solid}'
+  +'a.pn-go{display:inline-block;margin-top:3px;font-size:10.5px;font-weight:700;color:var(--brand);text-decoration:none;font-family:ui-monospace,Menlo,monospace}'
+  +'a.pn-go:hover{text-decoration:underline}';
+var stEl = document.createElement('style'); stEl.textContent = css; document.head.appendChild(stEl);
+
+function run(node){ walk(node); inputs(node); }
+var mo = new MutationObserver(function(muts){
+  muts.forEach(function(m){
+    if(m.type==='characterData'){ run(m.target); return; }
+    m.addedNodes.forEach(function(n){
+      if(n.nodeType===1 && (n.classList.contains('pn-link') || n.classList.contains('pn-go'))) return;
+      run(n);
+    });
+  });
+});
+function start(){ run(document.body); mo.observe(document.body, { childList:true, subtree:true, characterData:true }); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', start); else start();
+
+/* the generic printed report (all non-gate-valve equipment) */
+if(typeof window.buildPrintHTML==='function'){
+  var _bp = window.buildPrintHTML;
+  window.buildPrintHTML = function(r){ return window.pnLinkHTML(_bp.apply(this, arguments)); };
+}
 })();
 </script>
 
