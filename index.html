@@ -216,6 +216,7 @@ html:not([data-theme="dark"]) .home-actions button:hover{color:var(--text)}
 .todo-fill{border-color:#f59e0b;color:#f59e0b}
 .todo-eng{border-color:#a855f7;color:#c084fc}
 .todo-qc{border-color:#14b8a6;color:#2dd4bf}
+.todo-rems{border-color:#f97316;color:#fb923c}
 .todo-done{border-color:#22c55e;color:#22c55e;cursor:default}
 .todo-next{font-weight:500;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46vw}
 @keyframes todoFlash{0%{box-shadow:0 0 0 0 rgba(245,158,11,.9)}100%{box-shadow:0 0 0 14px rgba(245,158,11,0)}}
@@ -405,6 +406,10 @@ html:not([data-theme="dark"]) .home-actions button:hover{color:var(--text)}
 .report-id-tag{font-family:monospace;font-size:10px;font-weight:700;color:var(--brand);letter-spacing:.04em;margin-top:1px}
 .report-size{font-size:11px;color:var(--text2);margin-top:2px}
 .disp-chip{font-size:10px;font-weight:800;padding:4px 9px;border-radius:99px;border:1px solid;white-space:nowrap;flex-shrink:0;max-width:100%}
+.role-chip{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.03em;padding:1px 7px;border-radius:99px;border:1px solid;vertical-align:middle;margin-left:4px;white-space:nowrap;text-transform:none}
+.role-chips{display:flex;flex-wrap:wrap;gap:3px;justify-content:flex-end;max-width:170px}
+.role-chips .role-chip{margin-left:0}
+.qc-waive-note.on.role-note{background:transparent;border:1px dashed var(--border2);color:var(--text2);font-weight:600}
 .st-pill{display:inline-block;margin-top:8px;font-size:10.5px;font-weight:800;letter-spacing:.02em;padding:3px 10px;border-radius:99px;border:1px solid}
 .qc-waive-note.on{margin:6px 0 8px;font-size:11.5px;line-height:1.45;padding:7px 10px;border-radius:8px;font-weight:600}
 .qc-waive-note.on.replace{background:rgba(22,163,74,.10);color:#15803d;border:1px solid rgba(22,163,74,.3)}
@@ -1086,7 +1091,7 @@ body.has-sp-banner{padding-top:44px}
    Same value as CACHE_VERSION in service-worker.js — bump both on every
    deploy. Shown at the bottom of the home page; a tap (and every start)
    compares it with the version GitHub is serving and offers an update. */
-var APP_VERSION = 'frac-2026-11-10a';
+var APP_VERSION = 'frac-2026-11-10b';
 function appVersionShow(extra){
   var el = document.getElementById('home-ver'); if(!el) return;
   el.innerHTML = 'App version <b>'+APP_VERSION.replace(/^frac-/,'')+'</b>'+(extra||'');
@@ -1581,6 +1586,14 @@ else appVersionCheck(false);
         <option value="PTPending">Pressure Test Pending</option>
         <option value="ReworkDone">Rework Complete</option>
         <option value="Approved">Approved for Service</option>
+      </select>
+      <select class="status-filter-select" id="role-filter" onchange="roleFilterSet(this.value)" title="Reports waiting on a role">
+        <option value="ALL">All Roles</option>
+        <option value="Engineering">Engineering</option>
+        <option value="QC">QC</option>
+        <option value="QC REMS">QC REMS</option>
+        <option value="Planner">Planner</option>
+        <option value="Workshop">Workshop</option>
       </select>
     </div>
     <div id="history-list"></div>
@@ -4456,8 +4469,26 @@ function bfRWP(id){ return bfState().reworkPhotos[id]||[]; }
    clears the stamp. */
 function stampRework(store,id,val){
   if(!store.reworkTimestamps) store.reworkTimestamps={};
-  if(val) store.reworkTimestamps[id]=new Date().toISOString();
-  else delete store.reworkTimestamps[id];
+  if(!store.reworkBy) store.reworkBy={};
+  var who=(typeof spConfig!=='undefined' && spConfig && spConfig.userName)||'';
+  if(val){ store.reworkTimestamps[id]=new Date().toISOString(); if(who) store.reworkBy[id]=who; else delete store.reworkBy[id]; }
+  else { delete store.reworkTimestamps[id]; delete store.reworkBy[id]; }
+}
+/* who recorded the QC after rework (signed-in name), any form type */
+function rwByFor(r,id){
+  if(!r) return '';
+  const stores=[r, r.bfState, r.wecoState, r.crossState, r.adapterFlowState, r.gvEval];
+  for(let i=0;i<stores.length;i++){
+    const s=stores[i];
+    if(s && s.reworkTimestamps && s.reworkTimestamps[id]) return (s.reworkBy && s.reworkBy[id]) || '';
+  }
+  return '';
+}
+/* "10 Nov 2026 09:12 · A. Inspector" */
+function rwStampText(r,id){
+  const t=rwStampFor(r,id); if(!t) return '';
+  const b=rwByFor(r,id);
+  return fmtStamp(t)+(b?' · '+b:'');
 }
 function reworkStampOf(store,id){
   return (store && store.reworkTimestamps && store.reworkTimestamps[id]) || '';
@@ -4474,7 +4505,7 @@ function rwStampFor(r,id){
 }
 function rwStampHTML(r,id){
   const t=rwStampFor(r,id);
-  return '<div class="rw-stamp" id="rw-stamp-'+id+'">'+(t?'&#128337; Re-inspected '+esc(fmtStamp(t)):'')+'</div>';
+  return '<div class="rw-stamp" id="rw-stamp-'+id+'">'+(t?'&#128337; Re-inspected '+esc(rwStampText(r,id)):'')+'</div>';
 }
 function fmtStamp(iso){
   if(!iso) return '';
@@ -5559,7 +5590,7 @@ function previewRGRows(r,ft){
     var engHtml=ed?'<div class="preview-eng-disp"><div class="preview-eng-disp-label">&#9883; Engineering Disposition</div><div class="preview-eng-disp-text">'+esc(ed)+'</div></div>':'';
     var rwPhotoHtml=rwphotos.length?'<div class="preview-photo-row">'+rwphotos.map(function(p,pi){return '<div class="preview-photo-thumb"><img src="'+p.src+'"/><div class="preview-photo-num">Rework '+(pi+1)+'</div></div>';}).join('')+'</div>':'';
     var rwBadge=rwv?'<span class="result-badge '+(rwv==='pass'?'badge-pass':'badge-fail')+'" style="font-size:9px">'+rwv.toUpperCase()+'</span>':'';
-    var reworkHtml=isFail&&(rwv||rwc||rwphotos.length)?'<div class="preview-rework-section"><div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework'+(rwStampFor(r,step.id)?'<span class="rw-stamp-inline">&#128337; '+esc(fmtStamp(rwStampFor(r,step.id)))+'</span>':'')+'</div>'+(rwc?'<div class="preview-item-comment">&rarr; '+esc(rwc)+'</div>':'')+rwPhotoHtml+(rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">&#9888; Rework failed</div>':'')+'</div>':'';
+    var reworkHtml=isFail&&(rwv||rwc||rwphotos.length)?'<div class="preview-rework-section"><div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework'+qcRoleChipFor(r,step.id)+(rwStampFor(r,step.id)?'<span class="rw-stamp-inline">&#128337; '+esc(rwStampText(r,step.id))+'</span>':'')+'</div>'+(rwc?'<div class="preview-item-comment">&rarr; '+esc(rwc)+'</div>':'')+rwPhotoHtml+(rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">&#9888; Rework failed</div>':'')+'</div>':'';
     rows+='<div class="preview-item-row'+(isFail?' preview-item-fail':'')+'">'
       +'<span class="result-badge '+bc+'">'+(val?vdisp:'—')+'</span>'
       +'<div style="flex:1;min-width:0"><div class="preview-item-label">'+(idx+1)+'. '+esc(step.label)+depthNote+'</div>'
@@ -6374,7 +6405,7 @@ function updateReworkRow(itemId){
   const v=(current.reworkFindings&&current.reworkFindings[itemId])||'';
   rw.className='rework-section'+(v==='pass'?' rework-pass':v==='fail'?' rework-fail':'');
   const stEl=document.getElementById('rw-stamp-'+itemId);
-  if(stEl){ const t=rwStampFor(current,itemId); stEl.innerHTML = t?('&#128337; Re-inspected '+esc(fmtStamp(t))):''; }
+  if(stEl){ const t=rwStampFor(current,itemId); stEl.innerHTML = t?('&#128337; Re-inspected '+esc(rwStampText(current,itemId))):''; }
   ['pass','fail'].forEach(bv=>{
     const b=rw.querySelector('[data-rw="'+bv+'"]'); if(!b) return;
     b.className='insp-btn rework-insp-btn'+(v===bv?' active-'+bv:'');
@@ -6565,9 +6596,9 @@ function decorateForm(){
 (function(){
   var t = null, start = function(){
     var root = document.getElementById('form-body'); if(!root || !window.MutationObserver) return;
-    new MutationObserver(function(){ clearTimeout(t); t = setTimeout(decorateForm, 40); }).observe(root, { childList:true, subtree:true });
+    new MutationObserver(function(){ clearTimeout(t); t = setTimeout(function(){ decorateForm(); try{ refreshQcWaiveNotes(); }catch(e){} }, 40); }).observe(root, { childList:true, subtree:true });
     /* keep the tracker at the top in step with typing (dispositions, comments…) */
-    var tt = null; root.addEventListener('input', function(){ clearTimeout(tt); tt = setTimeout(function(){ try{ renderTodo(); }catch(e){} }, 350); });
+    var tt = null; root.addEventListener('input', function(){ clearTimeout(tt); tt = setTimeout(function(){ try{ renderTodo(); refreshQcWaiveNotes(); }catch(e){} }, 350); });
   };
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
@@ -6695,7 +6726,7 @@ function formTodos(r){
         if(s.qc!=='fail' && ev.qcWaived) return;           /* polish / replace: QC not required */
         if(s.qc==='fail'){ add('eng', id, lab+' — rework failed'); return; }
         if(ev.res.action==='ENGINEERING' && !String(s.eng||'').trim() && !String(s.reEng||'').trim()){ add('eng', id, lab); return; }
-        add('qc', id, lab);
+        add(gvPointRole(ev)===ROLE_REMS ? 'rems' : 'qc', id, lab);
       });
       if(g.engRequest && !String(g.engRemarks||'').trim()) add('eng', 'gve-engbox', 'Engineering review of the valve');
     }catch(e){}
@@ -6710,13 +6741,13 @@ function formTodos(r){
     if(x.rw!=='fail' && qcWaiver(x.ed)) return;          /* polish / replace: QC not required */
     if(x.rw==='fail'){ add('eng', el, lab+' — rework failed'); return; }
     if(!String(x.ed||'').trim() || ENG_REQUEST_RE.test(x.ed)){ add('eng', el, lab); return; }
-    add('qc', el, lab);
+    add(qcRoleOfText(x.ed)===ROLE_REMS ? 'rems' : 'qc', el, lab);
   });
   return T;
 }
 function renderTodo(){
   var box = document.getElementById('progress-todo'); if(!box || !current) return;
-  var T = formTodos(current), n = { fill:0, eng:0, qc:0 };
+  var T = formTodos(current), n = { fill:0, eng:0, qc:0, rems:0 };
   T.forEach(function(x){ n[x.kind]++; });
   var first = T.filter(function(x){ return x.kind==='fill'; })[0];
   var h = '';
@@ -6724,7 +6755,8 @@ function renderTodo(){
     +n.fill+' to fill <span class="todo-next">· next: '+esc(first.label)+'</span> &#8595;</button>';
   else h += '<span class="todo-btn todo-done">&#10003; All items filled</span>';
   if(n.eng) h += '<button class="todo-btn todo-eng" onclick="jumpTodo(\'eng\')" title="Waiting for an Engineering disposition">Engineering '+n.eng+' &#8595;</button>';
-  if(n.qc) h += '<button class="todo-btn todo-qc" onclick="jumpTodo(\'qc\')" title="Waiting for QC after rework">QC after rework '+n.qc+' &#8595;</button>';
+  if(n.qc) h += '<button class="todo-btn todo-qc" onclick="jumpTodo(\'qc\')" title="Waiting for QC after rework (QC)">QC after rework '+n.qc+' &#8595;</button>';
+  if(n.rems) h += '<button class="todo-btn todo-rems" onclick="jumpTodo(\'rems\')" title="Waiting for QC after rework by QC REMS (weld repair / machining)">QC REMS '+n.rems+' &#8595;</button>';
   box.innerHTML = h;
   var wrap = box.closest('.progress-wrap'), bar = document.querySelector('#view-form .topbar');
   if(wrap && bar) wrap.style.top = bar.offsetHeight+'px';
@@ -6746,7 +6778,8 @@ function jumpTodo(kind){
 
 function statusPillHTML(r){
   try{ var st = statusOf(r), c = st.color;
-    return '<span class="st-pill" title="'+esc(st.detail||'')+'" style="color:'+c+';border-color:'+c+'66;background:'+c+'14">'+esc(st.label)+'</span>';
+    return '<span class="st-pill" title="'+esc(st.detail||'')+'" style="color:'+c+';border-color:'+c+'66;background:'+c+'14">'+esc(st.label)+'</span>'
+      +(st.roles.length ? ' <span style="font-size:10.5px;color:var(--text3);font-weight:700;margin-left:4px">with</span>'+st.roles.map(roleChipHTML).join('') : '');
   }catch(e){ return ''; }
 }
 function refreshQcWaiveNotes(){
@@ -6754,10 +6787,20 @@ function refreshQcWaiveNotes(){
   var map = {}; try{ printRowsFor(current).forEach(function(x){ if(x.id) map[x.id] = x; }); }catch(e){ return; }
   els.forEach(function(el){
     var x = map[el.getAttribute('data-qcw-id')], w = x && !x.rw ? qcWaiver(x.ed) : '';
-    el.className = 'qc-waive-note'+(w ? ' on '+w : '');
-    el.innerHTML = !w ? '' : w==='replace'
+    var role = x && !w ? qcRoleOfText(x.ed) : '';
+    var cls, html;
+    if(!w && role){
+      var wk = dispWork(x.ed).filter(function(k){ return k!=='Rework'; });
+      cls = 'qc-waive-note on role-note';
+      html = 'QC after rework by '+roleChipHTML(role)+(wk.length ? ' — '+esc(wk.join(', ')) : '');
+    } else {
+    cls = 'qc-waive-note'+(w ? ' on '+w : '');
+    html = !w ? '' : w==='replace'
       ? '&#10003; Passes automatically — replaced with a new part. No QC after rework needed (record Fail only if a problem is found).'
       : 'QC after rework optional — polish only. The report does not wait for it; record Pass or Fail if the item is re-inspected.';
+    }
+    if(el._qcw===cls+'|'+html) return;            /* unchanged: no DOM write (the form observer watches it) */
+    el._qcw = cls+'|'+html; el.className = cls; el.innerHTML = html;
   });
 }
 function updateDispositionBanner(){
@@ -7130,8 +7173,9 @@ function statusOf(r){
   if((si.stage==='Repair') && more.length) label += ' + '+more.map(function(k){ return (STATUS_DEF[k]||{}).label.replace(/^Awaiting /,''); }).join(' + ');
   if((si.stage==='Repair' || si.stage==='Polish') && (r.disposition==='rework_complete' || r.disposition==='all_pass')) label += ' (no re-inspection)';
   if(si.replaced && keys.indexOf('Replace')===-1) keys.push('Replace');
+  var ro = rolesOf(r, si);
   var st = { sig:sig, key:key, label:label, color:def.color, stage:si.stage, detail:si.detail, workTypes:works.concat(si.replaced?['Replace (auto-pass)']:[]).join('; '), keys:keys,
-             polishOpen: si.stage==='Polish' && optionalQcOpen(r) };
+             polishOpen: si.stage==='Polish' && optionalQcOpen(r), roles:ro.roles, qcTeam:ro.qcTeam };
   try{ Object.defineProperty(r, '_st', { value:st, writable:true, configurable:true, enumerable:false }); }catch(e){}
   return st;
 }
@@ -7210,6 +7254,91 @@ function optionalQcOpen(r){
   }catch(e){ return false; }
 }
 function reportStage(r){ return stageInfo(r).stage; }
+
+/* ══ ROLES (Nov 2026) ═══════════════════════════════════════════════════
+   QC after rework is done by two QC teams:
+     QC REMS — weld repair and machining: CWR, HWR, weld repair, machining (incl. oversize
+               seat pocket machining) and skim machining;
+     QC      — every other rework (polish, re-tap / counterbore, repair …).
+   Each item shows the team that inspects it. The report saves who acts on it now (roles)
+   and which QC team has rework to inspect (qcTeam), beside stage / stageDetail, which keep
+   their values, so the register and the Teams flows keep working.                       */
+var ROLE_QC = 'QC', ROLE_REMS = 'QC REMS';
+var REMS_WORK = { CWR:1, HWR:1, Weld:1, Machining:1, Skim:1 };
+var ROLE_LIST = ['Engineering','QC','QC REMS','Planner','Workshop'];
+var ROLE_DEF = { 'Engineering':{color:'#7c3aed'}, 'QC':{color:'#0d9488'}, 'QC REMS':{color:'#ea580c'}, 'Planner':{color:'#2563eb'}, 'Workshop':{color:'#ca8a04'} };
+function qcRoleOfWork(list){
+  list = (list||[]).filter(Boolean); if(!list.length) return '';
+  return list.some(function(w){ return REMS_WORK[workKey(w)]; }) ? ROLE_REMS : ROLE_QC;
+}
+function qcRoleOfText(t){ t = String(t||'').trim(); if(!t || ENG_REQUEST_RE.test(t)) return ''; return qcRoleOfWork(dispWork(t)); }
+var GV_WORK_OF = { POLISH:'Polish', BUFF:'Buff (polish)', LAP:'Lap (polish)', SKIM:'Skim machining', RETAP:'Re-tap / counterbore',
+                   REPLACE:'Replace component', WELD:'Weld repair', HWR:'HWR', CWR:'CWR' };
+/* the work on one gate valve area (the latest instruction) */
+function gvPointWork(ev, a){
+  var s = ev.s||{}, act = ev.res && ev.res.action;
+  if(String(s.reEng||'').trim()) return dispWork(s.reEng);
+  if(act==='ENGINEERING') return String(s.eng||'').trim() && !ENG_REQUEST_RE.test(s.eng) ? dispWork(s.eng) : [];
+  if(act==='MACHINE_OS'){
+    var rt = (a && a.route) || {};
+    return [rt.type==='hotweld' ? (rt.cwr ? 'CWR' : 'HWR') : 'Machining to '+(((window.GVEval||{}).OS_LABEL||{})[rt.target]||'oversize')];
+  }
+  return [GV_WORK_OF[act] || 'Rework'];
+}
+function gvPointRole(ev){ return ev && ev.res && ev.res.action==='MACHINE_OS' && !String((ev.s||{}).reEng||'').trim() ? ROLE_REMS : qcRoleOfWork(gvPointWork(ev, null)); }
+/* every item with an action: its work, QC team and QC result */
+function qcItems(r){
+  var L = [];
+  if(r.gvEval && window.GVEval){
+    try{
+      var a = GVEval.analyse(r); if(!a.known) return L;
+      var ts = r.gvEval.reworkTimestamps||{}, by = r.gvEval.reworkBy||{};
+      a.points.forEach(function(ev){
+        if(!ev.res || ev.res.action==='ACCEPT' || ev.covered) return;
+        var s = ev.s||{}, w = gvPointWork(ev, a), id = ev.pt.id;
+        L.push({ id:id, where:ev.pt.label, work:w, role:qcRoleOfWork(w), qc:s.qc||'', waived:ev.qcWaived||'', useAsIs:!!s.useAsIs, at:ts[id]||'', by:ts[id]?(by[id]||''):'' });
+      });
+    }catch(e){}
+    return L;
+  }
+  try{ printRowsFor(r).forEach(function(x){
+    if(!x.fail || x.viaDepth || !x.id) return;
+    var ed = String(x.ed||'').trim(), w = ed && !ENG_REQUEST_RE.test(ed) ? dispWork(ed) : [];
+    L.push({ id:x.id, where:x.name||x.req||x.grp, work:w, role:qcRoleOfWork(w), qc:x.rw||'', waived:x.rw?'':qcWaiver(ed), useAsIs:!!x.useAsIs, at:x.rwStamp||'', by:x.rwStamp?rwByFor(r,x.id):'' });
+  }); }catch(e){}
+  return L;
+}
+/* who acts on the report now, by stage (the Teams routing), with the QC team(s) of open rework */
+function rolesOf(r, si){
+  si = si || stageInfo(r);
+  var items = qcItems(r), R = [], add = function(x){ if(x && R.indexOf(x)===-1) R.push(x); };
+  var team = [];
+  items.forEach(function(x){ if(!x.qc && !x.waived && x.role && team.indexOf(x.role)===-1) team.push(x.role); });
+  team.sort();
+  if(si.stage==='ReworkFailed'){ items.forEach(function(x){ if(x.qc==='fail') add(x.role||ROLE_QC); }); add('Engineering'); }
+  else if(si.stage==='Engineering') add('Engineering');
+  else if(si.stage==='Repair'){ add('Planner'); team.forEach(add); if((si.work||[]).some(function(w){ return MINOR_WORK[w]; })) add('Workshop'); }
+  else if(si.stage==='Polish'){ add('Workshop'); add('Planner'); }
+  else if(si.stage==='Complete') add('Planner');
+  return { roles:R, qcTeam:team.join('; '), items:items };
+}
+function roleChipHTML(x){ var c = (ROLE_DEF[x]||{color:'#6b7280'}).color;
+  return '<span class="role-chip" style="color:'+c+';border-color:'+c+'66;background:'+c+'14">'+esc(x)+'</span>'; }
+function roleChipsHTML(L){ return (L&&L.length) ? '<div class="role-chips" title="Waiting on">'+L.map(roleChipHTML).join('')+'</div>' : ''; }
+/* the QC team of one item, for the report previews */
+function qcRoleChipFor(r, id){
+  try{
+    var sig = (r.savedAt||'')+'|'+(r===current?Date.now():'');
+    if(!r._qcMap || r._qcMap.sig!==sig){
+      var m = {}; qcItems(r).forEach(function(x){ m[x.id] = x; });
+      Object.defineProperty(r, '_qcMap', { value:{ sig:sig, m:m }, writable:true, configurable:true, enumerable:false });
+    }
+    var x = r._qcMap.m[id];
+    return x && x.role && !x.waived ? roleChipHTML(x.role) : '';
+  }catch(e){ return ''; }
+}
+function roleFilterSet(v){ try{ localStorage.setItem('hist_role', v); }catch(e){} renderHistory(); }
+try{ document.addEventListener('DOMContentLoaded', function(){ var el = document.getElementById('role-filter'), v = ''; try{ v = localStorage.getItem('hist_role')||''; }catch(e){} if(el && v && ROLE_LIST.indexOf(v)!==-1) el.value = v; }); }catch(e){}
 
 /* ── Engineering follow-up, applied on every save ─────────────────────────
    1. Rework failed, then a NEW instruction is given (Engineering edits the
@@ -7295,7 +7424,7 @@ function saveReport(){
   engineeringFollowUp(current);
   current.disposition=getDisposition(current.findings,current);
   var si=stageInfo(current); current.stage=si.stage; current.stageDetail=si.detail;
-  try{ var stt=statusOf(current); current.status=stt.label; current.statusKey=stt.key; current.workTypes=stt.workTypes; }catch(e){}
+  try{ var stt=statusOf(current); current.status=stt.label; current.statusKey=stt.key; current.workTypes=stt.workTypes; current.roles=stt.roles.join('; '); current.qcTeam=stt.qcTeam; }catch(e){}
   current.savedAt=new Date().toISOString();
   /* Not on SharePoint until the upload of THIS version succeeds. A report that was on SharePoint
      before is an edit waiting to be sent: it must not be replaced by the older SharePoint copy. */
@@ -7648,8 +7777,9 @@ function buildPrintHTML(r){
         +(x.rwc?'<div>'+pre(x.rwc)+'</div>':'');
     } else if(x.fail){
       var qw=!x.rw?qcWaiver(x.ed):'';
-      disp+='<div style="margin-top:4px"><b>QC after rework:</b> '+(x.rw?'<span class="res '+(x.rw==='pass'?'ok':'bad')+'">'+esc(x.rw.toUpperCase())+'</span>':qw?'<span class="res '+(qw==='replace'?'ok':'')+'">'+esc(QC_WAIVER_TEXT[qw])+'</span>':'Pending')
-        +(x.rwStamp?' <span class="tag">('+esc(fmtStamp(x.rwStamp))+')</span>':'')+'</div>'
+      var qcr=qcRoleOfText(x.ed), qby=x.rw?rwByFor(r,x.id):'';
+      disp+='<div style="margin-top:4px"><b>QC after rework'+(qcr&&!qw?' ('+esc(qcr)+')':'')+':</b> '+(x.rw?'<span class="res '+(x.rw==='pass'?'ok':'bad')+'">'+esc(x.rw.toUpperCase())+'</span>':qw?'<span class="res '+(qw==='replace'?'ok':'')+'">'+esc(QC_WAIVER_TEXT[qw])+'</span>':'Pending')
+        +(x.rwStamp?' <span class="tag">('+esc(fmtStamp(x.rwStamp))+(qby?' · '+esc(qby):'')+')</span>':'')+'</div>'
         +(x.rwc?'<div>'+pre(x.rwc)+'</div>':'')
         +(x.rwPhotos.length?'<div>'+x.rwPhotos.map(function(p){ return img(p,'rw'); }).join('')+'<div class="tag">Rework photos</div></div>':'');
       if(x.rw==='fail') disp+='<div class="bad act">Rework failed — further action required</div>';
@@ -7732,6 +7862,12 @@ function renderHistory(){
       var st=statusOf(r); return st.key===statusFilter || st.keys.indexOf(statusFilter)!==-1; });
   }
 
+  // Role filter: reports waiting on a role now (remembered on this device)
+  const roleFilter=(document.getElementById('role-filter')||{}).value||'ALL';
+  if(roleFilter !== 'ALL'){
+    list=list.filter(function(r){ try{ return statusOf(r).roles.indexOf(roleFilter)!==-1; }catch(e){ return false; } });
+  }
+
   if(q){
     // Search includes: report ID (with or without FRC- prefix), part no, serial, sn,
     // size desc, equipment no, SO, inspector, engineer, form type label
@@ -7754,7 +7890,7 @@ function renderHistory(){
     return 0;
   });
   // Only render the first histLimit rows; reset the page when the search/filter changes.
-  var _sig=q+'|'+activeFilter+'|'+statusFilter+'|'+sortBy;
+  var _sig=q+'|'+activeFilter+'|'+statusFilter+'|'+roleFilter+'|'+sortBy;
   if(_sig!==histSig){ histSig=_sig; histLimit=HIST_PAGE; }
   var shown=list.slice(0,histLimit);
   histOrder = shown.map(function(x){ return x.id; });   // drives prev/next in the report view
@@ -7778,7 +7914,7 @@ function renderHistory(){
       const chipLabel=stt.label.replace(/^Awaiting /,'').replace(/ \(no re-inspection\)$/,'');
       return `<div class="report-list-row status-${esc(r.disposition||'incomplete')}${isReportLocked(r)?' is-locked':''}" style="--st:${sc}" onclick="showPreview('${r.id}')">
         ${equipThumbHTML(r,'rli-thumb')}
-        <div class="rli-status" style="background:${sc}22;border-color:${sc}66" title="${esc(stt.label)}">
+        <div class="rli-status" style="background:${sc}22;border-color:${sc}66" title="${esc(stt.label+(stt.roles.length?' — with '+stt.roles.join(', '):''))}">
           <span style="color:${sc};font-size:9px;font-weight:800">${esc(chipLabel)}</span>
         </div>
         <div class="rli-info">
@@ -7815,6 +7951,7 @@ function renderHistory(){
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
           <span class="disp-chip" title="${esc(stt.detail||'')}" style="color:${sc};border-color:${sc}66;background:${sc}14;white-space:normal;text-align:right;max-width:170px">${esc(chipLabel)}</span>
+          ${roleChipsHTML(stt.roles)}
           ${r._spSynced
             ? `<span class="sp-badge sp-badge-cloud" title="Saved in SharePoint ☁️">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
@@ -8298,7 +8435,7 @@ function previewBFRows(r){
       }).join('')+'</div>':'';
     var rwBadge=rwv?'<span class="result-badge '+(rwv==='pass'?'badge-pass':'badge-fail')+'" style="font-size:9px">'+rwv.toUpperCase()+'</span>':'';
     var reworkHtml=isFail&&(rwv||rwc||rwphotos.length)?'<div class="preview-rework-section">'
-      +'<div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework'+(rwStampFor(r,step.id)?'<span class="rw-stamp-inline">&#128337; '+esc(fmtStamp(rwStampFor(r,step.id)))+'</span>':'')+'</div>'
+      +'<div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework'+qcRoleChipFor(r,step.id)+(rwStampFor(r,step.id)?'<span class="rw-stamp-inline">&#128337; '+esc(rwStampText(r,step.id))+'</span>':'')+'</div>'
       +(rwc?'<div class="preview-item-comment" style="margin-top:4px">&rarr; '+esc(rwc)+'</div>':'')
       +rwPhotoHtml
       +(rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">&#9888; Rework failed &mdash; further action required</div>':'')
@@ -8357,7 +8494,7 @@ function previewWecoRows(r){
       return '<div class="preview-photo-thumb"><img src="'+p.src+'" alt="Rework '+(pi+1)+'"/><div class="preview-photo-num">Rework '+(pi+1)+'</div></div>';
     }).join('')+'</div>':'';
     var rwBadge=rwv?'<span class="result-badge '+(rwv==='pass'?'badge-pass':'badge-fail')+'" style="font-size:9px">'+rwv.toUpperCase()+'</span>':'';
-    var reworkHtml=isFail&&(rwv||rwc||rwphotos.length)?'<div class="preview-rework-section"><div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework'+(rwStampFor(r,step.id)?'<span class="rw-stamp-inline">&#128337; '+esc(fmtStamp(rwStampFor(r,step.id)))+'</span>':'')+'</div>'+(rwc?'<div class="preview-item-comment">&rarr; '+esc(rwc)+'</div>':'')+rwPhotoHtml+(rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">&#9888; Rework failed</div>':'')+'</div>':'';
+    var reworkHtml=isFail&&(rwv||rwc||rwphotos.length)?'<div class="preview-rework-section"><div class="preview-rework-header">'+rwBadge+' QC Inspection After Rework'+qcRoleChipFor(r,step.id)+(rwStampFor(r,step.id)?'<span class="rw-stamp-inline">&#128337; '+esc(rwStampText(r,step.id))+'</span>':'')+'</div>'+(rwc?'<div class="preview-item-comment">&rarr; '+esc(rwc)+'</div>':'')+rwPhotoHtml+(rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">&#9888; Rework failed</div>':'')+'</div>':'';
     rows+='<div class="preview-item-row'+(isFail?' preview-item-fail':'')+'">'
       +'<span class="result-badge '+bc+'">'+(val?vdisp:'—')+'</span>'
       +'<div style="flex:1;min-width:0">'
@@ -8459,7 +8596,7 @@ function previewItemRow(r,item){
     </div>`).join('')
   }</div>`:'';
   const reworkHtml=v==='fail'&&(rwv||rwcom||rwphotos.length)?`<div class="preview-rework-section">
-    <div class="preview-rework-header">${rwBadge} QC Inspection After Rework${rwStampFor(r,item.id)?`<span class="rw-stamp-inline">&#128337; ${esc(fmtStamp(rwStampFor(r,item.id)))}</span>`:''}</div>
+    <div class="preview-rework-header">${rwBadge} QC Inspection After Rework${qcRoleChipFor(r,item.id)}${rwStampFor(r,item.id)?`<span class="rw-stamp-inline">&#128337; ${esc(rwStampText(r,item.id))}</span>`:''}</div>
     ${rwcom?`<div class="preview-item-comment" style="margin-top:4px">→ ${esc(rwcom)}</div>`:''}
     ${rwPhotoHtml}
     ${rwv==='fail'?'<div style="font-size:11px;color:#dc2626;margin-top:4px;font-weight:700">⚠ Rework failed — further action required</div>':''}
@@ -9323,6 +9460,14 @@ function renderDashboard(){
   if(stKeys.length){
     h+='<div class="db-card"><div class="db-card-title">Report Status</div><div class="db-disp-grid">';
     stKeys.forEach(function(k){ h+=dbDispBar(STATUS_DEF[k].label,bySt[k],total,STATUS_DEF[k].color); });
+    h+='</div></div>';
+  }
+  // Who has the reports now (roles)
+  var byRole={}; reports.forEach(function(r){ try{ statusOf(r).roles.forEach(function(x){ byRole[x]=(byRole[x]||0)+1; }); }catch(e){} });
+  var rKeys=ROLE_LIST.filter(function(k){ return byRole[k]; });
+  if(rKeys.length){
+    h+='<div class="db-card"><div class="db-card-title">Waiting on Role</div><div class="db-disp-grid">';
+    rKeys.forEach(function(k){ h+=dbDispBar(k,byRole[k],total,ROLE_DEF[k].color); });
     h+='</div></div>';
   }
 
@@ -12374,11 +12519,12 @@ function dispHTML(ev){
   }
   if(ev.res.action!=='ACCEPT' && !ev.covered){
     var q=ev.s.qc||'';
-    var t=(g().reworkTimestamps||{})[id];
-    h+='<div class="gve-qc"><span class="gve-qc-l">QC after rework</span>'
+    var t=(g().reworkTimestamps||{})[id], qby=t?((g().reworkBy||{})[id]||''):'';
+    var qrole=(!ev.qcWaived && window.gvPointRole) ? gvPointRole(ev) : '';
+    h+='<div class="gve-qc"><span class="gve-qc-l">QC after rework'+(qrole && window.roleChipHTML ? ' '+roleChipHTML(qrole) : '')+'</span>'
       +'<button class="gve-btn'+(q==='pass'?' on-ok':'')+'" onclick="gveQC(\''+id+'\',\'pass\')">Pass</button>'
       +'<button class="gve-btn'+(q==='fail'?' on-bad':'')+'" onclick="gveQC(\''+id+'\',\'fail\')">Fail</button>'
-      +(t && typeof fmtStamp==='function' ? '<span class="gve-note" style="margin:0">&#128337; '+e(fmtStamp(t))+'</span>' : '')
+      +(t && typeof fmtStamp==='function' ? '<span class="gve-note" style="margin:0">&#128337; '+e(fmtStamp(t))+(qby?' · '+e(qby):'')+'</span>' : '')
       +'</div>';
     if(ev.qcWaived && q!=='pass' && q!=='fail') h+='<div class="qc-waive-note on '+ev.qcWaived+'">'+(ev.qcWaived==='replace'
         ? '&#10003; Passes automatically — replaced with a new part. No QC after rework needed (record Fail only if a problem is found).'
@@ -12978,8 +13124,8 @@ function previewHTML(r){
           +'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+findingText(ev,s.meas||{},a&&a.std).map(e).join(' · ')+'</div>'
           +(A&&ev.res.action!=='ACCEPT'?'<div class="gve-disp t-'+A.tone+'" style="margin-top:6px"><span class="gve-act">'+e(A.label)+'</span> — '+e(ev.res.text)
             +(ev.s.eng&&ev.res.action==='ENGINEERING'?'<div style="margin-top:4px"><b>Engineering:</b> '+e(ev.s.eng)+'</div>':'')
-            +(ev.covered?'':'<div style="margin-top:4px;font-size:11px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():(ev.qcWaived?{polish:'Not required — polish only (QC optional)',replace:'PASS — automatic, replaced with a new part'}[ev.qcWaived]:'Pending'))
-            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' · '+e(fmtStamp(s.reworkTimestamps[ev.pt.id])):'')+'</div>')+'</div>':'')
+            +(ev.covered?'':'<div style="margin-top:4px;font-size:11px"><b>QC after rework'+(!ev.qcWaived&&window.gvPointRole?' ('+e(gvPointRole(ev))+')':'')+':</b> '+(ev.s.qc?ev.s.qc.toUpperCase():(ev.qcWaived?{polish:'Not required — polish only (QC optional)',replace:'PASS — automatic, replaced with a new part'}[ev.qcWaived]:'Pending'))
+            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' · '+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+((s.reworkBy||{})[ev.pt.id]?' · '+e(s.reworkBy[ev.pt.id]):''):'')+'</div>')+'</div>':'')
           +(photos.length?'<div class="preview-photo-row">'+photos.map(function(p,i){ return '<div class="preview-photo-thumb"><img src="'+p.src+'"/><div class="preview-photo-num">Photo '+(i+1)+'</div></div>'; }).join('')+'</div>':'')
           +'</div></div>';
       });
@@ -13095,8 +13241,8 @@ function printDoc(r){
           if(ev.s.reEng) disp+='<div style="margin-top:3px"><b>Engineering (after failed rework):</b> '+e(ev.s.reEng)+'</div>';
           if(ev.s.useAsIs && ev.s.qc==='pass') disp+='<div style="margin-top:3px"><b>Closed:</b> USE AS IS — accepted by Engineering'+(typeof ev.s.useAsIs==='string'?' ('+e(ev.s.useAsIs)+')':'')
             +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+')':'')+'</div>';
-          else if(ev.res.action!=='ACCEPT' && !ev.covered) disp+='<div style="margin-top:3px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():(ev.qcWaived?{polish:'Not required — polish only (QC optional)',replace:'PASS — automatic, replaced with a new part'}[ev.qcWaived]:'Pending'))
-            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+')':'')+'</div>';
+          else if(ev.res.action!=='ACCEPT' && !ev.covered) disp+='<div style="margin-top:3px"><b>QC after rework'+(!ev.qcWaived&&window.gvPointRole?' ('+e(gvPointRole(ev))+')':'')+':</b> '+(ev.s.qc?ev.s.qc.toUpperCase():(ev.qcWaived?{polish:'Not required — polish only (QC optional)',replace:'PASS — automatic, replaced with a new part'}[ev.qcWaived]:'Pending'))
+            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+((s.reworkBy||{})[ev.pt.id]?' · '+e(s.reworkBy[ev.pt.id]):'')+')':'')+'</div>';
           disp+='<div class="tag">'+(ev.res.src==='abnormal'?'Inspector flag':ev.res.src==='type'?'Defect type rule':ev.res.src==='route'?'Seat pocket route — both pockets machined together':'Auto — Standards rev '+e(G.revLabel(std)))+'</div>';
         }
         h+='<tr>';
@@ -15424,7 +15570,9 @@ function build(std, opts){
   sec('Responsibilities', tbl(['Role','Responsibility'], [
     ['<b>Inspector</b>','Identifies the valve (part number entry or name plate scan), records serial numbers, evaluates every critical area, measures where asked, attaches photos, flags abnormal findings, and records QC after rework.'],
     ['<b>Engineering</b>','Owns this standard: part numbers, IBOMs, criteria, routes, flange tolerances, spares, SOWs, testing and advisories (Settings, password protected). Dispositions findings referred to Engineering and approves each revision.'],
-    ['<b>QC</b>','Verifies each rework or repair after completion (QC after rework: pass / fail) before the report is complete.'],
+    ['<b>QC</b>','Verifies each rework or repair after completion (QC after rework: pass / fail) before the report is complete — polish, re-tap / counterbore and other repairs.'],
+    ['<b>QC REMS</b>','Verifies weld repair and machining after completion (QC after rework: pass / fail): HWR, CWR, weld repair, oversize seat pocket machining and skim machining.'],
+    ['<b>Planner / Workshop</b>','Plan and carry out the rework the report lists; notified through Teams by the report status.'],
     ['<b>Reviewers</b>','Review and sign the completed FRAC Evaluation Report.']
   ]));
 
