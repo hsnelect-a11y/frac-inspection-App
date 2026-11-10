@@ -405,6 +405,10 @@ html:not([data-theme="dark"]) .home-actions button:hover{color:var(--text)}
 .report-id-tag{font-family:monospace;font-size:10px;font-weight:700;color:var(--brand);letter-spacing:.04em;margin-top:1px}
 .report-size{font-size:11px;color:var(--text2);margin-top:2px}
 .disp-chip{font-size:10px;font-weight:800;padding:4px 9px;border-radius:99px;border:1px solid;white-space:nowrap;flex-shrink:0;max-width:100%}
+.st-pill{display:inline-block;margin-top:8px;font-size:10.5px;font-weight:800;letter-spacing:.02em;padding:3px 10px;border-radius:99px;border:1px solid}
+.qc-waive-note.on{margin:6px 0 8px;font-size:11.5px;line-height:1.45;padding:7px 10px;border-radius:8px;font-weight:600}
+.qc-waive-note.on.replace{background:rgba(22,163,74,.10);color:#15803d;border:1px solid rgba(22,163,74,.3)}
+.qc-waive-note.on.polish{background:rgba(202,138,4,.10);color:#a16207;border:1px solid rgba(202,138,4,.3)}
 .report-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .report-actions button{flex:1 1 44px;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;transition:background .12s}
 .btn-view{background:var(--bg3);color:var(--text2)}.btn-view:hover{background:var(--border)}
@@ -1082,7 +1086,7 @@ body.has-sp-banner{padding-top:44px}
    Same value as CACHE_VERSION in service-worker.js — bump both on every
    deploy. Shown at the bottom of the home page; a tap (and every start)
    compares it with the version GitHub is serving and offers an update. */
-var APP_VERSION = 'frac-2026-11-04b';
+var APP_VERSION = 'frac-2026-11-10a';
 function appVersionShow(extra){
   var el = document.getElementById('home-ver'); if(!el) return;
   el.innerHTML = 'App version <b>'+APP_VERSION.replace(/^frac-/,'')+'</b>'+(extra||'');
@@ -1564,10 +1568,19 @@ else appVersionCheck(false);
       </div>
       <select class="status-filter-select" id="status-filter" onchange="renderHistory()">
         <option value="ALL">All Statuses</option>
-        <option value="all_pass">&#10003; Approved for Service</option>
-        <option value="rework_complete">&#10003; Rework Complete</option>
-        <option value="has_fails">&#9888; Rework Required</option>
-        <option value="incomplete">&#8943; Draft / Incomplete</option>
+        <option value="Draft">Draft</option>
+        <option value="Engineering">Awaiting Engineering</option>
+        <option value="ReworkFailed">Rework Failed</option>
+        <option value="CWR">Awaiting CWR</option>
+        <option value="HWR">Awaiting HWR</option>
+        <option value="Weld">Awaiting Weld Repair</option>
+        <option value="Machining">Awaiting Machining</option>
+        <option value="Skim">Awaiting Skim Machining</option>
+        <option value="Replace">Awaiting Replacement</option>
+        <option value="Polish">Awaiting Polish</option>
+        <option value="PTPending">Pressure Test Pending</option>
+        <option value="ReworkDone">Rework Complete</option>
+        <option value="Approved">Approved for Service</option>
       </select>
     </div>
     <div id="history-list"></div>
@@ -4534,7 +4547,8 @@ function bfCalcDisposition(){
   ['bf_s4','bf_s5','bf_s6'].forEach(function(id){ if(f[id]==='fail') failed.push(id); });
   // If there are fails, check if all have rework pass
   if(failed.length>0){
-    var allReworkPassed=failed.every(function(id){ return rw[id]==='pass'; });
+    var ed=bfState().engDisp||{};
+    var allReworkPassed=failed.every(function(id){ return rwDone(rw, id, ed[id]); });
     if(allReworkPassed) return 'rework_complete';
     return 'has_fails';
   }
@@ -4635,7 +4649,8 @@ function wecoCalcDisposition(){
   // Nut union / male plug
   ['wf_s6','wf_s7','wf_s8'].forEach(function(id){ if(f[id]==='fail') failed.push(id); });
   if(failed.length>0){
-    var allReworkPassed=failed.every(function(id){ return rw[id]==='pass'; });
+    var wed=wecoState().engDisp||{};
+    var allReworkPassed=failed.every(function(id){ return rwDone(rw, id, wed[id]); });
     if(allReworkPassed) return 'rework_complete';
     return 'has_fails';
   }
@@ -4748,7 +4763,7 @@ function rgFlowCalcDisposition(st, steps){
     }
   });
   if(failed.length>0){
-    var allPassed=failed.every(function(id){ return rw[id]==='pass'; });
+    var allPassed=failed.every(function(id){ return rwDone(rw, id, (st.engDisp||{})[id]); });
     if(allPassed) return 'rework_complete';
     return 'has_fails';
   }
@@ -4966,7 +4981,8 @@ function getDisposition(findings, r){
   const failed=items.filter(i=>findings[i.id]==='fail');
   if(failed.length>0){
     const rw=r.reworkFindings||{};
-    const allReworkPassed=failed.every(i=>rw[i.id]==='pass');
+    const idp=r.itemDispositions||{};
+    const allReworkPassed=failed.every(i=>rwDone(rw, i.id, idp[i.id]));
     if(allReworkPassed) return 'rework_complete';
     return 'has_fails';
   }
@@ -5369,7 +5385,7 @@ function rgReworkPanel(ft, id){
   var rwCls='bf-rw-box'+(rwv==='pass'?' bf-rw-pass':rwv==='fail'?' bf-rw-fail':'');
   var out='<div class="'+rwCls+'" id="rg-rw-'+id+'">';
   out+='<div class="bf-rw-header"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> QC Inspection After Rework</div>';
-  out+='<div class="bf-rw-body">';
+  out+='<div class="bf-rw-body"><div class="qc-waive-note" data-qcw-id="'+id+'"></div>';
   out+=rwStampHTML(current,id);
   out+='<div class="bf-rw-hint">Complete after rework / repair has been carried out</div>';
   out+='<div class="bf-btns" style="margin-bottom:10px">';
@@ -5745,7 +5761,7 @@ function wecoReworkPanel(id){
   out+='<div class="bf-rw-header">';
   out+='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
   out+=' QC Inspection After Rework</div>';
-  out+='<div class="bf-rw-body">';
+  out+='<div class="bf-rw-body"><div class="qc-waive-note" data-qcw-id="'+id+'"></div>';
   out+=rwStampHTML(current,id);
   out+='<div class="bf-rw-hint">Complete after rework / repair has been carried out</div>';
   out+='<div class="bf-btns" style="margin-bottom:10px">';
@@ -6125,7 +6141,7 @@ function bfReworkPanel(id){
   out+='<div class="bf-rw-header">';
   out+='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
   out+=' QC Inspection After Rework</div>';
-  out+='<div class="bf-rw-body">';
+  out+='<div class="bf-rw-body"><div class="qc-waive-note" data-qcw-id="'+id+'"></div>';
   out+=rwStampHTML(current,id);
   out+='<div class="bf-rw-hint">Complete after rework / repair has been carried out</div>';
   out+='<div class="bf-btns" style="margin-bottom:10px">';
@@ -6676,6 +6692,7 @@ function formTodos(r){
         if(!ev.answered || ev.pending){ add('fill', id, lab); return; }
         if(!ev.res || ev.res.action==='ACCEPT' || ev.covered) return;
         if(s.qc==='pass') return;
+        if(s.qc!=='fail' && ev.qcWaived) return;           /* polish / replace: QC not required */
         if(s.qc==='fail'){ add('eng', id, lab+' — rework failed'); return; }
         if(ev.res.action==='ENGINEERING' && !String(s.eng||'').trim() && !String(s.reEng||'').trim()){ add('eng', id, lab); return; }
         add('qc', id, lab);
@@ -6690,6 +6707,7 @@ function formTodos(r){
     var el = (flow ? 'bfs-' : 'irow-')+x.id, lab = x.name || x.req;
     if(!x.val){ add('fill', el, lab); return; }
     if(!x.fail || x.viaDepth || x.rw==='pass') return;
+    if(x.rw!=='fail' && qcWaiver(x.ed)) return;          /* polish / replace: QC not required */
     if(x.rw==='fail'){ add('eng', el, lab+' — rework failed'); return; }
     if(!String(x.ed||'').trim() || ENG_REQUEST_RE.test(x.ed)){ add('eng', el, lab); return; }
     add('qc', el, lab);
@@ -6726,7 +6744,24 @@ function jumpTodo(kind){
 }
 
 
+function statusPillHTML(r){
+  try{ var st = statusOf(r), c = st.color;
+    return '<span class="st-pill" title="'+esc(st.detail||'')+'" style="color:'+c+';border-color:'+c+'66;background:'+c+'14">'+esc(st.label)+'</span>';
+  }catch(e){ return ''; }
+}
+function refreshQcWaiveNotes(){
+  var els = document.querySelectorAll('#form-body .qc-waive-note[data-qcw-id]'); if(!els.length || !current) return;
+  var map = {}; try{ printRowsFor(current).forEach(function(x){ if(x.id) map[x.id] = x; }); }catch(e){ return; }
+  els.forEach(function(el){
+    var x = map[el.getAttribute('data-qcw-id')], w = x && !x.rw ? qcWaiver(x.ed) : '';
+    el.className = 'qc-waive-note'+(w ? ' on '+w : '');
+    el.innerHTML = !w ? '' : w==='replace'
+      ? '&#10003; Passes automatically — replaced with a new part. No QC after rework needed (record Fail only if a problem is found).'
+      : 'QC after rework optional — polish only. The report does not wait for it; record Pass or Fail if the item is re-inspected.';
+  });
+}
 function updateDispositionBanner(){
+  try{ setTimeout(function(){ refreshQcWaiveNotes(); var ds = document.querySelector('#disp-banner .disp-status'); if(ds && current) ds.innerHTML = statusPillHTML(current); }, 0); }catch(e){}
   const el=document.getElementById('disp-banner'); if(!el) return;
   const d=dispFor(current.disposition);
   el.style.background=d.bg; el.style.borderLeftColor=d.color; el.style.borderColor=d.border;
@@ -6814,7 +6849,7 @@ function renderForm(){
   // Disposition
   html+=`<div class="disp-banner" id="disp-banner" style="background:${d0.bg};border-color:${d0.border};border-left-color:${d0.color}">
     <div class="disp-label" style="color:${d0.color}">${d0.label}</div>
-    <div class="disp-desc" style="color:${d0.color}">${d0.desc}</div></div>`;
+    <div class="disp-desc" style="color:${d0.color}">${d0.desc}</div><div class="disp-status"></div></div>`;
 
   // Items — dispatch by equipment type
   if(ft==='ACTUATOR'){
@@ -6932,6 +6967,7 @@ function renderItemRow(item){
             QC Inspection After Rework
           </div>
           <div class="rework-body">
+            <div class="qc-waive-note" data-qcw-id="${item.id}"></div>
             <div class="rework-hint">Complete after rework / repair has been carried out</div>
             <div class="insp-btns" style="margin-bottom:10px">
               <button class="insp-btn rework-insp-btn${rwv==='pass'?' active-pass':''}" data-rw="pass" onclick="setReworkFinding('${item.id}','pass')">Pass</button>
@@ -7038,11 +7074,73 @@ function dispWork(t){
   if(!L.length) L.push('Rework');
   return L;
 }
+/* QC after rework that does not hold the report (Nov 2026):
+     · polish only (polish, buff, lap, paint touch-up) — QC after rework is optional;
+     · replace with a new part (alone or with polishing) — passes automatically.
+   The inspector can still record Pass or Fail; a recorded Fail always counts. The work
+   itself stays on the report, so the register and Teams still route it (Polish / Repair). */
+function qcWaiver(t){
+  t = String(t||'').trim();
+  if(!t || ENG_REQUEST_RE.test(t)) return '';
+  var w = dispWork(t);
+  if(w.length===1 && w[0]==='Rework') return '';
+  if(!w.every(function(x){ return MINOR_WORK[x] || x==='Replace' || x==='Replace component'; })) return '';
+  return w.some(function(x){ return /^Replace/.test(x); }) ? 'replace' : 'polish';
+}
+function rwDone(rw, id, ed){ var v = (rw||{})[id]; return v==='pass' || (v!=='fail' && !!qcWaiver(ed)); }
+var QC_WAIVER_TEXT = { polish:'Not required — polish only (QC optional)', replace:'PASS — automatic, replaced with a new part' };
+
+/* Detailed report status, built from the stage and the kinds of work. Saved as status,
+   statusKey and workTypes beside disposition / stage / stageDetail, which keep their values. */
+var STATUS_DEF = {
+  Draft:       { label:'Draft',                 color:'#6b7280' },
+  Engineering: { label:'Awaiting Engineering',  color:'#7c3aed' },
+  ReworkFailed:{ label:'Rework Failed',         color:'#dc2626' },
+  CWR:         { label:'Awaiting CWR',          color:'#b91c1c' },
+  HWR:         { label:'Awaiting HWR',          color:'#c2410c' },
+  Weld:        { label:'Awaiting Weld Repair',  color:'#c2410c' },
+  Machining:   { label:'Awaiting Machining',    color:'#b45309' },
+  Skim:        { label:'Awaiting Skim Machining', color:'#b45309' },
+  Replace:     { label:'Awaiting Replacement',  color:'#0e7490' },
+  Retap:       { label:'Awaiting Re-tap',       color:'#b45309' },
+  Repair:      { label:'Awaiting Repair',       color:'#b45309' },
+  Polish:      { label:'Awaiting Polish',       color:'#ca8a04' },
+  PTPending:   { label:'Pressure Test Pending', color:'#0369a1' },
+  ReworkDone:  { label:'Rework Complete',       color:'#0369a1' },
+  Approved:    { label:'Approved for Service',  color:'#16a34a' }
+};
+var STATUS_ORDER = ['CWR','HWR','Weld','Machining','Skim','Replace','Retap','Repair'];
+function workKey(w){
+  if(w==='CWR') return 'CWR'; if(w==='HWR') return 'HWR'; if(w==='Weld repair') return 'Weld';
+  if(/^Machining/.test(w)) return 'Machining'; if(w==='Skim machining') return 'Skim';
+  if(/^Replace/.test(w)) return 'Replace'; if(/^Re-tap/.test(w)) return 'Retap';
+  if(MINOR_WORK[w]) return 'Polish'; return 'Repair';
+}
+function statusOf(r){
+  var sig = (r.savedAt||r.updatedAt||r.createdAt||'')+'|'+(r.disposition||'');
+  if(r._st && r._st.sig===sig && r!==current) return r._st;
+  var si = stageInfo(r), key = si.stage, works = si.work || [], keys = [];
+  works.forEach(function(w){ var k = workKey(w); if(keys.indexOf(k)===-1) keys.push(k); });
+  if(si.stage==='Repair'){ key = STATUS_ORDER.filter(function(k){ return keys.indexOf(k)!==-1; })[0] || 'Repair'; }
+  else if(si.stage==='Polish') key = 'Polish';
+  else if(si.stage==='Complete') key = (typeof ptestPending==='function' && ptestPending(r)) ? 'PTPending' : (r.disposition==='rework_complete' ? 'ReworkDone' : 'Approved');
+  var def = STATUS_DEF[key] || STATUS_DEF.Draft, label = def.label;
+  if(key==='ReworkDone' && si.replaced) label = 'Rework Complete — replaced (auto-pass)';
+  var more = keys.filter(function(k){ return k!==key && k!=='Polish'; });
+  if((si.stage==='Repair') && more.length) label += ' + '+more.map(function(k){ return (STATUS_DEF[k]||{}).label.replace(/^Awaiting /,''); }).join(' + ');
+  if((si.stage==='Repair' || si.stage==='Polish') && (r.disposition==='rework_complete' || r.disposition==='all_pass')) label += ' (no re-inspection)';
+  if(si.replaced && keys.indexOf('Replace')===-1) keys.push('Replace');
+  var st = { sig:sig, key:key, label:label, color:def.color, stage:si.stage, detail:si.detail, workTypes:works.concat(si.replaced?['Replace (auto-pass)']:[]).join('; '), keys:keys,
+             polishOpen: si.stage==='Polish' && optionalQcOpen(r) };
+  try{ Object.defineProperty(r, '_st', { value:st, writable:true, configurable:true, enumerable:false }); }catch(e){}
+  return st;
+}
+
 function stageInfo(r){
   var d = r.disposition || 'incomplete';
   var DRAFT = { stage:'Draft', detail:'Inspection in progress' };
   if(d==='incomplete') return DRAFT;
-  var uai = [], failed = [], eng = [], abn = [], engReq = false, hadRework = false, work = {}, order = [];
+  var uai = [], failed = [], eng = [], abn = [], replaced = [], engReq = false, hadRework = false, work = {}, order = [];
   var addWork = function(list){ list.forEach(function(w){ if(!work[w]){ work[w] = 0; order.push(w); } work[w]++; }); };
   if(r.gvEval && window.GVEval){
     try{
@@ -7057,6 +7155,7 @@ function stageInfo(r){
         var s = ev.s || {}, where = ev.pt.label;
         if(s.qc==='pass'){ if(s.useAsIs) uai.push(where); return; }
         if(s.qc==='fail'){ failed.push(where); return; }
+        if(ev.qcWaived==='replace'){ replaced.push(where); return; }   /* automatic pass */
         var act = ev.res.action;
         if(String(s.reEng||'').trim()){ addWork(dispWork(s.reEng)); return; }
         if(act==='ENGINEERING'){
@@ -7076,6 +7175,7 @@ function stageInfo(r){
       if(x.rw==='pass'){ if(x.useAsIs) uai.push(where); return; }
       if(x.rw==='fail'){ failed.push(where); return; }
       if(!String(x.ed||'').trim() || ENG_REQUEST_RE.test(x.ed)){ eng.push(where); return; }
+      if(qcWaiver(x.ed)==='replace'){ replaced.push(where); return; }   /* automatic pass */
       addWork(dispWork(x.ed));
     });
   }
@@ -7092,13 +7192,22 @@ function stageInfo(r){
   }
   if(order.length){
     var major = order.some(function(w){ return !MINOR_WORK[w]; });
-    return { stage: major ? 'Repair' : 'Polish', detail:cut(workTxt) };
+    return { stage: major ? 'Repair' : 'Polish', detail:cut(workTxt), work:order.slice() };
   }
   if(d==='has_fails') return { stage:'Engineering', detail:'Engineering review' };   /* failed, but nothing readable: safe side */
   var ptp = (typeof ptestPending==='function' && ptestPending(r)) ? ' — pressure test pending' : '';
   try{ if(r.gvEval && window.GVEval){ var an = GVEval.analyse(r); if(an.known && an.nameplate && an.nameplate.change && an.nameplate.mismatch && an.route.type==='none') ptp = ' — name plate correction to '+(an.nameplate.toPN||'the correct PN')+ptp; } }catch(x){}
-  if(uai.length) return { stage:'Complete', detail:cut('Use as is (Engineering): '+list(uai)+ptp) };
-  return { stage:'Complete', detail:(hadRework || d==='rework_complete' ? 'All pass after rework' : 'All pass')+ptp };
+  if(replaced.length) ptp = ' — replace with new (QC automatic pass): '+list(replaced)+ptp;
+  if(uai.length) return { stage:'Complete', detail:cut('Use as is (Engineering): '+list(uai)+ptp), replaced:replaced.length };
+  return { stage:'Complete', detail:cut((hadRework || d==='rework_complete' ? 'All pass after rework' : 'All pass')+ptp), replaced:replaced.length };
+}
+/* polish-only items with no QC after rework recorded yet: the report stays open so the
+   optional QC can still be recorded (a Pass then moves it to Inspection complete) */
+function optionalQcOpen(r){
+  try{
+    if(r.gvEval && window.GVEval) return GVEval.analyse(r).actionPts.some(function(ev){ return ev.qcWaived==='polish' && !ev.covered && !ev.s.qc; });
+    return printRowsFor(r).some(function(x){ return x.fail && !x.viaDepth && !x.rw && qcWaiver(x.ed)==='polish'; });
+  }catch(e){ return false; }
 }
 function reportStage(r){ return stageInfo(r).stage; }
 
@@ -7186,6 +7295,7 @@ function saveReport(){
   engineeringFollowUp(current);
   current.disposition=getDisposition(current.findings,current);
   var si=stageInfo(current); current.stage=si.stage; current.stageDetail=si.detail;
+  try{ var stt=statusOf(current); current.status=stt.label; current.statusKey=stt.key; current.workTypes=stt.workTypes; }catch(e){}
   current.savedAt=new Date().toISOString();
   /* Not on SharePoint until the upload of THIS version succeeds. A report that was on SharePoint
      before is an edit waiting to be sent: it must not be replaced by the older SharePoint copy. */
@@ -7537,7 +7647,8 @@ function buildPrintHTML(r){
       disp+='<div style="margin-top:4px"><b>Closed:</b> <span class="res ok">USE AS IS</span>'+(x.rwStamp?' <span class="tag">('+esc(fmtStamp(x.rwStamp))+')</span>':'')+'</div>'
         +(x.rwc?'<div>'+pre(x.rwc)+'</div>':'');
     } else if(x.fail){
-      disp+='<div style="margin-top:4px"><b>QC after rework:</b> '+(x.rw?'<span class="res '+(x.rw==='pass'?'ok':'bad')+'">'+esc(x.rw.toUpperCase())+'</span>':'Pending')
+      var qw=!x.rw?qcWaiver(x.ed):'';
+      disp+='<div style="margin-top:4px"><b>QC after rework:</b> '+(x.rw?'<span class="res '+(x.rw==='pass'?'ok':'bad')+'">'+esc(x.rw.toUpperCase())+'</span>':qw?'<span class="res '+(qw==='replace'?'ok':'')+'">'+esc(QC_WAIVER_TEXT[qw])+'</span>':'Pending')
         +(x.rwStamp?' <span class="tag">('+esc(fmtStamp(x.rwStamp))+')</span>':'')+'</div>'
         +(x.rwc?'<div>'+pre(x.rwc)+'</div>':'')
         +(x.rwPhotos.length?'<div>'+x.rwPhotos.map(function(p){ return img(p,'rw'); }).join('')+'<div class="tag">Rework photos</div></div>':'');
@@ -7617,7 +7728,8 @@ function renderHistory(){
   // Status filter
   const statusFilter=(document.getElementById('status-filter')||{}).value||'ALL';
   if(statusFilter !== 'ALL'){
-    list=list.filter(r=>(r.disposition||'incomplete')===statusFilter);
+    list=list.filter(function(r){ if(['all_pass','rework_complete','has_fails','incomplete'].indexOf(statusFilter)!==-1) return (r.disposition||'incomplete')===statusFilter;
+      var st=statusOf(r); return st.key===statusFilter || st.keys.indexOf(statusFilter)!==-1; });
   }
 
   if(q){
@@ -7662,11 +7774,12 @@ function renderHistory(){
   if(viewMode==='list'){
     el.innerHTML='<div class="reports-list-view">'+shown.map(r=>{
       const d=DISPOSITIONS[r.disposition]||DISPOSITIONS.incomplete;
-      const chipLabel=r.disposition==='all_pass'?'Pass':r.disposition==='rework_complete'?'Rework OK':r.disposition==='has_fails'?'Rework Req':'Draft';
-      return `<div class="report-list-row status-${esc(r.disposition||'incomplete')}${isReportLocked(r)?' is-locked':''}" style="--st:${d.color}" onclick="showPreview('${r.id}')">
+      const stt=statusOf(r), sc=stt.color;
+      const chipLabel=stt.label.replace(/^Awaiting /,'').replace(/ \(no re-inspection\)$/,'');
+      return `<div class="report-list-row status-${esc(r.disposition||'incomplete')}${isReportLocked(r)?' is-locked':''}" style="--st:${sc}" onclick="showPreview('${r.id}')">
         ${equipThumbHTML(r,'rli-thumb')}
-        <div class="rli-status" style="background:${d.color}22;border-color:${d.color}66">
-          <span style="color:${d.color};font-size:9px;font-weight:800">${chipLabel}</span>
+        <div class="rli-status" style="background:${sc}22;border-color:${sc}66" title="${esc(stt.label)}">
+          <span style="color:${sc};font-size:9px;font-weight:800">${esc(chipLabel)}</span>
         </div>
         <div class="rli-info">
           <span class="rli-id">${esc(r.id||'')}</span>
@@ -7690,8 +7803,8 @@ function renderHistory(){
   }
   el.innerHTML='<div class="reports-list">'+shown.map(r=>{
     const d=DISPOSITIONS[r.disposition]||DISPOSITIONS.incomplete;
-    const chipLabel=r.disposition==='all_pass'?'✓ Pass':r.disposition==='rework_complete'?'✓ Rework Complete':r.disposition==='has_fails'?'⚠ Rework Required':'Draft';
-    return `<div class="report-card status-${esc(r.disposition||'incomplete')}${isReportLocked(r)?' is-locked':''}" style="--st:${d.color}">
+    const stt=statusOf(r), sc=stt.color, chipLabel=stt.label;
+    return `<div class="report-card status-${esc(r.disposition||'incomplete')}${isReportLocked(r)?' is-locked':''}" style="--st:${sc}">
       <div class="report-card-top">
         ${equipThumbHTML(r,'rc-thumb')}
         <div class="report-card-info">
@@ -7701,7 +7814,7 @@ function renderHistory(){
           <div class="report-size">${esc(r.header.sizeDesc||'')}${r.inspector?' · '+esc(r.inspector):''}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          <span class="disp-chip" style="color:${d.color};border-color:${d.border};background:${d.bg}">${chipLabel}</span>
+          <span class="disp-chip" title="${esc(stt.detail||'')}" style="color:${sc};border-color:${sc}66;background:${sc}14;white-space:normal;text-align:right;max-width:170px">${esc(chipLabel)}</span>
           ${r._spSynced
             ? `<span class="sp-badge sp-badge-cloud" title="Saved in SharePoint ☁️">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>
@@ -7747,7 +7860,7 @@ function ptestPending(r){
   var g = r && r.gvEval; if(!g || !g.rdLevel) return false;
   var P = g.ptest || {}; return !(P.body && P.seat);
 }
-function isReportLocked(r){ return isReportComplete(r) && !r._unlocked && !ptestPending(r); }
+function isReportLocked(r){ return isReportComplete(r) && !r._unlocked && !ptestPending(r) && !(typeof statusOf==='function' && statusOf(r).polishOpen); }
 /* Unlocking a signed-off report is an admin action — it always asks for the
    password, even if Settings is already unlocked this session, because the
    whole point is to stop an accidental edit or delete of completed work. */
@@ -8277,7 +8390,7 @@ function renderPreview(r){
 
   html+=`<div class="disp-banner" style="background:${d.bg};border-color:${d.border};border-left-color:${d.color};margin-bottom:12px">
     <div class="disp-label" style="color:${d.color}">${d.label}</div>
-    <div class="disp-desc" style="color:${d.color}">${d.desc}</div></div>`;
+    <div class="disp-desc" style="color:${d.color}">${d.desc}</div>${statusPillHTML(r)}</div>`;
 
   if((r.equipType||r.formType)==='GATE_VALVE' && window.GVRedress){
     html+=GVRedress.previewHTML(r);
@@ -9204,6 +9317,14 @@ function renderDashboard(){
   h+=dbDispBar('Rework Required',byDisp.has_fails,total,'#dc2626');
   h+=dbDispBar('In Progress',byDisp.incomplete,total,'#6b7280');
   h+='</div></div>';
+  // Detailed status (who has the report now)
+  var bySt={}; reports.forEach(function(r){ try{ var k=statusOf(r).key; bySt[k]=(bySt[k]||0)+1; }catch(e){} });
+  var stKeys=['Draft','Engineering','ReworkFailed','CWR','HWR','Weld','Machining','Skim','Replace','Retap','Repair','Polish','PTPending','ReworkDone','Approved'].filter(function(k){ return bySt[k]; });
+  if(stKeys.length){
+    h+='<div class="db-card"><div class="db-card-title">Report Status</div><div class="db-disp-grid">';
+    stKeys.forEach(function(k){ h+=dbDispBar(STATUS_DEF[k].label,bySt[k],total,STATUS_DEF[k].color); });
+    h+='</div></div>';
+  }
 
   // Equipment type chart
   var typeEntries=Object.entries(byType).sort(function(a,b){return b[1]-a[1];});
@@ -11298,6 +11419,18 @@ function rdScopeOf(r){
 }
 function rdInScope(sc, ptId){ return !sc || sc.all || !!(sc.points && sc.points[ptId]); }
 
+/* QC after rework not required: polish / buff / lap (optional), replace (automatic pass),
+   or an Engineering instruction that is only polish or replace (window.qcWaiver) */
+function gvWaiver(ev){
+  var s = ev.s || {}, act = ev.res && ev.res.action;
+  var later = String(s.reEng||'').trim();
+  var qw = window.qcWaiver || function(){ return ''; };
+  if(later) return qw(later);
+  if(act==='POLISH' || act==='BUFF' || act==='LAP') return 'polish';
+  if(act==='REPLACE') return 'replace';
+  if(act==='ENGINEERING' && String(s.eng||'').trim() && !s.abnormal) return qw(s.eng);
+  return '';
+}
 function analyse(r){
   var std = stdOf(r), g = r.gvEval;
   var a = { std:std, known:false, points:[], answered:0, total:0, incomplete:true,
@@ -11321,7 +11454,8 @@ function analyse(r){
     if(ev.res && ev.res.action!=='ACCEPT'){
       a.actionPts.push(ev);
       if(ev.res.action==='ENGINEERING' && !String(ev.s.eng||'').trim()) a.engOpen.push(ev);
-      if(ev.s.qc!=='pass') a.qcOpen.push(ev);
+      ev.qcWaived = gvWaiver(ev);
+      if(ev.s.qc!=='pass' && !(ev.s.qc!=='fail' && ev.qcWaived)) a.qcOpen.push(ev);
     }
   });});
   var mpts = a.points.filter(function(ev){ return ev.res && ev.res.action==='MACHINE_OS'; });
@@ -11659,6 +11793,8 @@ function outcome(a, r){
   if(a.engOpen.length) o.lines.push(a.engOpen.length+' finding(s) waiting for Engineering disposition');
   if(a.globalEng) o.lines.push('Engineering review requested for this valve — remarks outstanding');
   if(a.actionPts.length && a.qcOpen.length) o.lines.push(a.qcOpen.length+' of '+a.actionPts.length+' rework item(s) waiting for QC after rework');
+  var wv = a.actionPts.filter(function(ev){ return ev.qcWaived && ev.s.qc!=='pass' && ev.s.qc!=='fail'; });
+  if(wv.length) o.lines.push(wv.length+' item(s) polish or replace only — QC after rework not required');
   return o;
 }
 
@@ -11678,7 +11814,7 @@ window.GVEval = {
   valveHistory:valveHistory, hwrEvidence:hwrEvidence, bareSN:bareSN, compHistory:compHistory, ptHistory:ptHistory,
   isStudPart:isStudPart, shortDesc:shortDesc, syncSpareDesc:syncSpareDesc, ibomDescMap:ibomDescMap,
   flangeFor:flangeFor, defaultFlanges:defaultFlanges, flangeCheck:flangeCheck, FLANGE_BY_NOMINAL:FLANGE_BY_NOMINAL,
-  componentsFor:componentsFor, pointsFor:pointsFor, replaceReason:replaceReason, recordedPN:recordedPN, NP_BLANK_DEFAULT:NP_BLANK_DEFAULT, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
+  componentsFor:componentsFor, pointsFor:pointsFor, replaceReason:replaceReason, gvWaiver:gvWaiver, recordedPN:recordedPN, NP_BLANK_DEFAULT:NP_BLANK_DEFAULT, isBalanced:isBalanced, deriveBalanced:deriveBalanced,
   keys:valveKeys, newValveId:newValveId, blankValve:blankValve, defaultTesting:defaultTesting, valvesByNominal:valvesByNominal,
   NOMINALS:['1-13/16','2-1/16','2-9/16','3-1/16','4-1/16','5-1/8','7-1/16'], IMAGES:IMAGES,
   imageKey:function(r){ var st = stdOf(r); return st && st.size && st.size.image!==undefined ? st.size.image : r.gvSize; },
@@ -12244,6 +12380,9 @@ function dispHTML(ev){
       +'<button class="gve-btn'+(q==='fail'?' on-bad':'')+'" onclick="gveQC(\''+id+'\',\'fail\')">Fail</button>'
       +(t && typeof fmtStamp==='function' ? '<span class="gve-note" style="margin:0">&#128337; '+e(fmtStamp(t))+'</span>' : '')
       +'</div>';
+    if(ev.qcWaived && q!=='pass' && q!=='fail') h+='<div class="qc-waive-note on '+ev.qcWaived+'">'+(ev.qcWaived==='replace'
+        ? '&#10003; Passes automatically — replaced with a new part. No QC after rework needed (record Fail only if a problem is found).'
+        : 'QC after rework optional — polish only. The report does not wait for it; record Pass or Fail if the area is re-inspected.')+'</div>';
     if(q==='fail') h+='<div class="gve-note" style="color:#dc2626;font-weight:700">Rework failed — Engineering to give a new disposition below (or re-evaluate the area / flag it abnormal).</div>'
       +'<div class="fail-disp-box"><label class="field-label">Engineering disposition — rework failed</label>'
       +'<textarea class="field-input" rows="2" placeholder="New instruction (e.g. HWR per SOW, machine to OS .060) — or Use as is" oninput="gveFailEng(\''+id+'\',this.value)">'+e(ev.s.failEng||'')+'</textarea>'
@@ -12539,7 +12678,7 @@ function renderForm(){
   h+='<div style="margin-top:10px"><label class="field-label">General note — current nameplate details</label><textarea class="field-input" rows="2" oninput="gveG(\'nameplate\',this.value)">'+e(s.nameplate||'')+'</textarea>'+(typeof bfPhotoBtns==='function'?bfPhotoBtns('gve_nameplate'):'')+'</div>';
   h+='<div id="gve-npdisp">'+npDispHTML(a)+'</div>';
   h+='</div>';
-  h+='<div class="disp-banner" id="disp-banner" style="background:'+d0.bg+';border-color:'+d0.border+';border-left-color:'+d0.color+'"><div class="disp-label" style="color:'+d0.color+'">'+d0.label+'</div><div class="disp-desc" style="color:'+d0.color+'">'+d0.desc+'</div></div>';
+  h+='<div class="disp-banner" id="disp-banner" style="background:'+d0.bg+';border-color:'+d0.border+';border-left-color:'+d0.color+'"><div class="disp-label" style="color:'+d0.color+'">'+d0.label+'</div><div class="disp-desc" style="color:'+d0.color+'">'+d0.desc+'</div><div class="disp-status"></div></div>';
   h+='<div id="gve-outcome">'+outcomeHTML(a)+'</div>';
   h+='<div id="gve-eval">'+evalHTML(a)+'</div>';
   h+='<div id="gve-summary">'+summaryHTML(a)+'</div>';
@@ -12821,7 +12960,7 @@ function previewHTML(r){
     +'</div>'+(s.nameplate?'<div style="font-size:12px;color:var(--text2);margin-top:8px;white-space:pre-wrap"><b>Nameplate:</b> '+e(s.nameplate)+'</div>':'')
     +pvPhotos((r.photos||{}).gve_nameplate,'Nameplate')+'</div>';
   var d=dispFor(a.disp)||dispFor('incomplete');
-  h+='<div class="disp-banner" style="background:'+d.bg+';border-color:'+d.border+';border-left-color:'+d.color+';margin-bottom:12px"><div class="disp-label" style="color:'+d.color+'">'+d.label+'</div><div class="disp-desc" style="color:'+d.color+'">'+d.desc+'</div></div>';
+  h+='<div class="disp-banner" style="background:'+d.bg+';border-color:'+d.border+';border-left-color:'+d.color+';margin-bottom:12px"><div class="disp-label" style="color:'+d.color+'">'+d.label+'</div><div class="disp-desc" style="color:'+d.color+'">'+d.desc+'</div>'+(window.statusPillHTML?statusPillHTML(r):'')+'</div>';
   h+=outcomeHTML(a);
   h+=rdPreviewHTML(r, a);
   if(a.known){
@@ -12839,7 +12978,7 @@ function previewHTML(r){
           +'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+findingText(ev,s.meas||{},a&&a.std).map(e).join(' · ')+'</div>'
           +(A&&ev.res.action!=='ACCEPT'?'<div class="gve-disp t-'+A.tone+'" style="margin-top:6px"><span class="gve-act">'+e(A.label)+'</span> — '+e(ev.res.text)
             +(ev.s.eng&&ev.res.action==='ENGINEERING'?'<div style="margin-top:4px"><b>Engineering:</b> '+e(ev.s.eng)+'</div>':'')
-            +(ev.covered?'':'<div style="margin-top:4px;font-size:11px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():'Pending')
+            +(ev.covered?'':'<div style="margin-top:4px;font-size:11px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():(ev.qcWaived?{polish:'Not required — polish only (QC optional)',replace:'PASS — automatic, replaced with a new part'}[ev.qcWaived]:'Pending'))
             +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' · '+e(fmtStamp(s.reworkTimestamps[ev.pt.id])):'')+'</div>')+'</div>':'')
           +(photos.length?'<div class="preview-photo-row">'+photos.map(function(p,i){ return '<div class="preview-photo-thumb"><img src="'+p.src+'"/><div class="preview-photo-num">Photo '+(i+1)+'</div></div>'; }).join('')+'</div>':'')
           +'</div></div>';
@@ -12956,7 +13095,7 @@ function printDoc(r){
           if(ev.s.reEng) disp+='<div style="margin-top:3px"><b>Engineering (after failed rework):</b> '+e(ev.s.reEng)+'</div>';
           if(ev.s.useAsIs && ev.s.qc==='pass') disp+='<div style="margin-top:3px"><b>Closed:</b> USE AS IS — accepted by Engineering'+(typeof ev.s.useAsIs==='string'?' ('+e(ev.s.useAsIs)+')':'')
             +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+')':'')+'</div>';
-          else if(ev.res.action!=='ACCEPT' && !ev.covered) disp+='<div style="margin-top:3px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():'Pending')
+          else if(ev.res.action!=='ACCEPT' && !ev.covered) disp+='<div style="margin-top:3px"><b>QC after rework:</b> '+(ev.s.qc?ev.s.qc.toUpperCase():(ev.qcWaived?{polish:'Not required — polish only (QC optional)',replace:'PASS — automatic, replaced with a new part'}[ev.qcWaived]:'Pending'))
             +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+')':'')+'</div>';
           disp+='<div class="tag">'+(ev.res.src==='abnormal'?'Inspector flag':ev.res.src==='type'?'Defect type rule':ev.res.src==='route'?'Seat pocket route — both pockets machined together':'Auto — Standards rev '+e(G.revLabel(std)))+'</div>';
         }
