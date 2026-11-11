@@ -1091,7 +1091,7 @@ body.has-sp-banner{padding-top:44px}
    Same value as CACHE_VERSION in service-worker.js — bump both on every
    deploy. Shown at the bottom of the home page; a tap (and every start)
    compares it with the version GitHub is serving and offers an update. */
-var APP_VERSION = 'frac-2026-11-10b';
+var APP_VERSION = 'frac-2026-11-11a';
 function appVersionShow(extra){
   var el = document.getElementById('home-ver'); if(!el) return;
   el.innerHTML = 'App version <b>'+APP_VERSION.replace(/^frac-/,'')+'</b>'+(extra||'');
@@ -7349,6 +7349,13 @@ try{ document.addEventListener('DOMContentLoaded', function(){ var el = document
    2. Engineering disposition "Use as is": the item is closed (accepted by
       Engineering), so the report can complete.                              */
 var USE_AS_IS_RE = /\buse[\s-]*as[\s-]*is\b|\baccept(ed)?[\s-]*as[\s-]*is\b/i;
+/* QC observations of a failed gate valve attempt: moved into its history entry */
+function gvQcObsTake(r, g, s, ev){
+  var id = ev.pt.id, key = 'gve_qc_'+id, ph = (r.photos && r.photos[key]) || [];
+  var o = { qcNote:String(s.qcNote||''), qcBy:(g.reworkBy||{})[id]||'', qcRole:(typeof gvPointRole==='function' ? gvPointRole(ev) : '') || 'QC', photos:ph.slice() };
+  delete s.qcNote; if(r.photos) delete r.photos[key];
+  return o;
+}
 function engineeringFollowUp(r){
   var now = new Date().toISOString();
   var who = r.engineerName || (typeof spConfig!=='undefined' && spConfig.userName) || '';
@@ -7362,8 +7369,8 @@ function engineeringFollowUp(r){
         var s = g.pts[ev.pt.id]; if(!s) return;
         /* Engineering wrote a new disposition in the box below the failed QC */
         if(s.qc==='fail' && String(s.failEng||'').trim()){
-          (s.qcHistory = s.qcHistory||[]).push({ result:'fail', action:ev.res.action, eng:s.reEng || s.eng || '', depth:s.depth||'',
-            at:g.reworkTimestamps[ev.pt.id]||now, reopened:now, by:engUser() });
+          (s.qcHistory = s.qcHistory||[]).push(Object.assign({ result:'fail', action:ev.res.action, eng:s.reEng || s.eng || '', depth:s.depth||'',
+            at:g.reworkTimestamps[ev.pt.id]||now, reopened:now, by:engUser() }, gvQcObsTake(r, g, s, ev)));
           s.reEng = s.failEng; delete s.failEng; s.qc = ''; delete s.qcFailSig; delete g.reworkTimestamps[ev.pt.id];
         }
         if(s.qc!=='fail') delete s.failEng;
@@ -7372,7 +7379,7 @@ function engineeringFollowUp(r){
           if(s.qcFailSig===undefined) s.qcFailSig = sig;
           else if(s.qcFailSig!==sig){
             var old = s.qcFailSig.split('|');
-            (s.qcHistory = s.qcHistory||[]).push({ result:'fail', action:old[0], eng:old[5] || old[1], depth:old[2], at:g.reworkTimestamps[ev.pt.id]||now, reopened:now });
+            (s.qcHistory = s.qcHistory||[]).push(Object.assign({ result:'fail', action:old[0], eng:old[5] || old[1], depth:old[2], at:g.reworkTimestamps[ev.pt.id]||now, reopened:now }, gvQcObsTake(r, g, s, ev)));
             s.qc = ''; delete s.qcFailSig; delete g.reworkTimestamps[ev.pt.id];
           }
         }
@@ -12507,7 +12514,10 @@ function dispHTML(ev){
   h+='<div class="gve-disp t-'+A.tone+'"><div class="gve-disp-h"><span class="gve-act">'+e(A.label)+'</span><span class="gve-auto">'+e(src)+'</span></div>';
   h+='<div>'+e(ev.res.text)+'</div>';
   (ev.s.qcHistory||[]).forEach(function(hs,k){
-    h+='<div class="gve-hist">Attempt '+(k+1)+' failed'+(hs.at && typeof fmtStamp==='function' ? ' · '+e(fmtStamp(hs.at)) : '')+' — '+e((ACTIONS[hs.action]||{label:hs.action}).label)+(hs.eng?': '+e(hs.eng):'')+'</div>';
+    h+='<div class="gve-hist">Attempt '+(k+1)+' failed'+(hs.at && typeof fmtStamp==='function' ? ' · '+e(fmtStamp(hs.at)) : '')+' — '+e((ACTIONS[hs.action]||{label:hs.action}).label)+(hs.eng?': '+e(hs.eng):'')
+      +(hs.qcNote?'<div style="margin-top:3px"><b>'+e(hs.qcRole||'QC')+(hs.qcBy?' ('+e(hs.qcBy)+')':'')+':</b> '+e(hs.qcNote)+'</div>':'')
+      +((hs.photos||[]).length?'<div class="photo-thumbs" style="margin-top:4px">'+hs.photos.map(function(p){ return '<div class="photo-thumb"><img src="'+p.src+'"/></div>'; }).join('')+'</div>':'')
+      +'</div>';
   });
   if(ev.s.reEng!==undefined && ev.s.reEng!==null && ev.s.qc!=='fail'){
     h+='<label class="field-label" style="margin-top:9px">Engineering disposition — after failed rework</label>'
@@ -12526,6 +12536,14 @@ function dispHTML(ev){
       +'<button class="gve-btn'+(q==='fail'?' on-bad':'')+'" onclick="gveQC(\''+id+'\',\'fail\')">Fail</button>'
       +(t && typeof fmtStamp==='function' ? '<span class="gve-note" style="margin:0">&#128337; '+e(fmtStamp(t))+(qby?' · '+e(qby):'')+'</span>' : '')
       +'</div>';
+    if(q){                                   /* QC observations: what was found after the rework, with photos */
+      var who = qrole || 'QC';
+      h+='<div class="gve-qcobs'+(q==='fail'?' fail':'')+'"><label class="field-label">'+e(who)+' observations after rework'+(q==='fail'?' — what failed':' (optional)')+'</label>'
+        +'<textarea class="field-input" rows="2" placeholder="'+(q==='fail'?'Describe what was found: location, size / depth, measurements, why it failed …':'Comments on the condition after rework …')+'" oninput="gveQcNote(\''+id+'\',this.value)">'+e(ev.s.qcNote||'')+'</textarea>'
+        +(window.bfPhotoBtns ? bfPhotoBtns('gve_qc_'+id) : '')
+        +(q==='fail' && !String(ev.s.qcNote||'').trim() ? '<div class="gve-note" style="color:#f59e0b">'+e(who)+': write what you found and add photos, so Engineering can give the new disposition.</div>' : '')
+        +'</div>';
+    }
     if(ev.qcWaived && q!=='pass' && q!=='fail') h+='<div class="qc-waive-note on '+ev.qcWaived+'">'+(ev.qcWaived==='replace'
         ? '&#10003; Passes automatically — replaced with a new part. No QC after rework needed (record Fail only if a problem is found).'
         : 'QC after rework optional — polish only. The report does not wait for it; record Pass or Fail if the area is re-inspected.')+'</div>';
@@ -13063,6 +13081,7 @@ window.gveFailEng = function(id, v){ var s=ptState(id); if(window.engTouched) en
 window.gveReEng   = function(id, v){ var s=ptState(id); if(window.engTouched) engTouched('gvre:'+id, s.reEng, v); s.reEng=v; status(); };
 window.gveEng   = function(id, v){ if(window.engTouched) engTouched('gv:'+id, ptState(id).eng, v); ptState(id).eng=v; var a=G.analyse(current); set('gve-chip-'+id, chipHTML(evFor(a,id))); status(a); };
 window.gveMeas  = function(k, id, v){ g().meas[k]=v; refreshPoint(id); };
+window.gveQcNote = function(id, v){ ptState(id).qcNote = v; };
 window.gveQC    = function(id, v){
   var s=ptState(id); s.qc = s.qc===v ? '' : v; stampRework(g(), id, s.qc); refreshPoint(id);
 };
@@ -13125,7 +13144,12 @@ function previewHTML(r){
           +(A&&ev.res.action!=='ACCEPT'?'<div class="gve-disp t-'+A.tone+'" style="margin-top:6px"><span class="gve-act">'+e(A.label)+'</span> — '+e(ev.res.text)
             +(ev.s.eng&&ev.res.action==='ENGINEERING'?'<div style="margin-top:4px"><b>Engineering:</b> '+e(ev.s.eng)+'</div>':'')
             +(ev.covered?'':'<div style="margin-top:4px;font-size:11px"><b>QC after rework'+(!ev.qcWaived&&window.gvPointRole?' ('+e(gvPointRole(ev))+')':'')+':</b> '+(ev.s.qc?ev.s.qc.toUpperCase():(ev.qcWaived?{polish:'Not required — polish only (QC optional)',replace:'PASS — automatic, replaced with a new part'}[ev.qcWaived]:'Pending'))
-            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' · '+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+((s.reworkBy||{})[ev.pt.id]?' · '+e(s.reworkBy[ev.pt.id]):''):'')+'</div>')+'</div>':'')
+            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' · '+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+((s.reworkBy||{})[ev.pt.id]?' · '+e(s.reworkBy[ev.pt.id]):''):'')+'</div>'
+            +(ev.s.qcNote?'<div style="margin-top:3px;font-size:11.5px"><b>Observations:</b> '+e(ev.s.qcNote)+'</div>':'')
+            +((ev.s.qcHistory||[]).map(function(hs,k){ return '<div style="margin-top:4px;font-size:11px;padding:3px 6px;border-left:3px solid #dc2626;background:rgba(220,38,38,.06)"><b>Attempt '+(k+1)+' failed</b>'+(hs.at?' · '+e(fmtStamp(hs.at)):'')
+              +' — '+e((ACTIONS[hs.action]||{label:hs.action}).label)+(hs.eng?': '+e(hs.eng):'')+(hs.qcNote?'<div><b>'+e(hs.qcRole||'QC')+(hs.qcBy?' ('+e(hs.qcBy)+')':'')+':</b> '+e(hs.qcNote)+'</div>':'')
+              +((hs.photos||[]).length?'<div class="preview-photo-row">'+hs.photos.map(function(p,i){ return '<div class="preview-photo-thumb"><img src="'+p.src+'"/><div class="preview-photo-num">QC '+(i+1)+'</div></div>'; }).join('')+'</div>':'')+'</div>'; }).join(''))
+            +(((r.photos||{})['gve_qc_'+ev.pt.id]||[]).length?'<div class="preview-photo-row">'+r.photos['gve_qc_'+ev.pt.id].map(function(p,i){ return '<div class="preview-photo-thumb"><img src="'+p.src+'"/><div class="preview-photo-num">QC '+(i+1)+'</div></div>'; }).join('')+'</div>':''))+'</div>':'')
           +(photos.length?'<div class="preview-photo-row">'+photos.map(function(p,i){ return '<div class="preview-photo-thumb"><img src="'+p.src+'"/><div class="preview-photo-num">Photo '+(i+1)+'</div></div>'; }).join('')+'</div>':'')
           +'</div></div>';
       });
@@ -13237,12 +13261,16 @@ function printDoc(r){
           disp='<span class="act">'+e(A.label)+'</span>'+(ev.res.action!=='ACCEPT'?' — '+e(ev.res.text):'');
           if(ev.s.eng && ev.res.action==='ENGINEERING') disp+='<div><b>Engineering:</b> '+e(ev.s.eng)+'</div>';
           (ev.s.qcHistory||[]).forEach(function(hs,k){ disp+='<div style="margin-top:3px;padding:2px 5px;background:#fef2f2;border-left:3px solid #b91c1c"><b>Rework attempt '+(k+1)+': FAILED</b>'
-            +(hs.at?' <span class="tag">('+e(fmtStamp(hs.at))+')</span>':'')+'<div class="tag">'+e((ACTIONS[hs.action]||{label:hs.action}).label)+(hs.depth?' · depth '+e(hs.depth)+' in':'')+(hs.eng?' · '+e(hs.eng):'')+'</div></div>'; });
+            +(hs.at?' <span class="tag">('+e(fmtStamp(hs.at))+')</span>':'')+'<div class="tag">'+e((ACTIONS[hs.action]||{label:hs.action}).label)+(hs.depth?' · depth '+e(hs.depth)+' in':'')+(hs.eng?' · '+e(hs.eng):'')+'</div>'
+            +(hs.qcNote?'<div><b>'+e(hs.qcRole||'QC')+' observations'+(hs.qcBy?' ('+e(hs.qcBy)+')':'')+':</b> '+e(hs.qcNote)+'</div>':'')
+            +((hs.photos||[]).length?'<div>'+hs.photos.map(function(p){ return '<img class="ph" style="width:70px;height:52px" src="'+p.src+'"/>'; }).join('')+'</div>':'')+'</div>'; });
           if(ev.s.reEng) disp+='<div style="margin-top:3px"><b>Engineering (after failed rework):</b> '+e(ev.s.reEng)+'</div>';
           if(ev.s.useAsIs && ev.s.qc==='pass') disp+='<div style="margin-top:3px"><b>Closed:</b> USE AS IS — accepted by Engineering'+(typeof ev.s.useAsIs==='string'?' ('+e(ev.s.useAsIs)+')':'')
             +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+')':'')+'</div>';
           else if(ev.res.action!=='ACCEPT' && !ev.covered) disp+='<div style="margin-top:3px"><b>QC after rework'+(!ev.qcWaived&&window.gvPointRole?' ('+e(gvPointRole(ev))+')':'')+':</b> '+(ev.s.qc?ev.s.qc.toUpperCase():(ev.qcWaived?{polish:'Not required — polish only (QC optional)',replace:'PASS — automatic, replaced with a new part'}[ev.qcWaived]:'Pending'))
-            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+((s.reworkBy||{})[ev.pt.id]?' · '+e(s.reworkBy[ev.pt.id]):'')+')':'')+'</div>';
+            +(s.reworkTimestamps&&s.reworkTimestamps[ev.pt.id]?' ('+e(fmtStamp(s.reworkTimestamps[ev.pt.id]))+((s.reworkBy||{})[ev.pt.id]?' · '+e(s.reworkBy[ev.pt.id]):'')+')':'')+'</div>'
+            +(ev.s.qcNote?'<div><b>Observations:</b> '+e(ev.s.qcNote)+'</div>':'')
+            +(((r.photos||{})['gve_qc_'+ev.pt.id]||[]).length?'<div>'+r.photos['gve_qc_'+ev.pt.id].map(function(p){ return '<img class="ph" style="width:70px;height:52px" src="'+p.src+'"/>'; }).join('')+'</div>':'');
           disp+='<div class="tag">'+(ev.res.src==='abnormal'?'Inspector flag':ev.res.src==='type'?'Defect type rule':ev.res.src==='route'?'Seat pocket route — both pockets machined together':'Auto — Standards rev '+e(G.revLabel(std)))+'</div>';
         }
         h+='<tr>';
@@ -14226,6 +14254,9 @@ var css = ''
  +'.gvs-arrow{color:var(--text3);font-weight:800}'
  +'.gvs-warn{margin-top:10px;padding:9px 11px;border-radius:9px;border:1px solid rgba(220,38,38,.4);background:rgba(220,38,38,.06);color:#dc2626;font-size:12px;font-weight:600;line-height:1.5}'
  +'.gvs-ok{color:#16a34a;font-weight:700}'
+ +'.gve-qcobs{margin:8px 0 2px;padding:8px 10px;border:1px solid var(--border2);border-radius:10px;background:rgba(255,255,255,.02)}'
+ +'.gve-qcobs.fail{border-color:rgba(220,38,38,.45);background:rgba(220,38,38,.05)}'
+ +'.gve-qcobs .field-label{margin-top:0}'
  +'.gvs-tabgrp{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin:10px 2px 5px}'
  +'.gvs-tip{font-size:11px;color:var(--text3);line-height:1.5;margin:-4px 0 10px}'
  +'.gvs-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}'
